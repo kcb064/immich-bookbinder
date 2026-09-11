@@ -1,0 +1,57 @@
+name: Immich OpenAPI spec drift
+
+# The Immich client is generated from the vendored specs/immich-openapi.json
+# (SUPPORTED_IMMICH_VERSION in packages/shared/src/api.ts). Immich releases
+# monthly; this job compares the upstream spec's info.version with ours once a
+# week and keeps a single open issue up to date when they differ.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  UPSTREAM_URL: https://raw.githubusercontent.com/immich-app/immich/main/open-api/immich-openapi-specs.json
+  ISSUE_LABEL: immich-spec
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download upstream spec
+        run: curl -fsSL --retry 3 -o /tmp/upstream.json "$UPSTREAM_URL"
+
+      - name: Compare versions and paths
+        id: cmp
+        # Writes drift/local/remote to the step outputs and the issue body to
+        # /tmp/issue-body.md (a list of paths added or removed upstream, which
+        # is a quick read on how much client code the update will touch).
+        run: |
+          node .github/scripts/immich-spec-diff.mjs specs/immich-openapi.json /tmp/upstream.json /tmp/issue-body.md >> "$GITHUB_OUTPUT"
+          cat /tmp/issue-body.md
+
+      - name: Open or update the drift issue
+        if: steps.cmp.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Immich OpenAPI spec drift: ${{ steps.cmp.outputs.local }} -> ${{ steps.cmp.outputs.remote }}'
+        run: |
+          gh label create "$ISSUE_LABEL" --description "Upstream Immich API changed" --color 0e8a16 --force
+          existing=$(gh issue list --state open --label "$ISSUE_LABEL" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Updating issue #$existing"
+            gh issue edit "$existing" --title "$TITLE" --body-file /tmp/issue-body.md
+          else
+            echo "Creating issue"
+            gh issue create --title "$TITLE" --body-file /tmp/issue-body.md --label "$ISSUE_LABEL"
+          fi
+
+      - name: No drift
+        if: steps.cmp.outputs.drift != 'true'
+        run: echo "Vendored spec ${{ steps.cmp.outputs.local }} matches upstream."

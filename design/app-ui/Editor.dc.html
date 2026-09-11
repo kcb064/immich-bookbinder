@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app" style="flex-direction: column;">
+  <div class="top" style="padding: 0 20px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; color: #8d95a7;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M15 5l-7 7 7 7"></path></svg><span>Books</span></div>
+      <div style="width: 1px; height: 24px; background: #2a2f3a;"></div>
+      <div class="h1" style="font-size: 17px;">Portugal</div>
+      <span class="muted">Spread 7 of 24 · pages 12–13 · Lisbon</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div class="btn ghost" style="padding: 0 12px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg></div><div class="btn ghost" style="padding: 0 12px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 0 0 0 12h3"></path></svg></div>
+      <div style="width: 1px; height: 24px; background: #2a2f3a;"></div>
+      <div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>Preview</div>
+      <div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>Share</div>
+      <div class="btn primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg>Print &amp; order</div>
+    </div>
+  </div>
+  <div style="flex: 1; display: grid; grid-template-columns: 128px minmax(0, 1fr) 320px; min-height: 0;">
+    <div style="border-right: 1px solid #2a2f3a; background: #12151b; padding: 16px 0; display: flex; flex-direction: column; gap: 14px; align-items: center; overflow: hidden;">
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="grid-column: span 2; background: #6f95b8; border-radius: 2px;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">cover</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div></div><div style="background: #eee;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">1</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="background: #5f8a5a;"></div><div style="background: #f4eee3;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">2–3</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="display: grid; gap: 2px; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;"></div><div style="background: #c98a54;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">4–5</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="background: #4f7f97;"></div><div style="background: #a89c8c;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">6–7</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="background: #c46b7c; grid-column: span 2;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">8–9</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="background: #8ea56c;"></div><div style="display: grid; gap: 2px; grid-template-rows: 1fr 1fr;"><div style="background: #d9a45b;"></div><div style="background: #6f95b8;"></div></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">10–11</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; outline: 2px solid #7c8cff; outline-offset: 2px;"><div style="background: #c98a54;"></div><div style="display: grid; gap: 2px; grid-template-rows: 2fr 1fr;"><div style="background: #4f7f97;"></div><div style="display: grid; gap: 2px; grid-template-columns: 1fr 1fr;"><div style="background: #a89c8c;"></div><div style="background: #5f8a5a;"></div></div></div></div><span class="mono" style="font-size: 10.5px; color: #e8eaf0;">12–13</span></div>
+      <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;"><div style="width: 88px; height: 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; background: #fff; padding: 3px; border-radius: 3px; "><div style="background: #3d4178;"></div><div style="background: #eee;"></div></div><span class="mono" style="font-size: 10.5px; color: #5c6476;">14–15</span></div>
+      <div class="muted" style="font-size: 11px;">···</div>
+    </div>
+    <div style="background: #0b0d11; display: flex; align-items: center; justify-content: center; position: relative;">
+      <div style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; background: #171a21; border: 1px solid #2a2f3a; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M15 5l-7 7 7 7"></path></svg></div>
+      <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; background: #171a21; border: 1px solid #2a2f3a; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 5l7 7-7 7"></path></svg></div>
+      <div style="display: flex; box-shadow: 0 30px 80px rgba(0,0,0,0.6);">
+        <div style="width: 372px; height: 372px; background: #fbfbfa; position: relative; padding: 24px;">
+          <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 100 V70 H8 V58 H16 V66 H24 V50 H30 V62 H40 V72 H48 V54 H56 V64 H64 V46 H70 V60 H80 V68 H88 V56 H94 V70 H100 V100 Z" fill="rgba(20,20,30,0.55)"></path></svg></div>
+          <div style="position: absolute; left: 20px; bottom: 16px; color: rgba(255,255,255,0.9); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;">Alfama, late afternoon</div>
+        </div>
+        <div style="width: 372px; height: 372px; background: #fbfbfa; position: relative; box-shadow: inset 6px 0 12px -8px rgba(0,0,0,0.35); display: grid; grid-template-rows: 2fr 1fr; gap: 10px; padding: 24px 24px 24px 28px;">
+          <div style="position: relative; outline: 2px solid #7c8cff; outline-offset: 3px;"><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><circle cx="70" cy="36" r="7" fill="rgba(255,240,210,0.85)"></circle><rect x="0" y="56" width="100" height="44" fill="rgba(10,30,40,0.35)"></rect><rect x="0" y="56" width="100" height="0.6" fill="rgba(255,255,255,0.45)"></rect></svg></div>
+            <span class="chip" style="position: absolute; right: -4px; top: -4px; height: 22px; background: #f2b350; color: #1a1400; font-size: 11px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1a1400" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l10 18H2z"></path><path d="M12 10v5M12 18.5v.5"></path></svg>187 ppi</span>
+            <span style="position: absolute; left: 50%; top: 42%; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgba(0,0,0,0.4);"></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;"><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #ebe5dc 0%, #a89c8c 60%, #574e45 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); "><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="38" rx="11" ry="14" fill="rgba(60,35,30,0.45)"></ellipse><path d="M22 100 Q 26 62 50 60 Q 74 62 78 100 Z" fill="rgba(60,35,30,0.5)"></path></svg></div><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #d3dfc9 0%, #5f8a5a 55%, #22381f 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); "><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 68 Q 22 48 48 64 T 100 58 V100 H0 Z" fill="rgba(18,28,30,0.42)"></path><path d="M0 82 Q 30 68 60 80 T 100 74 V100 H0 Z" fill="rgba(8,14,14,0.55)"></path></svg></div></div>
+        </div>
+      </div>
+      <div style="position: absolute; bottom: 18px; display: flex; gap: 8px; align-items: center; color: #8d95a7; font-size: 12px;"><span class="mono">12</span><span style="width: 120px; height: 1px; background: #2a2f3a;"></span><span class="mono">13</span></div>
+    </div>
+    <div style="border-left: 1px solid #2a2f3a; background: #12151b; padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline;"><div class="label">Page 13 template</div><span class="muted" style="font-size: 12px;">3 photos</span></div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;">
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: 1fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: 1fr 1fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-rows: 2fr 1fr; grid-template-columns: 1fr 1fr; outline: 2px solid #7c8cff; outline-offset: 2px;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: 2fr 1fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-rows: 1fr 3fr; border: 1px solid #2a2f3a;"></div>
+          <div style="aspect-ratio: 1; background: #fff; border-radius: 6px; padding: 6px; display: grid; gap: 3px; grid-template-columns: 1fr; padding: 22px; border: 1px solid #2a2f3a;"></div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="label">Selected photo</div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); width: 72px; height: 48px; border-radius: 6px; flex: none;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><circle cx="70" cy="36" r="7" fill="rgba(255,240,210,0.85)"></circle><rect x="0" y="56" width="100" height="44" fill="rgba(10,30,40,0.35)"></rect><rect x="0" y="56" width="100" height="0.6" fill="rgba(255,255,255,0.45)"></rect></svg></div>
+          <div style="font-size: 12.5px; line-height: 1.5;"><div style="font-weight: 600;">IMG_4502.HEIC</div><div class="muted">May 12, 18:40 · Cais do Sodré</div></div>
+        </div>
+        <div class="card" style="padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start; background: rgba(242,179,80,0.1); border-color: rgba(242,179,80,0.4); font-size: 12.5px; line-height: 1.45;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f2b350" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M12 3l10 18H2z"></path><path d="M12 10v5M12 18.5v.5"></path></svg><div>Prints at 187 ppi in this slot. Use a smaller slot or accept slight softness.</div></div>
+        <div style="display: flex; gap: 8px;"><div class="btn" style="flex: 1; justify-content: center; height: 40px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>Swap</div><div class="btn" style="flex: 1; justify-content: center; height: 40px;">Crop</div><div class="btn ghost" style="height: 40px; padding: 0 12px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 6l12 12M18 6L6 18"></path></svg></div></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="label">Caption</div>
+        <div class="field" style="height: auto; min-height: 44px; padding: 12px 14px; align-items: flex-start; line-height: 1.45;">Alfama, late afternoon</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip" style="height: 30px; background: #1e222b; color: #8d95a7;">Place · date</span><span class="chip" style="height: 30px; background: #1e222b; color: #8d95a7;">Immich description</span><span class="chip" style="height: 30px; background: #1e222b; color: #8d95a7;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"></path></svg>Suggest</span>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div class="label">Chapter</div>
+        <div class="field" style="justify-content: space-between;"><span>Lisbon · May 12–16</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; transform: rotate(90deg);"><path d="M9 5l7 7-7 7"></path></svg></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

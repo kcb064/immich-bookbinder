@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app">
+  <div class="side">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 12px 18px;">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #5563e8; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg></div>
+      <div style="font-weight: 700; font-size: 15px; letter-spacing: -0.01em;">Bookbinder</div>
+    </div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg><span>Books</span></div>
+    <div class="nav on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 5v14M5 12h14"></path></svg><span>New book</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"></path></svg><span>People &amp; pets</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><span>Orders</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg><span>Settings</span></div>
+    <div style="flex: 1;"></div>
+    <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4cc38a;"></span><span style="font-weight: 600; font-size: 13px;">Immich connected</span></div>
+      <div class="muted" style="font-size: 12px;">immich_server:2283 · v3.2.0</div>
+      <div class="muted" style="font-size: 12px;">48,210 photos · 6 people</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top">
+      <div style="display: flex; align-items: center; gap: 14px;"><div class="h1">Portugal · Review picks</div><span class="chip" style="color: #7c8cff; background: rgba(124,140,255,0.16);">182 of 1,240 picked</span></div>
+      <div style="display: flex; gap: 10px;"><div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>Re-run selection</div><div class="btn primary">Lay out pages <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 5l7 7-7 7"></path></svg></div></div>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; min-height: 0;">
+      <div style="border-right: 1px solid #2a2f3a; padding: 20px 16px; display: flex; flex-direction: column; gap: 22px; background: #12151b;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="nav on" style="justify-content: space-between;"><span>Picked</span><span class="mono" style="font-size: 12px; color: #e8eaf0;">182</span></div><div class="nav" style="justify-content: space-between;"><span>Alternates</span><span class="mono" style="font-size: 12px; color: #5c6476;">96</span></div><div class="nav" style="justify-content: space-between;"><span>Rejected</span><span class="mono" style="font-size: 12px; color: #5c6476;">962</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Scoring preset</div>
+          <div class="field" style="justify-content: space-between;"><span>Balanced</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; transform: rotate(90deg);"><path d="M9 5l7 7-7 7"></path></svg></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;"><div style="display: flex; justify-content: space-between; font-size: 12.5px;"><span>Sharpness</span><span class="muted mono">70</span></div><div style="position: relative; height: 16px; display: flex; align-items: center;"><div class="bar" style="width: 100%;"><div style="width: 70%;"></div></div><span style="position: absolute; top: 0; left: calc(70% - 8px); width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></span></div></div><div style="display: flex; flex-direction: column; gap: 6px;"><div style="display: flex; justify-content: space-between; font-size: 12.5px;"><span>People</span><span class="muted mono">60</span></div><div style="position: relative; height: 16px; display: flex; align-items: center;"><div class="bar" style="width: 100%;"><div style="width: 60%;"></div></div><span style="position: absolute; top: 0; left: calc(60% - 8px); width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></span></div></div><div style="display: flex; flex-direction: column; gap: 6px;"><div style="display: flex; justify-content: space-between; font-size: 12.5px;"><span>Aesthetic</span><span class="muted mono">45</span></div><div style="position: relative; height: 16px; display: flex; align-items: center;"><div class="bar" style="width: 100%;"><div style="width: 45%;"></div></div><span style="position: absolute; top: 0; left: calc(45% - 8px); width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></span></div></div><div style="display: flex; flex-direction: column; gap: 6px;"><div style="display: flex; justify-content: space-between; font-size: 12.5px;"><span>Variety</span><span class="muted mono">80</span></div><div style="position: relative; height: 16px; display: flex; align-items: center;"><div class="bar" style="width: 100%;"><div style="width: 80%;"></div></div><span style="position: absolute; top: 0; left: calc(80% - 8px); width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"></span></div></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Rules</div>
+          <label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px;"><span style="width: 32px; height: 18px; border-radius: 9px; background: #5563e8; position: relative;"><span style="position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;"></span></span>Collapse near-duplicates</label><label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px;"><span style="width: 32px; height: 18px; border-radius: 9px; background: #5563e8; position: relative;"><span style="position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;"></span></span>Skip blurry</label><label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px;"><span style="width: 32px; height: 18px; border-radius: 9px; background: #5563e8; position: relative;"><span style="position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;"></span></span>Spread across days</label><label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px;"><span style="width: 32px; height: 18px; border-radius: 9px; background: #5563e8; position: relative;"><span style="position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff;"></span></span>Every person appears</label>
+        </div>
+      </div>
+      <div style="padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; overflow: hidden;">
+        <div style="display: flex; align-items: baseline; gap: 12px;"><div style="font-weight: 600; font-size: 15px;">Tue, May 12</div><div class="muted">Lisbon · 28 picked of 214</div></div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+          
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(135deg, #e4ecf1 0%, #6f95b8 50%, #2b4a6e 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 100 V70 H8 V58 H16 V66 H24 V50 H30 V62 H40 V72 H48 V54 H56 V64 H64 V46 H70 V60 H80 V68 H88 V56 H94 V70 H100 V100 Z" fill="rgba(20,20,30,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">8.6</span>
+    
+    
+    <span class="chip" style="position: absolute; left: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;">Kevin · Sam</span>
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden; outline: 2px solid #7c8cff; outline-offset: 2px; ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">8.1</span>
+    <span class="chip" style="position: absolute; right: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>×4</span>
+    
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><circle cx="70" cy="36" r="7" fill="rgba(255,240,210,0.85)"></circle><rect x="0" y="56" width="100" height="44" fill="rgba(10,30,40,0.35)"></rect><rect x="0" y="56" width="100" height="0.6" fill="rgba(255,255,255,0.45)"></rect></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.9</span>
+    
+    <span style="position: absolute; right: 8px; bottom: 8px; color: #fff;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"></path></svg></span>
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #ebe5dc 0%, #a89c8c 60%, #574e45 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="38" rx="11" ry="14" fill="rgba(60,35,30,0.45)"></ellipse><path d="M22 100 Q 26 62 50 60 Q 74 62 78 100 Z" fill="rgba(60,35,30,0.5)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.4</span>
+    
+    
+    <span class="chip" style="position: absolute; left: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;">Sam</span>
+  </div>
+          
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f3c39a 0%, #c46b7c 50%, #443456 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 68 Q 22 48 48 64 T 100 58 V100 H0 Z" fill="rgba(18,28,30,0.42)"></path><path d="M0 82 Q 30 68 60 80 T 100 74 V100 H0 Z" fill="rgba(8,14,14,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.2</span>
+    
+    
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f7e6c2 0%, #d9a45b 55%, #6e4a23 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="72" rx="26" ry="16" fill="rgba(70,45,30,0.5)"></ellipse><circle cx="72" cy="52" r="12" fill="rgba(70,45,30,0.55)"></circle><path d="M62 42 L66 30 L72 42 Z M78 42 L82 30 L86 42 Z" fill="rgba(70,45,30,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.0</span>
+    
+    
+    <span class="chip" style="position: absolute; left: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;">Mabel</span>
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(135deg, #e4ecf1 0%, #6f95b8 50%, #2b4a6e 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">6.8</span>
+    <span class="chip" style="position: absolute; right: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>×2</span>
+    
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 100 V70 H8 V58 H16 V66 H24 V50 H30 V62 H40 V72 H48 V54 H56 V64 H64 V46 H70 V60 H80 V68 H88 V56 H94 V70 H100 V100 Z" fill="rgba(20,20,30,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">6.5</span>
+    
+    
+    
+  </div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 6px;"><div style="font-weight: 600; font-size: 15px;">Wed, May 13</div><div class="muted">Lisbon · 19 picked of 168</div></div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+          
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f4e1d2 0%, #c9a08a 55%, #654437 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="38" rx="11" ry="14" fill="rgba(60,35,30,0.45)"></ellipse><path d="M22 100 Q 26 62 50 60 Q 74 62 78 100 Z" fill="rgba(60,35,30,0.5)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">8.3</span>
+    
+    
+    <span class="chip" style="position: absolute; left: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;">Kevin</span>
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.7</span>
+    
+    
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #1c2340 0%, #3d4178 55%, #0c0f1f 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 100 V70 H8 V58 H16 V66 H24 V50 H30 V62 H40 V72 H48 V54 H56 V64 H64 V46 H70 V60 H80 V68 H88 V56 H94 V70 H100 V100 Z" fill="rgba(20,20,30,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">7.5</span>
+    
+    
+    
+  </div>
+  <div style="position: relative; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden;  ">
+    <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #e3e9d6 0%, #8ea56c 55%, #3b4a2a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 68 Q 22 48 48 64 T 100 58 V100 H0 Z" fill="rgba(18,28,30,0.42)"></path><path d="M0 82 Q 30 68 60 80 T 100 74 V100 H0 Z" fill="rgba(8,14,14,0.55)"></path></svg></div>
+    <span class="chip mono" style="position: absolute; left: 8px; bottom: 8px; height: 22px; padding: 0 7px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11.5px; ">6.9</span>
+    <span class="chip" style="position: absolute; right: 8px; top: 8px; height: 22px; background: rgba(10,12,16,0.75); color: #fff; font-size: 11px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>×3</span>
+    
+    
+  </div>
+        </div>
+      </div>
+      <div style="border-left: 1px solid #2a2f3a; padding: 20px; display: flex; flex-direction: column; gap: 16px; background: #12151b;">
+        <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); aspect-ratio: 3 / 2; border-radius: 10px;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><div><div style="font-weight: 600;">IMG_4471.HEIC</div><div class="muted" style="font-size: 12.5px;">May 12, 14:02 · Alfama, Lisbon</div></div><span class="chip mono" style="height: 28px; background: rgba(76,195,138,0.14); color: #4cc38a;">8.1</span></div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 12px;"><span class="muted" style="font-size: 12.5px;">Sharpness</span><div class="bar"><div style="width: 91%;"></div></div><span class="mono" style="font-size: 12px; text-align: right;">0.91</span></div><div style="display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 12px;"><span class="muted" style="font-size: 12.5px;">Exposure</span><div class="bar"><div style="width: 78%;"></div></div><span class="mono" style="font-size: 12px; text-align: right;">0.78</span></div><div style="display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 12px;"><span class="muted" style="font-size: 12.5px;">Aesthetic</span><div class="bar"><div style="width: 79%;"></div></div><span class="mono" style="font-size: 12px; text-align: right;">7.9</span></div><div style="display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 12px;"><span class="muted" style="font-size: 12.5px;">Faces</span><div class="bar"><div style="width: 84%;"></div></div><span class="mono" style="font-size: 12px; text-align: right;">0.84</span></div>
+        </div>
+        <div class="card" style="padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; background: #1e222b; font-size: 12.5px; line-height: 1.5;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"></path></svg>
+          <div><span style="font-weight: 600;">Why this one:</span> best of 4 taken within 40 s; sharpest, Kevin and Sam both facing camera. Others kept as alternates.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="label">Alternates in this burst</div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;">
+            <div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); aspect-ratio: 1; border-radius: 6px; opacity: 0.8;"></div><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f5e9cf 0%, #c98a54 55%, #55392a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); aspect-ratio: 1; border-radius: 6px; opacity: 0.7;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><path d="M0 100 V70 H8 V58 H16 V66 H24 V50 H30 V62 H40 V72 H48 V54 H56 V64 H64 V46 H70 V60 H80 V68 H88 V56 H94 V70 H100 V100 Z" fill="rgba(20,20,30,0.55)"></path></svg></div><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #ebe5dc 0%, #a89c8c 60%, #574e45 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); aspect-ratio: 1; border-radius: 6px; opacity: 0.6;"></div>
+          </div>
+        </div>
+        <div style="flex: 1;"></div>
+        <div style="display: flex; gap: 10px;"><div class="btn" style="flex: 1; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 6l12 12M18 6L6 18"></path></svg>Exclude</div><div class="btn" style="flex: 1; justify-content: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 8h13l-3-3M20 16H7l3 3"></path></svg>Swap</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

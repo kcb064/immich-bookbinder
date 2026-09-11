@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # corepack downloads the pnpm version pinned in package.json "packageManager";
+  # never prompt (there is no TTY) and never let corepack change the pin.
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+  COREPACK_ENABLE_AUTO_PIN: '0'
+
+jobs:
+  checks:
+    name: lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # No `cache: pnpm` here: setup-node would run `pnpm store path` before
+          # corepack has provided pnpm. The store is cached by hand below.
+
+      - name: Enable corepack (pnpm version from package.json)
+        run: |
+          corepack enable
+          pnpm --version
+          echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          # Browsers are only needed for e2e; unit tests and builds do not launch one.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Generate Immich client types
+        run: pnpm generate:immich
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm -r build
+
+  docker:
+    name: docker build (amd64, no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Proves docker/Dockerfile builds from a clean context. Nothing is pushed or
+      # loaded; layers land in the GitHub Actions cache so release.yml reuses them.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

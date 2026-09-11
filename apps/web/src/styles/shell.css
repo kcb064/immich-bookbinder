@@ -1,0 +1,279 @@
+/* App shell: sidebar + main column */
+.shell {
+  display: flex;
+  min-height: 100%;
+  height: 100%;
+}
+
+.side {
+  width: var(--sidebar-w);
+  flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 14px;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 18px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.brand:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+.brand__mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--accent-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.brand__name {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.nav > svg {
+  flex: none;
+}
+.nav:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+.nav--on,
+.nav--on:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav--disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.nav--disabled:hover {
+  background: transparent;
+  color: var(--text-faint);
+}
+.nav__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav .chip {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.side__spacer {
+  flex: 1;
+}
+
+.side__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.immich-card {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--text);
+}
+.immich-card:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+a.immich-card:hover {
+  border-color: var(--border-strong);
+}
+.immich-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.immich-card__line {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signout {
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+}
+.signout:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.top {
+  height: var(--topbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+.top__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.content {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  flex: 1;
+}
+.content--narrow {
+  max-width: 880px;
+}
+
+/* Step rail */
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.step + .step {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+.step__num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.step__name {
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.step--on .step__num {
+  background: var(--accent-strong);
+  color: #fff;
+}
+.step--on .step__name {
+  color: var(--text);
+}
+.step--done .step__num {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Narrow layout: sidebar becomes icon rail */
+@media (max-width: 1100px) {
+  .side {
+    width: var(--sidebar-w-narrow);
+    padding: 20px 10px;
+  }
+  .brand {
+    padding: 4px 9px 18px;
+    justify-content: center;
+  }
+  .side .brand__name,
+  .nav__label,
+  .nav .chip,
+  .immich-card__line,
+  .immich-card__title span:not(.dot),
+  .signout span {
+    display: none;
+  }
+  .nav {
+    justify-content: center;
+    padding: 0;
+  }
+  .immich-card {
+    align-items: center;
+    padding: 12px 0;
+  }
+  .signout {
+    justify-content: center;
+    padding: 0;
+  }
+  .step__name {
+    display: none;
+  }
+  .step--on .step__name {
+    display: block;
+  }
+}

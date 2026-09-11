@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,300;1,6..72,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400&family=Instrument+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #b5563a; } a:hover { color: #8e3f2a; }
+    .board { position: relative; overflow: hidden; }
+    .guide { position: absolute; pointer-events: none; }
+    .tag { position: absolute; left: 8px; top: 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #fff; background: rgba(20,20,20,0.55); padding: 3px 6px; border-radius: 3px; letter-spacing: 0.02em; }
+
+    .spec { box-sizing: border-box; width: 1440px; height: 900px; overflow: hidden; background: #14161b; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; display: grid; grid-template-columns: 560px minmax(0, 1fr); gap: 48px; padding: 48px; }
+    .k { color: #8d95a7; font-size: 12.5px; } .v { font-size: 13.5px; }
+    .row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #262a33; }
+
+  </style>
+</helmet>
+<div class="spec">
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    <div><div style="font-size: 22px; font-weight: 600; letter-spacing: -0.01em;">Page anatomy · 8.5 × 8.5 in</div><div class="k" style="margin-top: 6px;">Every template board below is drawn at 96 px per inch with these guides. Lulu casewrap rules.</div></div>
+    <div style="position: relative; width: 464px; height: 464px; background: #fbfbfa; margin-left: 40px;">
+      <div style="position: absolute; inset: 0; border: 6px solid rgba(220,60,60,0.14);"></div>
+      <div style="position: absolute; inset: 6px; outline: 1px solid rgba(220,60,60,0.75); outline-offset: -1px;"></div>
+      <div style="position: absolute; inset: 30px; border: 1px dashed rgba(60,120,220,0.7);"></div>
+      <div style="position: absolute; left: 0; top: 0; width: 24px; height: 100%; background: repeating-linear-gradient(135deg, rgba(60,120,220,0.10) 0 6px, transparent 6px 12px);"></div>
+      <div style="position: absolute; left: 30px; top: 30px; right: 30px; height: 250px; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%);"></div>
+      <div style="position: absolute; left: 30px; top: 296px; font-family: 'Manrope', 'Helvetica Neue', Arial, sans-serif; font-weight: 300; font-size: 8px; color: #6f6f6f;">Caption sits inside the safety line</div>
+      <div style="position: absolute; left: -40px; top: -2px; color: #ef6b74; font-size: 11px; width: 36px; text-align: right;">bleed</div>
+      <div style="position: absolute; left: -40px; top: 26px; color: #7ea2ff; font-size: 11px; width: 36px; text-align: right;">safety</div>
+      <div style="position: absolute; left: 4px; bottom: -22px; color: #8d95a7; font-size: 11px;">spine side · gutter safety 0.375 in</div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin-top: 12px;">
+      <div class="row"><span class="k">Trim</span><span class="v">8.5 × 8.5 in · 816 px</span></div>
+      <div class="row"><span class="k">Bleed</span><span class="v">0.125 in · 12 px each side</span></div>
+      <div class="row"><span class="k">Safety</span><span class="v">0.5 in · 48 px from trim</span></div>
+      <div class="row"><span class="k">Gutter safety</span><span class="v">0.375 in · 36 px from spine</span></div>
+      <div class="row"><span class="k">PDF page</span><span class="v">8.75 × 8.75 in, no marks</span></div>
+      <div class="row"><span class="k">Cover</span><span class="v">one spread, spine from Lulu</span></div>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr; gap: 32px;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="height: 120px; background: #f6f1e8; border-radius: 6px; padding: 24px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; color: #2a2622;">
+        <div style="font-family: 'Newsreader', Georgia, 'Times New Roman', serif; font-style: italic; font-size: 34px; line-height: 1;">Warm editorial <span style="font-size: 14px; font-style: normal; font-family: 'Instrument Sans', sans-serif; color: #b5563a; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 12px;">chosen style</span></div>
+        <div style="font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; color: #6b625a;">Off-white paper, serif titles, magazine grids, a little terracotta.</div>
+      </div>
+      <div class="row"><span class="k">Paper</span><span class="v">#f6f1e8</span></div>
+      <div class="row"><span class="k">Ink</span><span class="v">#2a2622 · captions #6b625a</span></div>
+      <div class="row"><span class="k">Type</span><span class="v">Newsreader italic + Source Serif 4</span></div>
+      <div class="row"><span class="k">Titles</span><span class="v">72–96 px italic, tight leading</span></div>
+      <div class="row"><span class="k">Captions</span><span class="v">14 px serif, 10.5 pt printed</span></div>
+      <div class="row"><span class="k">Margins</span><span class="v">56 px outer · 16 px between photos</span></div>
+      <div class="row"><span class="k">Accent</span><span class="v">#b5563a rules and folios</span></div>
+      <div class="row"><span class="k">Mood</span><span class="v">travel magazine, keepsake</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

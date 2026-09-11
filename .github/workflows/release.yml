@@ -1,0 +1,70 @@
+name: Release image
+
+# Pushes ghcr.io/kcb064/immich-bookbinder on every commit to main ("latest" plus
+# a short-sha tag) and on version tags (semver tags). Pull with
+#   docker pull ghcr.io/kcb064/immich-bookbinder:latest
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=immich-bookbinder
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # QEMU is only needed for the arm64 half of the build.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # linux/arm64 is best-effort. It is built under QEMU emulation (slow), and
+      # while Playwright's chromium-headless-shell, sharp, better-sqlite3 and
+      # onnxruntime-node all publish arm64 Linux binaries, nothing runs the image
+      # on arm64 in CI. If the arm64 build starts failing or hits the job time
+      # limit, drop it from `platforms` rather than block amd64 releases.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Keep the manifest list to two platform images (no attestation
+          # manifests), which is what Dockge and older Docker clients expect.
+          provenance: false

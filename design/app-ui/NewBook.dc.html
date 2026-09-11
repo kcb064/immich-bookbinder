@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app">
+  <div class="side">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 12px 18px;">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #5563e8; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg></div>
+      <div style="font-weight: 700; font-size: 15px; letter-spacing: -0.01em;">Bookbinder</div>
+    </div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg><span>Books</span></div>
+    <div class="nav on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 5v14M5 12h14"></path></svg><span>New book</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"></path></svg><span>People &amp; pets</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><span>Orders</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg><span>Settings</span></div>
+    <div style="flex: 1;"></div>
+    <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4cc38a;"></span><span style="font-weight: 600; font-size: 13px;">Immich connected</span></div>
+      <div class="muted" style="font-size: 12px;">immich_server:2283 · v3.2.0</div>
+      <div class="muted" style="font-size: 12px;">48,210 photos · 6 people</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">New book</div><div style="display: flex; align-items: center; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px; ">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #5563e8; color: #fff;">1</div>
+      <div style="font-weight: 600; color: #e8eaf0;">Source</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">2</div>
+      <div style="font-weight: 600; color: #8d95a7;">Refine</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">3</div>
+      <div style="font-weight: 600; color: #8d95a7;">Size &amp; style</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">4</div>
+      <div style="font-weight: 600; color: #8d95a7;">Review</div>
+    </div></div></div>
+    <div style="padding: 28px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; overflow: hidden;">
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="label">Where do the photos come from?</div>
+          <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px;">
+            
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px; ">
+    <div style="display: flex; justify-content: space-between; align-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 16l5-5 4 4 3-3 6 6"></path><circle cx="16" cy="9" r="1.5"></circle></svg></div>
+    <div style="font-weight: 600; font-size: 15px;">Album</div>
+    <div class="muted" style="font-size: 12.5px; line-height: 1.45;">Pick one or more Immich albums.</div>
+  </div>
+            
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px; border-color: #7c8cff; box-shadow: 0 0 0 1px #7c8cff inset;">
+    <div style="display: flex; justify-content: space-between; align-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z"></path><path d="M9 3v15M15 6v15"></path></svg><span style="width: 18px; height: 18px; border-radius: 50%; background: #7c8cff; display: inline-flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span></div>
+    <div style="font-weight: 600; font-size: 15px;">Trip</div>
+    <div class="muted" style="font-size: 12.5px; line-height: 1.45;">A date range and the places you were. Finds photos that never made it into an album.</div>
+  </div>
+            
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px; ">
+    <div style="display: flex; justify-content: space-between; align-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"></path></svg></div>
+    <div style="font-weight: 600; font-size: 15px;">People &amp; pets</div>
+    <div class="muted" style="font-size: 12.5px; line-height: 1.45;">Everything with chosen people, or a pet you have taught the app to find.</div>
+  </div>
+            
+  <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px; ">
+    <div style="display: flex; justify-content: space-between; align-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"></path></svg></div>
+    <div style="font-weight: 600; font-size: 15px;">Smart search</div>
+    <div class="muted" style="font-size: 12.5px; line-height: 1.45;">Describe it: “sunsets over water”, “kids at the beach”.</div>
+  </div>
+          </div>
+        </div>
+        <div class="card" style="padding: 16px 18px; display: flex; align-items: center; gap: 14px; border-color: rgba(124,140,255,0.5); background: rgba(124,140,255,0.08);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"></path></svg>
+          <div style="flex: 1;"><span style="font-weight: 600;">Looks like a trip:</span> <span>Lisbon &amp; Porto, May 12–21, 2026 · 1,240 photos away from home</span></div>
+          <div class="btn" style="height: 40px;">Use these dates</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="label">Dates</div>
+            <div style="display: flex; gap: 10px;">
+              <div class="field" style="flex: 1;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg><span>May 10, 2026</span></div>
+              <div class="field" style="flex: 1;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg><span>May 22, 2026</span></div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="label">Places</div>
+            <div class="field" style="gap: 8px; flex-wrap: wrap; height: auto; min-height: 44px; padding: 6px 10px;">
+              <span class="chip" style="height: 30px; background: #1e222b; color: #e8eaf0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"></path><circle cx="12" cy="9" r="2.5"></circle></svg>Lisbon, Portugal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+              <span class="chip" style="height: 30px; background: #1e222b; color: #e8eaf0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c8cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"></path><circle cx="12" cy="9" r="2.5"></circle></svg>Porto, Portugal <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+              <span class="muted">Add a place or pick on the map…</span>
+            </div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="label">Include</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <span class="chip" style="height: 32px; padding: 0 12px 0 4px; background: #1e222b; color: #e8eaf0; gap: 8px; "><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f4e1d2 0%, #c9a08a 55%, #654437 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); width: 24px; height: 24px; border-radius: 50%;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="38" rx="11" ry="14" fill="rgba(60,35,30,0.45)"></ellipse><path d="M22 100 Q 26 62 50 60 Q 74 62 78 100 Z" fill="rgba(60,35,30,0.5)"></path></svg></div>Kevin</span><span class="chip" style="height: 32px; padding: 0 12px 0 4px; background: #1e222b; color: #e8eaf0; gap: 8px; "><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #ebe5dc 0%, #a89c8c 60%, #574e45 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); width: 24px; height: 24px; border-radius: 50%;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="38" rx="11" ry="14" fill="rgba(60,35,30,0.45)"></ellipse><path d="M22 100 Q 26 62 50 60 Q 74 62 78 100 Z" fill="rgba(60,35,30,0.5)"></path></svg></div>Sam</span><span class="chip" style="height: 32px; padding: 0 12px 0 4px; background: #1e222b; color: #e8eaf0; gap: 8px; "><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #f7e6c2 0%, #d9a45b 55%, #6e4a23 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); width: 24px; height: 24px; border-radius: 50%;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><ellipse cx="50" cy="72" rx="26" ry="16" fill="rgba(70,45,30,0.5)"></ellipse><circle cx="72" cy="52" r="12" fill="rgba(70,45,30,0.55)"></circle><path d="M62 42 L66 30 L72 42 Z M78 42 L82 30 L86 42 Z" fill="rgba(70,45,30,0.55)"></path></svg></div>Mabel</span>
+              <span class="chip" style="height: 32px; background: transparent; border: 1px dashed #2a2f3a; color: #8d95a7;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 5v14M5 12h14"></path></svg>Person or pet</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="label">Also</div>
+            <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; min-height: 44px;">
+              <label style="display: flex; align-items: center; gap: 8px;"><span style="width: 18px; height: 18px; border-radius: 5px; background: #5563e8; display: inline-flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span>Favorites always in</label>
+              <label style="display: flex; align-items: center; gap: 8px;"><span style="width: 18px; height: 18px; border-radius: 5px; background: #5563e8; display: inline-flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span>Collapse bursts</label>
+              <label style="display: flex; align-items: center; gap: 8px;"><span style="width: 18px; height: 18px; border-radius: 5px; border: 1px solid #2a2f3a;"></span>Include videos (stills)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+          <div class="label">Live estimate</div>
+          <div><div style="font-size: 34px; font-weight: 700; letter-spacing: -0.02em;">1,240</div><div class="muted">photos match</div></div>
+          <div class="bar"><div style="width: 15%;"></div></div>
+          <div style="display: flex; justify-content: space-between;"><span class="muted">Will be picked</span><span style="font-weight: 600;">≈ 182</span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="muted">Pages</span><span style="font-weight: 600;">48 <span class="muted">(24–800)</span></span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="muted">Near-duplicates collapsed</span><span style="font-weight: 600;">311</span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="muted">Days · places</span><span style="font-weight: 600;">10 · 3</span></div>
+          <div style="height: 1px; background: #2a2f3a;"></div>
+          <div class="muted" style="font-size: 12.5px; line-height: 1.5;">You can change every pick later. Nothing is fetched from Immich until you continue.</div>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;"><div class="btn ghost">Back</div><div class="btn primary">Continue <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 5l7 7-7 7"></path></svg></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

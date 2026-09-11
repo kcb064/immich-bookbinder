@@ -1,0 +1,23 @@
+# Build context for docker/Dockerfile (context = repo root). Keep it small: the
+# deps stage copies manifests explicitly and the build stage copies the rest.
+.git
+.github
+.claude
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/playwright-report
+**/test-results
+**/*.log
+# Runtime data and local secrets never belong in an image.
+data
+.env
+.env.*
+# Design sources and prose are not needed to build.
+design
+docs
+**/*.md
+# Compose files are for the host, not the image.
+docker/compose.yaml
+docker/.env.example

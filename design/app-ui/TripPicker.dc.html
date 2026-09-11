@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app">
+  <div class="side">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 12px 18px;">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #5563e8; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg></div>
+      <div style="font-weight: 700; font-size: 15px; letter-spacing: -0.01em;">Bookbinder</div>
+    </div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg><span>Books</span></div>
+    <div class="nav on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 5v14M5 12h14"></path></svg><span>New book</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"></path></svg><span>People &amp; pets</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><span>Orders</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg><span>Settings</span></div>
+    <div style="flex: 1;"></div>
+    <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4cc38a;"></span><span style="font-weight: 600; font-size: 13px;">Immich connected</span></div>
+      <div class="muted" style="font-size: 12px;">immich_server:2283 · v3.2.0</div>
+      <div class="muted" style="font-size: 12px;">48,210 photos · 6 people</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="h1">Which places were the trip?</div><div style="display: flex; align-items: center; gap: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px; ">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">1</div>
+      <div style="font-weight: 600; color: #8d95a7;">Source</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #5563e8; color: #fff;">2</div>
+      <div style="font-weight: 600; color: #e8eaf0;">Refine</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">3</div>
+      <div style="font-weight: 600; color: #8d95a7;">Size &amp; style</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid #2a2f3a;">
+      <div style="width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #1e222b; color: #8d95a7;">4</div>
+      <div style="font-weight: 600; color: #8d95a7;">Review</div>
+    </div></div></div>
+    <div style="flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0;">
+      <div style="position: relative; background: #121620; overflow: hidden;">
+        <svg viewBox="0 0 1000 800" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%;">
+          <rect width="1000" height="800" fill="#121620"></rect>
+          <path d="M120 80 C 260 40, 420 120, 520 60 S 780 20, 960 110 L 1000 0 L 0 0 Z" fill="#171c28"></path>
+          <path d="M0 800 L 0 420 C 120 380, 220 470, 340 430 S 560 380, 700 470 S 900 520, 1000 480 L 1000 800 Z" fill="#171c28"></path>
+          <path d="M300 430 C 330 300, 420 260, 470 180 S 560 120, 640 160" stroke="#232a3a" stroke-width="2" fill="none"></path>
+          <path d="M0 300 C 150 280, 260 330, 380 300 S 620 260, 1000 300" stroke="#232a3a" stroke-width="1.5" fill="none" stroke-dasharray="6 6"></path>
+          <g>
+            <circle cx="420" cy="470" r="54" fill="rgba(124,140,255,0.22)" stroke="#7c8cff" stroke-width="2"></circle>
+            <text x="420" y="466" text-anchor="middle" fill="#e8eaf0" font-family="Instrument Sans, sans-serif" font-weight="700" font-size="22">812</text>
+            <text x="420" y="488" text-anchor="middle" fill="#8d95a7" font-family="Instrument Sans, sans-serif" font-size="13">Lisbon</text>
+          </g>
+          <g>
+            <circle cx="470" cy="250" r="40" fill="rgba(124,140,255,0.22)" stroke="#7c8cff" stroke-width="2"></circle>
+            <text x="470" y="247" text-anchor="middle" fill="#e8eaf0" font-family="Instrument Sans, sans-serif" font-weight="700" font-size="20">391</text>
+            <text x="470" y="268" text-anchor="middle" fill="#8d95a7" font-family="Instrument Sans, sans-serif" font-size="13">Porto</text>
+          </g>
+          <g>
+            <circle cx="360" cy="500" r="20" fill="rgba(124,140,255,0.22)" stroke="#7c8cff" stroke-width="2"></circle>
+            <text x="360" y="505" text-anchor="middle" fill="#e8eaf0" font-family="Instrument Sans, sans-serif" font-weight="700" font-size="14">37</text>
+          </g>
+          <g opacity="0.5">
+            <circle cx="820" cy="140" r="16" fill="rgba(141,149,167,0.2)" stroke="#8d95a7" stroke-width="1.5" stroke-dasharray="4 3"></circle>
+            <text x="820" y="145" text-anchor="middle" fill="#8d95a7" font-family="Instrument Sans, sans-serif" font-weight="700" font-size="12">8</text>
+          </g>
+        </svg>
+        <div style="position: absolute; left: 24px; top: 20px; display: flex; gap: 8px;">
+          <span class="chip" style="height: 36px; padding: 0 12px; background: rgba(23,26,33,0.9); color: #e8eaf0; border: 1px solid #2a2f3a;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>May 10 – 22, 2026</span>
+          <span class="chip" style="height: 36px; padding: 0 12px; background: rgba(23,26,33,0.9); color: #e8eaf0; border: 1px solid #2a2f3a;">Cluster radius 25 km</span>
+        </div>
+        <div style="position: absolute; left: 24px; bottom: 20px; display: flex; align-items: center; gap: 10px; color: #8d95a7; font-size: 12.5px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"></path><circle cx="12" cy="9" r="2.5"></circle></svg>Drag on the map to add an area · Clusters come from Immich map markers</div>
+      </div>
+      <div style="border-left: 1px solid #2a2f3a; padding: 24px; display: flex; flex-direction: column; gap: 14px; background: #12151b;">
+        <div class="label">Clusters in this range</div>
+        
+          <div class="card" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; min-height: 44px; ">
+            <span style="width: 20px; height: 20px; border-radius: 6px; background: #5563e8; display: inline-flex; align-items: center; justify-content: center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span>
+            <div style="flex: 1;"><div style="font-weight: 600;">Lisbon</div><div class="muted" style="font-size: 12.5px;">May 12–16 · 812 photos · Kevin, Sam</div></div>
+          </div>
+          <div class="card" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; min-height: 44px; ">
+            <span style="width: 20px; height: 20px; border-radius: 6px; background: #5563e8; display: inline-flex; align-items: center; justify-content: center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span>
+            <div style="flex: 1;"><div style="font-weight: 600;">Porto</div><div class="muted" style="font-size: 12.5px;">May 16–19 · 391 photos · Kevin, Sam</div></div>
+          </div>
+          <div class="card" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; min-height: 44px; ">
+            <span style="width: 20px; height: 20px; border-radius: 6px; background: #5563e8; display: inline-flex; align-items: center; justify-content: center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span>
+            <div style="flex: 1;"><div style="font-weight: 600;">Sintra</div><div class="muted" style="font-size: 12.5px;">May 14 · 37 photos</div></div>
+          </div>
+          <div class="card" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; min-height: 44px; opacity: 0.6;">
+            <span style="width: 20px; height: 20px; border-radius: 6px; border: 1px solid #2a2f3a; display: inline-flex; align-items: center; justify-content: center;"></span>
+            <div style="flex: 1;"><div style="font-weight: 600;">Madrid airport</div><div class="muted" style="font-size: 12.5px;">May 21 · 8 photos · layover</div></div>
+          </div>
+        <div class="card" style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-style: dashed; opacity: 0.7;">
+          <span style="width: 20px; height: 20px; border-radius: 6px; border: 1px solid #2a2f3a;"></span>
+          <div style="flex: 1;"><div style="font-weight: 600;">Home · Raleigh</div><div class="muted" style="font-size: 12.5px;">May 10–11, 22 · 1,102 photos · excluded as home</div></div>
+        </div>
+        <div style="flex: 1;"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center;"><span class="muted">1,240 photos selected</span></div>
+        <div style="display: flex; gap: 10px;"><div class="btn ghost" style="flex: 1; justify-content: center;">Back</div><div class="btn primary" style="flex: 1; justify-content: center;">Continue <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 5l7 7-7 7"></path></svg></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

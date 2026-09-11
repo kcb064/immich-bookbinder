@@ -1,0 +1,213 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Templates · warm editorial"
+    },
+    {
+      "id": "page-2",
+      "name": "Unchosen · clean gallery"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Anatomy & style tokens",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "CoverEditorial.dc.html",
+      "title": "Cover spread",
+      "x": 0,
+      "y": 1040,
+      "w": 1696,
+      "h": 840
+    },
+    {
+      "file": "OpenerEditorial.dc.html",
+      "title": "Chapter opener",
+      "x": 1816,
+      "y": 1040,
+      "w": 1656,
+      "h": 840
+    },
+    {
+      "file": "SpreadEditorial1.dc.html",
+      "title": "Spread: magazine + text",
+      "x": 0,
+      "y": 2000,
+      "w": 1656,
+      "h": 840
+    },
+    {
+      "file": "SpreadEditorial2.dc.html",
+      "title": "Spread: grid + full bleed",
+      "x": 1816,
+      "y": 2000,
+      "w": 1656,
+      "h": 840
+    },
+    {
+      "file": "TitlePage.dc.html",
+      "x": 0,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "OneUpFullBleed.dc.html",
+      "x": 940,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "OneUpMatted.dc.html",
+      "x": 1880,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "TwoUp.dc.html",
+      "x": 2820,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "ThreeUp.dc.html",
+      "x": 3760,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "FourUpGrid.dc.html",
+      "x": 4700,
+      "y": 2960,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "HeroStrip.dc.html",
+      "x": 0,
+      "y": 3920,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "Mosaic6.dc.html",
+      "x": 940,
+      "y": 3920,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "TextPhoto.dc.html",
+      "x": 1880,
+      "y": 3920,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "ContactSheet.dc.html",
+      "x": 2820,
+      "y": 3920,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "Colophon.dc.html",
+      "x": 3760,
+      "y": 3920,
+      "w": 840,
+      "h": 840
+    },
+    {
+      "file": "LetterFourUp.dc.html",
+      "title": "Letter 8.5 × 11 check",
+      "x": 4700,
+      "y": 3920,
+      "w": 840,
+      "h": 1080
+    },
+    {
+      "file": "CoverGallery.dc.html",
+      "title": "A · Cover spread",
+      "x": 0,
+      "y": 0,
+      "w": 1696,
+      "h": 840,
+      "page": "page-2"
+    },
+    {
+      "file": "OpenerGallery.dc.html",
+      "title": "A · Chapter opener",
+      "x": 1816,
+      "y": 0,
+      "w": 1656,
+      "h": 840,
+      "page": "page-2"
+    },
+    {
+      "file": "SpreadGallery1.dc.html",
+      "title": "A · Spread: matted + 3-up",
+      "x": 0,
+      "y": 960,
+      "w": 1656,
+      "h": 840,
+      "page": "page-2"
+    },
+    {
+      "file": "SpreadGallery2.dc.html",
+      "title": "A · Spread: panorama",
+      "x": 1816,
+      "y": 960,
+      "w": 1656,
+      "h": 840,
+      "page": "page-2"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-read",
+      "x": 1560,
+      "y": 0,
+      "w": 420,
+      "page": "page-1",
+      "text": "How to read these boards\nRed tint = bleed (trimmed off). Red line = trim. Blue dashed = safety, nothing important outside it. Hatched strip = gutter safety next to the spine.\nPhotos are gradient stand-ins; your Immich photos replace them."
+    },
+    {
+      "id": "decided",
+      "x": 1560,
+      "y": 260,
+      "w": 420,
+      "page": "page-1",
+      "text": "Decided 2026-09-11\nStyle: warm editorial. Spine text as drawn. Panoramas across the gutter stay available as a template option. Clean-gallery sketches kept on the second page for reference."
+    },
+    {
+      "id": "lib",
+      "x": 0,
+      "y": 2810,
+      "w": 560,
+      "page": "page-1",
+      "text": "Template library\nEach slot is tagged with its number and preferred ratio. These become the JSON templates the auto-paginator picks from. Last board checks the same grid on 8.5 × 11."
+    },
+    {
+      "id": "unchosen",
+      "x": 0,
+      "y": -160,
+      "w": 520,
+      "page": "page-2",
+      "text": "Style A · clean gallery — not chosen. Kept for reference; may return later as a second theme."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

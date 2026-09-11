@@ -1,0 +1,67 @@
+# immich-bookbinder -- Dockge / docker compose stack
+#
+# Dockge: New stack -> name it "immich-bookbinder" -> paste this file -> in the
+# ".env" panel paste docker/.env.example and fill in the values -> Deploy.
+# Plain compose: copy this file and .env.example (as .env) into a directory and
+# run `docker compose up -d`.
+#
+# The app must reach your Immich server. Two options:
+#   A) Join Immich's Docker network (below) and use http://immich_server:2283 as
+#      the Immich URL in Settings. Find the real network name with
+#      `docker network ls` -- it is "<compose project>_default", e.g.
+#      immich_default when the Dockge stack is called "immich", or
+#      immich-app_default for the upstream docker-compose.yml. Change the
+#      `name:` under `networks:` if yours differs.
+#   B) Skip the network join (delete the `networks:` blocks) and use the host's
+#      LAN address with Immich's published port, e.g. http://192.168.1.10:2283.
+
+services:
+  bookbinder:
+    image: ghcr.io/kcb064/immich-bookbinder:latest
+    container_name: immich-bookbinder
+    restart: unless-stopped
+    # tini as PID 1 so Chromium child processes left by an aborted render are
+    # reaped instead of piling up as zombies.
+    init: true
+    # Chromium keeps render surfaces in /dev/shm and Docker's default 64 MB is
+    # too small for full-bleed pages; sharing the host IPC namespace is
+    # Playwright's documented fix for Chromium-in-Docker crashes.
+    ipc: host
+    # Node plus one Chromium render peaks around 1-1.5 GB; the renderer works
+    # in batches of pages so it stays well inside this. Raise if renders OOM.
+    mem_limit: 2g
+    ports:
+      - "3080:3080"
+    # All configuration comes from the .env file next to this compose file
+    # (see docker/.env.example for every variable).
+    env_file:
+      - .env
+    volumes:
+      # SQLite database, encrypted settings, thumbnail/original cache, renders,
+      # exports. Back this directory up.
+      - ./data:/data
+    healthcheck:
+      # Same probe as the image's HEALTHCHECK; repeated here so Dockge shows it
+      # and so intervals can be tuned without rebuilding.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3080/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - default
+      - immich
+
+networks:
+  # The stack's own network (Cloudflare Tunnel or a reverse proxy in another
+  # stack can join it too).
+  default: {}
+  # Immich's existing network. `external: true` means compose will not create
+  # or remove it; it must already exist.
+  immich:
+    external: true
+    name: immich_default

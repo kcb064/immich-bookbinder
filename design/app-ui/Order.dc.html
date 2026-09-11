@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app">
+  <div class="side">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 4px 12px 18px;">
+      <div style="width: 30px; height: 30px; border-radius: 8px; background: #5563e8; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg></div>
+      <div style="font-weight: 700; font-size: 15px; letter-spacing: -0.01em;">Bookbinder</div>
+    </div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"></path><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path></svg><span>Books</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 5v14M5 12h14"></path></svg><span>New book</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-5-6.3"></path></svg><span>People &amp; pets</span></div>
+    <div class="nav on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><span>Orders</span></div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg><span>Settings</span></div>
+    <div style="flex: 1;"></div>
+    <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4cc38a;"></span><span style="font-weight: 600; font-size: 13px;">Immich connected</span></div>
+      <div class="muted" style="font-size: 12px;">immich_server:2283 · v3.2.0</div>
+      <div class="muted" style="font-size: 12px;">48,210 photos · 6 people</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div style="display: flex; align-items: center; gap: 14px;"><div class="h1">Portugal · Print &amp; order</div><span class="chip" style="color: #f2b350; background: rgba(242,179,80,0.14);">Lulu sandbox</span></div><div class="muted">Payment happens on lulu.com after the job is created</div></div>
+    <div style="padding: 24px 28px; display: grid; grid-template-columns: 340px minmax(0, 1fr) 360px; gap: 24px; overflow: hidden;">
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Product</div>
+          <div class="card" style="display: flex; gap: 12px; align-items: center; padding: 12px 14px; min-height: 44px; border-color: #7c8cff;"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #7c8cff; display: inline-flex; align-items: center; justify-content: center;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #7c8cff;"></span></span><div style="flex: 1;"><div style="font-weight: 600;">Hardcover · case wrap</div><div class="muted" style="font-size: 12px;">8.5 × 8.5 in · premium color · 80# coated · matte</div></div></div>
+          <div class="card" style="display: flex; gap: 12px; align-items: center; padding: 12px 14px; min-height: 44px; "><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #2a2f3a; display: inline-flex; align-items: center; justify-content: center;"></span><div style="flex: 1;"><div style="font-weight: 600;">Hardcover · linen wrap</div><div class="muted" style="font-size: 12px;">Dust jacket, optional foil title</div></div></div>
+          <div class="card" style="display: flex; gap: 12px; align-items: center; padding: 12px 14px; min-height: 44px; "><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #2a2f3a; display: inline-flex; align-items: center; justify-content: center;"></span><div style="flex: 1;"><div style="font-weight: 600;">Softcover · perfect bound</div><div class="muted" style="font-size: 12px;">Same paper, lighter, from 20 pages</div></div></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Preflight</div>
+          <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45;"><span style="width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; background: rgba(76,195,138,0.18);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4cc38a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span><span>48 pages, even count, within 24–800 for case wrap</span></div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45;"><span style="width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; background: rgba(76,195,138,0.18);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4cc38a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span><span>Interior 8.75 × 8.75 in with 0.125 in bleed, no marks</span></div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45;"><span style="width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; background: rgba(76,195,138,0.18);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4cc38a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span><span>Cover spread 18.28 × 8.75 in, spine 0.28 in (from Lulu)</span></div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45;"><span style="width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; background: rgba(76,195,138,0.18);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4cc38a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M4 12.5l5 5L20 6.5"></path></svg></span><span>Fonts embedded · sRGB · nothing inside 0.5 in safety</span></div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.45;"><span style="width: 18px; height: 18px; border-radius: 50%; flex: none; margin-top: 1px; display: inline-flex; align-items: center; justify-content: center; background: rgba(242,179,80,0.18);"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f2b350" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3l10 18H2z"></path><path d="M12 10v5M12 18.5v.5"></path></svg></span><span>1 photo below 200 ppi (page 13) · open in editor</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Cover spread</div>
+          <div class="card" style="padding: 18px; display: flex; justify-content: center; background: #0b0d11;">
+            <div style="display: flex; width: 100%; aspect-ratio: 18.28 / 8.75; position: relative;">
+              <div style="flex: 1; background: #f6f1e8; position: relative; padding: 18px; display: flex; align-items: flex-end;"><div style="font-family: Georgia, serif; font-size: 9px; color: #6b625a;">Lisbon · Sintra · Porto · Douro — 182 photographs</div></div>
+              <div style="width: 3%; background: #2a2622; display: flex; align-items: center; justify-content: center;"><div style="writing-mode: vertical-rl; transform: rotate(180deg); font-family: Georgia, serif; font-style: italic; font-size: 10px; color: #f6f1e8;">Portugal · 2026</div></div>
+              <div style="flex: 1; position: relative;"><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><circle cx="70" cy="36" r="7" fill="rgba(255,240,210,0.85)"></circle><rect x="0" y="56" width="100" height="44" fill="rgba(10,30,40,0.35)"></rect><rect x="0" y="56" width="100" height="0.6" fill="rgba(255,255,255,0.45)"></rect></svg></div><div style="position: absolute; left: 20px; bottom: 16px; font-family: Georgia, serif; font-style: italic; font-size: 34px; color: #fff8ec;">Portugal</div></div>
+              <div style="position: absolute; inset: 0; border: 1px dashed rgba(239,107,116,0.7); pointer-events: none;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="label">Files</div>
+          <div class="card" style="display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; "><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><div style="flex: 1;"><div style="font-weight: 600;" class="mono">interior.pdf</div><div class="muted" style="font-size: 12.5px;">48 pages · 8.75 × 8.75 in · 142 MB · rendered 4 min ago</div></div><span class="chip" style="color: #4cc38a; background: rgba(76,195,138,0.14);">Validated by Lulu</span><div class="btn" style="height: 40px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3v12M6.5 10.5L12 16l5.5-5.5"></path><path d="M4 20h16"></path></svg>Export</div></div><div style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-top: 1px solid #2a2f3a;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M6 9V3h12v6"></path><rect x="3" y="9" width="18" height="9" rx="2"></rect><path d="M6 15h12v6H6z"></path></svg><div style="flex: 1;"><div style="font-weight: 600;" class="mono">cover.pdf</div><div class="muted" style="font-size: 12.5px;">1 spread · 18.28 × 8.75 in · 18 MB</div></div><span class="chip" style="color: #4cc38a; background: rgba(76,195,138,0.14);">Validated by Lulu</span><div class="btn" style="height: 40px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3v12M6.5 10.5L12 16l5.5-5.5"></path><path d="M4 20h16"></path></svg>Export</div></div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid #2a2f3a; font-size: 12.5px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4cc38a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg><span>Public links reachable from outside via</span><span class="mono" style="color: #e8eaf0;">books.example.com/public/exports/…</span><span class="muted">· expires in 6 days</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="label">Quote</div>
+          <div style="display: flex; justify-content: space-between;"><span>1 × hardcover, 48 pages</span><span class="mono">$21.29</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>Shipping · Ground</span><span class="mono">$6.99</span></div>
+          <div style="display: flex; justify-content: space-between;"><span class="muted">Tax</span><span class="mono muted">$1.98</span></div>
+          <div style="height: 1px; background: #2a2f3a;"></div>
+          <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 16px;"><span>Total</span><span class="mono">$30.26</span></div>
+          <div class="field" style="justify-content: space-between;"><span>Quantity 1</span><span class="muted">+ gift copies</span></div>
+          <div class="field" style="justify-content: space-between;"><span>Ground · 5–8 days</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8d95a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; transform: rotate(90deg);"><path d="M9 5l7 7-7 7"></path></svg></div>
+          <div class="card" style="padding: 12px 14px; font-size: 13px; line-height: 1.5; background: #1e222b;"><div style="font-weight: 600;">Kevin Boutwell</div><div class="muted">[STREET ADDRESS]<br>Raleigh, NC [ZIP] · United States</div></div>
+          <div class="btn primary" style="justify-content: center;">Create print job</div>
+        </div>
+        <div class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div class="label">Order status</div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #4cc38a; margin-top: 5px; flex: none; "></span><div><div style="font-weight: 600; font-size: 13px; color: #e8eaf0;">Files validated</div><div class="muted" style="font-size: 12px;">Interior and cover normalized by Lulu</div></div></div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #7c8cff; margin-top: 5px; flex: none; box-shadow: 0 0 0 4px rgba(124,140,255,0.25);"></span><div><div style="font-weight: 600; font-size: 13px; color: #e8eaf0;">Create print job</div><div class="muted" style="font-size: 12px;">Then pay on lulu.com</div></div></div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #5c6476; margin-top: 5px; flex: none; "></span><div><div style="font-weight: 600; font-size: 13px; color: #8d95a7;">Production</div><div class="muted" style="font-size: 12px;">Usually 3–5 business days</div></div></div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #5c6476; margin-top: 5px; flex: none; "></span><div><div style="font-weight: 600; font-size: 13px; color: #8d95a7;">Shipped</div><div class="muted" style="font-size: 12px;">Tracking link appears here</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0a0b0e; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column; padding-top: 54px;">
+  <div style="padding: 0 20px 16px; display: flex; justify-content: space-between; align-items: center;">
+    <div><div style="font-weight: 600; font-size: 17px;">Portugal</div><div style="color: #8d95a7; font-size: 12.5px;">May 2026 · 48 pages</div></div>
+    <div style="width: 44px; height: 44px; border-radius: 50%; background: #171a21; border: 1px solid #2a2f3a; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3v12M6.5 10.5L12 16l5.5-5.5"></path><path d="M4 20h16"></path></svg></div>
+  </div>
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 22px;">
+    <div style="width: 346px; height: 346px; background: #f6f1e8; box-shadow: 0 24px 60px rgba(0,0,0,0.6); position: relative; padding: 40px 36px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;">
+      <div style="font-family: Georgia, serif; font-style: italic; font-size: 46px; line-height: 1; color: #2a2622;">Porto</div>
+      <div style="width: 32px; height: 2px; background: #b5563a;"></div>
+      <div style="font-family: Georgia, serif; font-size: 12px; color: #6b625a;">May 16 – 19</div>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 18px; padding: 0 20px 36px; align-items: center;">
+    <div style="display: flex; gap: 8px; overflow: hidden; width: 100%;">
+      <span style="height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; flex: none; color: #8d95a7; border: 1px solid #2a2f3a;">Lisbon</span><span style="height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; flex: none; color: #8d95a7; border: 1px solid #2a2f3a;">Sintra</span><span style="height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; flex: none; background: #1e222b; color: #e8eaf0;">Porto</span><span style="height: 44px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; flex: none; color: #8d95a7; border: 1px solid #2a2f3a;">Douro</span>
+    </div>
+    <div style="display: flex; gap: 6px; align-items: center;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 18px; height: 6px; border-radius: 3px; background: #e8eaf0;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span><span style="width: 6px; height: 6px; border-radius: 3px; background: #5c6476;"></span></div>
+    <div style="color: #8d95a7; font-size: 12px;">Swipe to turn · page 25</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

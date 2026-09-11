@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # pnpm workspace: manifests under apps/* and packages/*, one lockfile at the root.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # One PR per week for everything non-breaking; majors stay separate.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The browser build and the npm package are pinned together
+      # (PLAYWRIGHT_VERSION in docker/Dockerfile); bump both by hand.
+      - dependency-name: playwright
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: playwright-core
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  # node:22-bookworm-slim base image in docker/Dockerfile.
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday

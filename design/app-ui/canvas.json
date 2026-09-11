@@ -1,0 +1,101 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "Dashboard",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "NewBook.dc.html",
+      "title": "New book · Source",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "TripPicker.dc.html",
+      "title": "New book · Trip clusters",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Review.dc.html",
+      "title": "Review picks",
+      "x": 4680,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Editor.dc.html",
+      "title": "Page editor",
+      "x": 0,
+      "y": 1060,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Viewer.dc.html",
+      "title": "Shared viewer",
+      "x": 1560,
+      "y": 1060,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "ViewerMobile.dc.html",
+      "title": "Shared viewer · phone",
+      "x": 3120,
+      "y": 1060,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Order.dc.html",
+      "title": "Print & order",
+      "x": 3630,
+      "y": 1060,
+      "w": 1440,
+      "h": 900
+    }
+  ],
+  "annotations": [
+    {
+      "id": "flow",
+      "x": 0,
+      "y": -200,
+      "w": 620,
+      "text": "Flow, left to right: Dashboard → New book (source) → Trip clusters → Review picks → Page editor → Shared viewer / Print & order.\nDark, utilitarian chrome so it sits comfortably next to Immich. Photos are gradient stand-ins."
+    },
+    {
+      "id": "q-dashboard",
+      "x": 700,
+      "y": -140,
+      "w": 300,
+      "text": "Question: should suggested trips live on the dashboard like this, or only inside New book?"
+    },
+    {
+      "id": "q-review",
+      "x": 4680,
+      "y": -140,
+      "w": 360,
+      "text": "Review picks: every auto decision is explained and reversible. Weights on the left re-run scoring live. Is the grid dense enough, or do you want bigger thumbnails?"
+    },
+    {
+      "id": "q-editor",
+      "x": 0,
+      "y": 2000,
+      "w": 360,
+      "text": "Editor, phase A: swap / crop / caption / template per page. Phase B adds free drag of slots on the same spread view."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

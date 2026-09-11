@@ -1,0 +1,29 @@
+{
+  "name": "immich-bookbinder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted photo books from your Immich library: auto-select, lay out, print-ready PDF, order.",
+  "license": "AGPL-3.0-only",
+  "repository": "github:kcb064/immich-bookbinder",
+  "type": "module",
+  "engines": { "node": ">=22", "pnpm": ">=10" },
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "generate:immich": "openapi-typescript specs/immich-openapi.json -o apps/server/src/immich/generated/immich.d.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "eslint": "^9.39.0",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.0.0"
+  }
+}

@@ -1,0 +1,43 @@
+/* App chrome tokens (docs/design.md: dark, utilitarian, Immich-adjacent). */
+:root {
+  color-scheme: dark;
+
+  --bg: #0f1115;
+  --bg-sidebar: #12151b;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --surface-3: #262b36;
+  --border: #2a2f3a;
+  --border-strong: #3a4150;
+
+  --text: #e8eaf0;
+  --text-muted: #8d95a7;
+  --text-faint: #5c6476;
+
+  --accent: #7c8cff;
+  --accent-strong: #5563e8;
+  --accent-soft: rgba(124, 140, 255, 0.16);
+  --accent-border: rgba(124, 140, 255, 0.5);
+
+  --green: #4cc38a;
+  --green-soft: rgba(76, 195, 138, 0.14);
+  --amber: #f2b350;
+  --amber-soft: rgba(242, 179, 80, 0.14);
+  --red: #e5605a;
+  --red-soft: rgba(229, 96, 90, 0.14);
+
+  --font-ui: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --control-h: 44px;
+  --radius-sm: 8px;
+  --radius: 9px;
+  --radius-lg: 12px;
+
+  --sidebar-w: 232px;
+  --sidebar-w-narrow: 68px;
+  --topbar-h: 64px;
+
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}

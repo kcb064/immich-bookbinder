@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+/data/
+.DS_Store
+Thumbs.db
+.vite/
+.turbo/
+playwright-report/
+test-results/
+apps/server/src/immich/generated/*.ts

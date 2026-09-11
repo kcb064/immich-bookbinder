@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    
+    a { color: #7c8cff; text-decoration: none; } a:hover { color: #a3aeff; }
+    .app { width: 1440px; height: 900px; display: flex; background: #0f1115; color: #e8eaf0; font-family: 'Instrument Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.4; overflow: hidden; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .side { width: 232px; flex: none; background: #12151b; border-right: 1px solid #2a2f3a; display: flex; flex-direction: column; padding: 20px 14px; gap: 6px; }
+    .nav { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-radius: 8px; color: #8d95a7; font-weight: 500; }
+    .nav.on { background: #1e222b; color: #e8eaf0; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .top { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #2a2f3a; }
+    .h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 9px; font-weight: 600; font-size: 14px; border: 1px solid #2a2f3a; background: #1e222b; color: #e8eaf0; }
+    .btn.primary { background: #5563e8; border-color: #5563e8; color: #fff; }
+    .btn.ghost { background: transparent; }
+    .card { background: #171a21; border: 1px solid #2a2f3a; border-radius: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5c6476; }
+    .field { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 9px; background: #0f1115; border: 1px solid #2a2f3a; color: #e8eaf0; }
+    .muted { color: #8d95a7; }
+    .bar { height: 6px; border-radius: 3px; background: #1e222b; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 3px; background: #7c8cff; }
+
+  </style>
+</helmet>
+<div class="app" style="flex-direction: column; background: #0a0b0e;">
+  <div style="height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px;">
+    <div><div style="font-weight: 600; font-size: 17px;">Portugal</div><div class="muted" style="font-size: 12.5px;">May 2026 · 48 pages · shared by Kevin</div></div>
+    <div style="display: flex; gap: 10px;"><div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z"></path><path d="M9 3v15M15 6v15"></path></svg>Map</div><div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>All pages</div><div class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M12 3v12M6.5 10.5L12 16l5.5-5.5"></path><path d="M4 20h16"></path></svg>Download PDF</div></div>
+  </div>
+  <div style="flex: 1; position: relative; display: flex; align-items: center; justify-content: center;">
+    <div style="position: absolute; left: 32px; width: 48px; height: 48px; border-radius: 50%; background: #171a21; border: 1px solid #2a2f3a; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M15 5l-7 7 7 7"></path></svg></div>
+    <div style="position: absolute; right: 32px; width: 48px; height: 48px; border-radius: 50%; background: #171a21; border: 1px solid #2a2f3a; display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; "><path d="M9 5l7 7-7 7"></path></svg></div>
+    <div style="display: flex; box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 2px 0 rgba(255,255,255,0.05);">
+      <div style="width: 600px; height: 600px; background: #f6f1e8; position: relative;"><div style="position: relative; overflow: hidden; background: linear-gradient(180deg, #9cc3d4 0%, #4f7f97 55%, #27475a 100%); box-shadow: inset 0 0 90px rgba(0,0,0,0.16); position: absolute; inset: 0;"><svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%;"><circle cx="70" cy="36" r="7" fill="rgba(255,240,210,0.85)"></circle><rect x="0" y="56" width="100" height="44" fill="rgba(10,30,40,0.35)"></rect><rect x="0" y="56" width="100" height="0.6" fill="rgba(255,255,255,0.45)"></rect></svg></div></div>
+      <div style="width: 600px; height: 600px; background: #f6f1e8; position: relative; box-shadow: inset 10px 0 18px -12px rgba(0,0,0,0.45); padding: 72px 64px; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px;">
+        <div style="font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 76px; line-height: 1; color: #2a2622; letter-spacing: -0.02em;">Porto</div>
+        <div style="width: 48px; height: 2px; background: #b5563a;"></div>
+        <div style="font-family: Georgia, serif; font-size: 15px; color: #6b625a; letter-spacing: 0.02em;">May 16 – 19 · three days along the Douro</div>
+      </div>
+    </div>
+  </div>
+  <div style="height: 84px; display: flex; align-items: center; justify-content: center; gap: 24px; padding: 0 32px;">
+    <div style="display: flex; gap: 4px; background: #171a21; border: 1px solid #2a2f3a; border-radius: 999px; padding: 4px;">
+      <span style="height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; color: #8d95a7;">Lisbon</span><span style="height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; color: #8d95a7;">Sintra</span><span style="height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; background: #1e222b; color: #e8eaf0;">Porto</span><span style="height: 40px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; font-weight: 600; font-size: 13px; color: #8d95a7;">Douro</span>
+    </div>
+    <span class="muted mono" style="font-size: 12px;">Spread 13 / 24</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
