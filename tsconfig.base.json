@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "jsx": "react-jsx"
   }
 }

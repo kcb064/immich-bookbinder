@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@bookbinder/layout": "workspace:*",
+    "@bookbinder/pages": "workspace:*",
     "@bookbinder/shared": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "react": "^19.3.0",

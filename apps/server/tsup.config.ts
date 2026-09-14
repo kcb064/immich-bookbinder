@@ -14,6 +14,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   splitting: false,
-  noExternal: ['@bookbinder/shared', '@bookbinder/layout'],
+  noExternal: ['@bookbinder/shared', '@bookbinder/layout', '@bookbinder/pages'],
   banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
 });

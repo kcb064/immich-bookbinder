@@ -35,10 +35,11 @@ Presets (`FORMAT_PRESETS`): Lulu `0850X0850` 8.5 in square (default), `0750X0750
 
 ## Rendering pipeline
 
-1. Print routes (`/print/book/:id/interior?from=&to=`, `/print/book/:id/cover`) render the same React components as the editor and viewer, with `@page` set to the bleed size and zero margin, and `print-color-adjust: exact`.
-2. Playwright's Chromium headless shell loads a batch of about 12 pages, emulates print media, waits for `document.fonts.ready` and every image's `decode()`, then calls `page.pdf` with `preferCSSPageSize`, `printBackground` and zero margins.
-3. Batches are merged with `pdf-lib`; one browser, one render at a time, to bound memory on a NAS.
-4. Outputs per render: interior PDF, cover PDF, low-resolution proof PDF, and per-page PNG previews for the editor and viewer.
+1. The server renders the same React page components the editor shows (`packages/pages`) to static HTML with `react-dom/server`: one `.bb-sheet` per page, `@page` set to trim + 2 × bleed with zero margin, `print-color-adjust: exact`. No HTTP print route and no login is involved; the HTML never leaves the process.
+2. Photos in that HTML point at a fake origin (`https://render.bookbinder.local/img/<asset>?w=&h=&fx=&fy=`). Playwright intercepts those requests and answers them from `sharp`: the Immich source is cover-fitted around the focal point and resized to exactly the slot's pixel size at the render's ppi, never upscaled.
+3. Playwright's Chromium headless shell loads batches of 12 pages, emulates print media, waits for `document.fonts.ready` and every image's `decode()`, then calls `page.pdf` with `preferCSSPageSize`, `printBackground` and zero margins. Batches are merged with `pdf-lib`, which also writes the title and producer and checks the page count and size. One browser, one render at a time, so a NAS never runs two.
+4. Two render kinds: **proof** (Immich `preview` thumbnails, 110 ppi, JPEG 80: fast, small, for checking the layout) and **print** (Immich originals, 300 ppi, JPEG 92; originals sharp cannot decode, such as HEIC on most builds, fall back to Immich's `fullsize` JPEG). Sources are cached under `DATA_DIR/cache/immich`. Cover PDFs and per-page PNG previews arrive with M4.
+5. Every photo slot in the editor shows its effective pixels per printed inch; below 200 it gets a warning badge, below 150 a red one.
 
 ## Checklist before ordering
 

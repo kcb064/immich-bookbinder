@@ -3,7 +3,7 @@ import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { z } from 'zod';
-import { createImmichClient, ImmichApiError, type BinaryResponse, type ImmichClient } from '../immich/client.js';
+import { ImmichApiError, type BinaryResponse, type ImmichClient } from '../immich/client.js';
 import { testImmichConnection } from '../immich/status.js';
 
 const IdParams = z.object({ id: z.string().min(1).max(200) });
@@ -13,8 +13,8 @@ const THUMB_CACHE = 'private, max-age=86400';
 export const immichRoutes: FastifyPluginAsync = async (app) => {
   /** Client for the stored connection; replies 409 when Immich is not configured yet. */
   function storedClient(reply: FastifyReply): ImmichClient | undefined {
-    const conn = app.settings.getImmichConnection();
-    if (!conn) {
+    const client = app.immichClient();
+    if (!client) {
       void reply.code(409).send({
         statusCode: 409,
         error: 'Conflict',
@@ -22,7 +22,7 @@ export const immichRoutes: FastifyPluginAsync = async (app) => {
       });
       return undefined;
     }
-    return createImmichClient(conn);
+    return client;
   }
 
   async function proxyBinary(reply: FastifyReply, load: () => Promise<BinaryResponse>) {

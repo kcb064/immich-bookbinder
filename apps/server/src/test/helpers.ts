@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildApp } from '../app.js';
+import { buildApp, type BuildAppOptions } from '../app.js';
 import { loadConfig, type Config } from '../config.js';
 
 export const TEST_SECRET = 'test-secret-key-0123456789abcdef0123456789abcdef';
@@ -27,10 +27,10 @@ export interface TestApp {
 }
 
 /** Builds an app against a fresh temp DATA_DIR; call cleanup() in afterAll. */
-export async function createTestApp(envOverrides: Record<string, string | undefined> = {}): Promise<TestApp> {
+export async function createTestApp(envOverrides: Record<string, string | undefined> = {}, opts: Omit<BuildAppOptions, 'logger'> = {}): Promise<TestApp> {
   const dataDir = mkdtempSync(join(tmpdir(), 'bookbinder-test-'));
   const config = loadConfig(testEnv({ DATA_DIR: dataDir, ...envOverrides }));
-  const app = await buildApp(config, { logger: false });
+  const app = await buildApp(config, { logger: false, ...opts });
   await app.ready();
   return {
     app,

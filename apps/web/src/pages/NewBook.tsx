@@ -9,7 +9,6 @@ import { Button, CheckboxMark, Chip, Field, Note, Select, Skeleton, TextInput } 
 import { useAlbums, useCreateBook, useSettings } from '../lib/queries.ts';
 import type { AlbumSummary } from '../lib/queries.ts';
 import { errorMessage } from '../lib/api.ts';
-import { thumbnailUrl } from '../lib/api.ts';
 import { formatDateRange, formatNumber, formatTrim, pluralize } from '../lib/format.ts';
 
 type SourceKind = 'album' | 'trip' | 'people' | 'smart';
@@ -49,14 +48,14 @@ function AlbumRow({ album, checked, onToggle }: { album: AlbumSummary; checked: 
         <input type="checkbox" className="visually-hidden" checked={checked} onChange={onToggle} />
         <CheckboxMark checked={checked} />
         <span className="album__thumb">
-          {album.albumThumbnailAssetId ? (
-            <img src={thumbnailUrl(album.albumThumbnailAssetId)} alt="" loading="lazy" width={44} height={44} />
+          {album.thumbnailUrl ? (
+            <img src={album.thumbnailUrl} alt="" loading="lazy" width={44} height={44} />
           ) : (
             <Icon name="image" />
           )}
         </span>
         <span className="album__text">
-          <span className="album__name">{album.albumName || 'Untitled album'}</span>
+          <span className="album__name">{album.name || 'Untitled album'}</span>
           <span className="album__meta">
             {pluralize(album.assetCount, 'photo')}
             {range ? ` · ${range}` : ''}
@@ -82,11 +81,11 @@ function AlbumPicker({
   const visible = useMemo(() => {
     const list = albums.data ?? [];
     const q = filter.trim().toLowerCase();
-    const filtered = q ? list.filter((a) => a.albumName.toLowerCase().includes(q)) : list;
+    const filtered = q ? list.filter((a) => a.name.toLowerCase().includes(q)) : list;
     return [...filtered].sort((a, b) => {
       const da = a.endDate ?? a.startDate ?? '';
       const db = b.endDate ?? b.startDate ?? '';
-      return db.localeCompare(da) || a.albumName.localeCompare(b.albumName);
+      return db.localeCompare(da) || a.name.localeCompare(b.name);
     });
   }, [albums.data, filter]);
 
@@ -188,7 +187,7 @@ export function NewBookPage() {
     const added = albums.filter((a) => next.has(a.id) && !prev.some((p) => p.id === a.id));
     const ordered = [...prev, ...added];
     setSelectedAlbums(ordered);
-    if (!titleEdited) setTitle(ordered[0]?.albumName ?? '');
+    if (!titleEdited) setTitle(ordered[0]?.name ?? '');
   };
 
   const titleError = submitted && !title.trim() ? 'Give the book a title.' : undefined;
@@ -291,7 +290,7 @@ export function NewBookPage() {
                 <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
                   {selectedAlbums.map((a) => (
                     <Chip key={a.id} tone="accent">
-                      {a.albumName}
+                      {a.name}
                     </Chip>
                   ))}
                 </div>

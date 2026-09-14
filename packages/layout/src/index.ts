@@ -2,6 +2,8 @@ import type { BookFormat, SlotSpec } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
 
 export { TEMPLATES, getTemplate, pageTemplatesForCount } from './templates.js';
+export * from './paginate.js';
+export * from './crop.js';
 
 export interface PxRect {
   x: number;

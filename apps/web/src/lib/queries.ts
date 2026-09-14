@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { Book, ImmichStatus, SettingsView } from '@bookbinder/shared';
-import type { ImmichConnectionInput, SelectionRules } from '@bookbinder/shared';
+import { Book, BookAsset, ImmichStatus, RenderJob, SettingsView } from '@bookbinder/shared';
+import type { ImmichConnectionInput, RenderKind, SelectionRules } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -13,14 +13,17 @@ export const Me = z.object({
 });
 export type Me = z.infer<typeof Me>;
 
-/** Subset of Immich's AlbumResponseDto that the wizard uses. */
+/** What GET /api/immich/albums returns (the server maps Immich's AlbumResponseDto). */
 export const AlbumSummary = z.looseObject({
   id: z.string(),
-  albumName: z.string(),
+  name: z.string().default(''),
+  description: z.string().nullish(),
   assetCount: z.number().int().nonnegative().default(0),
+  shared: z.boolean().default(false),
   startDate: z.string().nullish(),
   endDate: z.string().nullish(),
-  albumThumbnailAssetId: z.string().nullish(),
+  /** Proxied thumbnail URL, or null for an empty album. */
+  thumbnailUrl: z.string().nullish(),
 });
 export type AlbumSummary = z.infer<typeof AlbumSummary>;
 export const AlbumList = z.array(AlbumSummary);
@@ -40,6 +43,7 @@ export const BookSummary = z.object({
   formatId: z.string(),
   themeId: z.string(),
   pageCount: z.number().int().nonnegative().default(0),
+  photoCount: z.number().int().nonnegative().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -54,8 +58,11 @@ export const keys = {
   immichStatus: ['immich', 'status'] as const,
   albums: ['immich', 'albums'] as const,
   people: ['immich', 'people'] as const,
+  /** The list. Invalidate with `exact: true`: the per-book keys below share the prefix. */
   books: ['books'] as const,
   book: (id: string) => ['books', id] as const,
+  bookAssets: (id: string) => ['books', id, 'assets'] as const,
+  renders: (id: string) => ['books', id, 'renders'] as const,
 };
 
 /* ---------- Auth ---------- */
@@ -202,7 +209,7 @@ export function useCreateBook() {
     mutationFn: (input: CreateBookInput) => post('/api/books', input, Book),
     onSuccess: async (book) => {
       qc.setQueryData(keys.book(book.id), book);
-      await qc.invalidateQueries({ queryKey: keys.books });
+      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
     },
   });
 }
@@ -213,7 +220,79 @@ export function useDeleteBook() {
     mutationFn: (id: string) => del(`/api/books/${encodeURIComponent(id)}`),
     onSuccess: async (_data, id) => {
       qc.removeQueries({ queryKey: keys.book(id) });
-      await qc.invalidateQueries({ queryKey: keys.books });
+      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
+    },
+  });
+}
+
+/* ---------- Photos, layout, saving ---------- */
+
+export function useBookAssets(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.bookAssets(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/assets`, z.array(BookAsset), signal),
+    enabled: Boolean(id),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export const LayoutResponse = z.object({ book: Book, warnings: z.array(z.string()), photoCount: z.number().int().nonnegative() });
+export type LayoutResponse = z.infer<typeof LayoutResponse>;
+
+/** Gathers photos from Immich (or reuses the stored list) and replaces the book's pages. */
+export function useLayoutBook(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { refetch?: boolean } = {}) => post(`/api/books/${encodeURIComponent(id)}/layout`, input, LayoutResponse),
+    onSuccess: async (res) => {
+      qc.setQueryData(keys.book(id), res.book);
+      await Promise.all([qc.invalidateQueries({ queryKey: keys.bookAssets(id) }), qc.invalidateQueries({ queryKey: keys.books, exact: true })]);
+    },
+  });
+}
+
+/** PUT the whole book document (the editor autosaves pages through this). */
+export function useSaveBook(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (book: Book) => put(`/api/books/${encodeURIComponent(id)}`, book, Book),
+    onSuccess: async (book) => {
+      qc.setQueryData(keys.book(id), book);
+      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
+    },
+  });
+}
+
+/* ---------- Renders ---------- */
+
+const ACTIVE_RENDER = new Set(['queued', 'running']);
+
+/** Renders of a book; polls while one is queued or running. */
+export function useRenders(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.renders(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/renders`, z.array(RenderJob), signal),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (query.state.data?.some((r) => ACTIVE_RENDER.has(r.status)) ? 1000 : false),
+  });
+}
+
+export function useCreateRender(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (kind: RenderKind) => post(`/api/books/${encodeURIComponent(id)}/renders`, { kind }, RenderJob),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.renders(id) });
+    },
+  });
+}
+
+export function useDeleteRender(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (renderId: string) => del(`/api/books/${encodeURIComponent(id)}/renders/${encodeURIComponent(renderId)}`),
+    onSuccess: async () => {
+      await Promise.all([qc.invalidateQueries({ queryKey: keys.renders(id) }), qc.invalidateQueries({ queryKey: keys.book(id) })]);
     },
   });
 }

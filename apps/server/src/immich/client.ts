@@ -257,6 +257,11 @@ export function createImmichClient(opts: ImmichClientOptions) {
       return binary(`/assets/${encodeURIComponent(assetId)}/thumbnail?size=${size}`);
     },
 
+    /** The original file, streamed. Callers cache it on disk; never hold many in memory. */
+    getOriginal(assetId: string): Promise<BinaryResponse> {
+      return binary(`/assets/${encodeURIComponent(assetId)}/original`);
+    },
+
     /** First byte of the original file; proves asset.download without transferring the file. */
     async probeOriginal(assetId: string): Promise<BinaryResponse> {
       const res = await binary(`/assets/${encodeURIComponent(assetId)}/original`, {

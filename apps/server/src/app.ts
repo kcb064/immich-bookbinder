@@ -6,9 +6,13 @@ import fastifySensible from '@fastify/sensible';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { mkdirSync } from 'node:fs';
 import { registerAuth } from './auth.js';
+import { BookStore } from './books/store.js';
 import type { Config } from './config.js';
 import { SecretBox } from './crypto.js';
 import { openDb } from './db/index.js';
+import { createImmichClient, type ImmichClient } from './immich/client.js';
+import { ChromiumRenderer } from './render/renderer.js';
+import { RenderService } from './render/service.js';
 import { authRoutes } from './routes/auth.js';
 import { bookRoutes } from './routes/books.js';
 import { healthRoutes } from './routes/health.js';
@@ -23,6 +27,8 @@ type LoggerOption = NonNullable<FastifyServerOptions['logger']>;
 export interface BuildAppOptions {
   /** Override Fastify's logger (tests pass `false`). */
   logger?: LoggerOption;
+  /** Render tuning (tests use small batches and no web fonts). */
+  render?: { batchSize?: number; webFonts?: boolean };
 }
 
 function loggerFor(config: Config): LoggerOption {
@@ -47,11 +53,43 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}): Prom
     bodyLimit: 5 * 1024 * 1024,
   });
 
+  const books = new BookStore(database.db);
+  // One client per stored connection so per-connection caches (image store) stay warm.
+  let cachedClient: { key: string; client: ImmichClient } | undefined;
+  const immichClient = (): ImmichClient | undefined => {
+    const conn = settings.getImmichConnection();
+    if (!conn) return undefined;
+    const key = `${conn.url}
+${conn.apiKey}`;
+    if (cachedClient?.key !== key) cachedClient = { key, client: createImmichClient(conn) };
+    return cachedClient.client;
+  };
+  const renderer = new ChromiumRenderer();
+
   app.decorate('config', config);
   app.decorate('db', database.db);
   app.decorate('secrets', secrets);
   app.decorate('settings', settings);
-  app.addHook('onClose', async () => database.close());
+  app.decorate('books', books);
+  app.decorate('immichClient', immichClient);
+  app.decorate(
+    'renders',
+    new RenderService({
+      db: database.db,
+      store: books,
+      renderer,
+      client: immichClient,
+      exportsDir: config.exportsDir,
+      cacheDir: config.cacheDir,
+      log: app.log,
+      ...(opts.render?.batchSize !== undefined ? { batchSize: opts.render.batchSize } : {}),
+      ...(opts.render?.webFonts !== undefined ? { webFonts: opts.render.webFonts } : {}),
+    }),
+  );
+  app.addHook('onClose', async () => {
+    await renderer.close();
+    database.close();
+  });
 
   await app.register(fastifySensible);
   await app.register(fastifyHelmet, {

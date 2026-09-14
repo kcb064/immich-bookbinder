@@ -13,6 +13,8 @@ Fastify 5 API for immich-bookbinder: admin auth, encrypted settings, Immich prox
 | `pnpm --filter @bookbinder/server test` | vitest (no network; Immich is mocked) |
 | `pnpm generate:immich` (root) | `openapi-typescript specs/immich-openapi.json` -> `src/immich/generated/immich.d.ts` (gitignored) |
 | `pnpm --filter @bookbinder/server db:generate` | drizzle-kit: new migration from `src/db/schema.ts` into `drizzle/` |
+| `pnpm --filter @bookbinder/server exec playwright install chromium-headless-shell` | one-time: the browser the PDF renderer launches (the Docker image has it) |
+| `pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80` | a stand-in Immich with generated photos for development without a real server |
 
 ## Environment
 
@@ -55,6 +57,13 @@ Everything under `/api` except `/api/health` and `/api/auth/*` requires the `bb_
 | POST | `/api/books` | `{title, formatId, themeId, subtitle?, rules?, luluProduct?}` | 201 `Book` (status `draft`) |
 | GET | `/api/books/:id` | | `Book` |
 | PUT | `/api/books/:id` | full `Book` | `Book` (server sets `updatedAt`, keeps `createdAt`) |
+| GET | `/api/books/:id/assets` | | `BookAsset[]` gathered for the book, chronological |
+| POST | `/api/books/:id/layout` | `{refetch?: boolean}` | `{book, warnings, photoCount}`: gathers the sources from Immich (or reuses the stored list), lays every photo out on the template library, status `editing`. 409 without Immich, 422 when nothing was found |
+| GET | `/api/books/:id/renders` | | `RenderJob[]`, newest first |
+| POST | `/api/books/:id/renders` | `{kind: 'proof' \| 'print'}` | 202 `RenderJob` (queued; poll GET). 409 before the layout exists |
+| GET | `/api/books/:id/renders/:rid` | | `RenderJob` with `pagesDone/pagesTotal`, `warnings`, `downloadUrl` when done |
+| GET | `/api/books/:id/renders/:rid/pdf` | | the PDF (`Content-Disposition: inline`) |
+| DELETE | `/api/books/:id/renders/:rid` | | 204; removes the file. 409 while running |
 | DELETE | `/api/books/:id` | | 204 |
 
 The Immich API key never leaves the server: browsers only see proxied bytes. Immich requests use `x-api-key` against `${url}/api` (Immich 3.2.0 spec; `GET /server/version` needs no auth).

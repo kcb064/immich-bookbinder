@@ -158,7 +158,39 @@ function Sidebar() {
   );
 }
 
-/** Authenticated layout: redirects to /login when the session is missing. */
+/** Renders its child routes only with a session; redirects to /login otherwise. */
+export function RequireAuth() {
+  const me = useMe();
+  const location = useLocation();
+
+  if (me.isPending) {
+    return (
+      <div className="login" aria-busy="true">
+        <div className="muted">Loading…</div>
+      </div>
+    );
+  }
+  if (me.isSuccess && !me.data.authenticated) {
+    const next = location.pathname + location.search;
+    return <Navigate to={next && next !== '/' ? `/login?next=${encodeURIComponent(next)}` : '/login'} replace />;
+  }
+  if (me.isError) {
+    return (
+      <div className="login">
+        <div className="card login__card">
+          <h1 className="login__title">Server unavailable</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {errorMessage(me.error)}. Make sure the Bookbinder server is running, then reload.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <Outlet />;
+}
+
+/** Authenticated layout: sidebar plus main column. */
 export function Shell() {
   const me = useMe();
   const location = useLocation();

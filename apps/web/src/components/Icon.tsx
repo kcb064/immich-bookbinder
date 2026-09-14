@@ -146,6 +146,53 @@ const PATHS = {
       <path d="m20 20-3.5-3.5" />
     </>
   ),
+  chevronLeft: <path d="m15 6-6 6 6 6" />,
+  undo: (
+    <>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H10a6 6 0 0 0 0 12h3" />
+    </>
+  ),
+  swap: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
+  layout: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 10h18M10 10v11" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M12 3v12M6.5 10.5 12 16l5.5-5.5" />
+      <path d="M4 20h16" />
+    </>
+  ),
+  file: (
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </>
+  ),
+  edit: (
+    <>
+      <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z" />
+      <path d="m13.5 6.5 3 3" />
+    </>
+  ),
+  arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

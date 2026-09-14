@@ -96,3 +96,49 @@ export const Book = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type Book = z.infer<typeof Book>;
+
+/** Cached Immich metadata for one photo that belongs to a book (table book_assets). */
+export const BookAsset = z.object({
+  id: Id,
+  /** Capture time (EXIF dateTimeOriginal, else Immich fileCreatedAt), ISO 8601. */
+  takenAt: z.string().optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  /** width / height after EXIF orientation; 1.5 when unknown. */
+  ratio: z.number().positive(),
+  city: z.string().optional(),
+  country: z.string().optional(),
+  description: z.string().optional(),
+  isFavorite: z.boolean().default(false),
+  fileName: z.string().optional(),
+});
+export type BookAsset = z.infer<typeof BookAsset>;
+
+export const RenderKind = z.enum(['proof', 'print']);
+export type RenderKind = z.infer<typeof RenderKind>;
+export const RenderStatus = z.enum(['queued', 'running', 'done', 'error']);
+export type RenderStatus = z.infer<typeof RenderStatus>;
+
+/** A PDF render of a book's interior (proof = screen resolution, print = 300 ppi from originals). */
+export const RenderJob = z.object({
+  id: Id,
+  bookId: Id,
+  kind: RenderKind,
+  status: RenderStatus,
+  pagesTotal: z.number().int().nonnegative(),
+  pagesDone: z.number().int().nonnegative(),
+  /** Set when status = done. */
+  pageCount: z.number().int().nonnegative().optional(),
+  fileSizeBytes: z.number().int().nonnegative().optional(),
+  warnings: z.array(z.string()).default([]),
+  error: z.string().optional(),
+  createdAt: z.iso.datetime(),
+  startedAt: z.iso.datetime().optional(),
+  finishedAt: z.iso.datetime().optional(),
+  /** Authenticated download URL (relative), present when done. */
+  downloadUrl: z.string().optional(),
+});
+export type RenderJob = z.infer<typeof RenderJob>;
+
+export const CreateRenderInput = z.object({ kind: RenderKind.default('proof') });
+export type CreateRenderInput = z.infer<typeof CreateRenderInput>;

@@ -129,6 +129,19 @@ const raw: Template[] = [
     ],
   },
   {
+    id: 'five-up',
+    name: 'Two over three',
+    kind: 'page',
+    photoCount: 5,
+    crossesGutter: false,
+    tags: [],
+    slots: [
+      photo('p1', S, S, (C - GAP) / 2, f(360), { aspect: [1, 1.25] }),
+      photo('p2', S + (C + GAP) / 2, S, (C - GAP) / 2, f(360), { aspect: [1, 1.25] }),
+      ...[0, 1, 2].map((i) => photo(`p${i + 3}`, S + i * ((C + GAP) / 3), S + f(360) + GAP, (C - 2 * GAP) / 3, C - f(360) - GAP, { aspect: [0.667, 0.75], importance: 1 })),
+    ],
+  },
+  {
     id: 'mosaic-6',
     name: 'Mosaic of six',
     kind: 'page',
@@ -185,6 +198,15 @@ const raw: Template[] = [
       text('credits', 'caption', S, 1 - S - f(44), C, f(20)),
       text('date', 'caption', S, 1 - S - f(20), C, f(20)),
     ],
+  },
+  {
+    id: 'blank',
+    name: 'Blank page',
+    kind: 'page',
+    photoCount: 0,
+    crossesGutter: false,
+    tags: ['filler'],
+    slots: [],
   },
   // ---- spreads (x in 0..2, spine at 1)
   {

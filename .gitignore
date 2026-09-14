@@ -14,3 +14,6 @@ Thumbs.db
 playwright-report/
 test-results/
 apps/server/src/immich/generated/*.ts
+
+# TypeScript incremental build state
+*.tsbuildinfo

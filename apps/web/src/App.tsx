@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router';
-import { Shell } from './components/Shell.tsx';
+import { RequireAuth, Shell } from './components/Shell.tsx';
 import { LoginPage } from './pages/Login.tsx';
 import { DashboardPage } from './pages/Dashboard.tsx';
 import { BookDetailPage } from './pages/BookDetail.tsx';
+import { EditorPage } from './pages/Editor.tsx';
 import { NewBookPage } from './pages/NewBook.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
 import { NotFoundPage } from './pages/NotFound.tsx';
@@ -25,6 +26,12 @@ export const queryClient = new QueryClient({
 
 export const router = createBrowserRouter([
   { path: '/login', Component: LoginPage },
+  {
+    // The editor takes the whole viewport (no sidebar) but still needs a session.
+    path: '/books/:id/edit',
+    Component: RequireAuth,
+    children: [{ index: true, Component: EditorPage }],
+  },
   {
     path: '/',
     Component: Shell,

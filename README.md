@@ -2,7 +2,7 @@
 
 Turn an [Immich](https://immich.app) library into printed photo books. immich-bookbinder runs next to your Immich server, picks the photos worth printing, lays them out on real page templates, renders print-ready PDFs with Chromium, publishes a web viewer you can share, and orders hardcover copies through the Lulu Print API. One container, one language (TypeScript), no cloud services except the printer you choose.
 
-> **Status: early development (M0 scaffold).** The workspace, server skeleton, admin login, Immich connection test, Docker image and CI exist. Selection, layout, rendering and ordering are being built milestone by milestone (see the roadmap). Do not expect a finished book yet.
+> **Status: early development (M1).** You can connect Immich, pick an album, get a chronological automatic layout on the template library, tweak it in the editor (swap, remove, reorder, captions, templates) and download a proof or 300 ppi print PDF. Photo scoring, trips, people, covers, the public viewer and Lulu ordering are still being built milestone by milestone (see the roadmap).
 
 ## What it does
 
@@ -31,8 +31,8 @@ Full instructions, Cloudflare Tunnel and Access notes, backups and updates: [doc
 | Milestone | Scope | Status |
 |---|---|---|
 | D0 design | App UI and book template canvases; decisions in `docs/design.md` | done |
-| M0 scaffold | pnpm workspace, Fastify + Vite, SQLite via drizzle, admin login, Immich connection test, Dockerfile, compose, CI, first GHCR image | in progress |
-| M1 album to PDF | Album source, chronological auto-pagination with five templates, Chromium render, proof PDF, swap/remove/reorder | planned |
+| M0 scaffold | pnpm workspace, Fastify + Vite, SQLite via drizzle, admin login, Immich connection test, Dockerfile, compose, CI, first GHCR image | done |
+| M1 album to PDF | Album source, chronological auto-pagination on the template library, page editor (swap, remove, reorder, template, caption, undo), Chromium proof and print PDFs | done |
 | M2 selection engine | Scoring, near-duplicate collapse, diversity picking, explainable in/out UI, alternates tray, weight presets | planned |
 | M3 trips, people, pets | Date range + geo clustering, trip suggestions, person filters, pet as smart query, face-aware crops, chapter openers | planned |
 | M4 print-ready + viewer | Vendor presets, bleed/trim/spine, cover PDF, 300 ppi checks, public token viewer | planned |
@@ -62,7 +62,21 @@ pnpm lint && pnpm typecheck && pnpm test
 pnpm -r build
 ```
 
-Layout: `apps/server` (Fastify, drizzle/SQLite, jobs, Immich and Lulu clients, Playwright renderer), `apps/web` (React + Vite: admin UI, editor, viewer, print routes), `packages/shared` (zod schemas and API DTOs), `packages/layout` (templates and pagination), `packages/scoring` (photo scoring and de-duplication), `docker/`, `docs/`, `specs/` (vendored OpenAPI specs).
+Layout: `apps/server` (Fastify, drizzle/SQLite, render queue, Immich and Lulu clients, Playwright renderer), `apps/web` (React + Vite: admin UI and editor), `packages/shared` (zod schemas and API DTOs), `packages/layout` (templates, pagination, crop math), `packages/pages` (React page components shared by the editor and the PDF renderer), `packages/scoring` (photo scoring and de-duplication), `docker/`, `docs/`, `specs/` (vendored OpenAPI specs).
+
+Rendering needs Playwright's Chromium headless shell. The Docker image installs it; for local development run it once:
+
+```sh
+corepack pnpm --filter @bookbinder/server exec playwright install chromium-headless-shell
+```
+
+No Immich at hand? A small stand-in with generated photos serves everything the app calls:
+
+```sh
+corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80
+```
+
+Then point Settings at `http://127.0.0.1:2283` with any API key of ten or more characters.
 
 Server environment variables (all read at startup):
 
