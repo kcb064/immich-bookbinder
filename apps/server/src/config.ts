@@ -45,7 +45,6 @@ export interface Config extends Env {
   exportsDir: string;
   /** Absolute WEB_DIST, or undefined when the folder does not exist (API-only mode). */
   webDist: string | undefined;
-  cookieSecure: boolean;
   isProduction: boolean;
   isTest: boolean;
 }
@@ -80,7 +79,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     cacheDir: resolve(dataDir, 'cache'),
     exportsDir: resolve(dataDir, 'exports'),
     webDist: existsSync(resolve(webDistAbs, 'index.html')) ? webDistAbs : undefined,
-    cookieSecure: e.PUBLIC_URL?.startsWith('https://') ?? false,
     isProduction: e.NODE_ENV === 'production',
     isTest: e.NODE_ENV === 'test',
   };

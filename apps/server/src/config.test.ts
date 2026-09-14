@@ -27,7 +27,6 @@ describe('loadConfig', () => {
     expect(cfg.TRUST_CF_ACCESS).toBe(false);
     expect(cfg.dbFile.replace(/\\/g, '/')).toMatch(/tmp-data\/bookbinder\.sqlite$/);
     expect(cfg.cacheDir.replace(/\\/g, '/')).toMatch(/tmp-data\/cache$/);
-    expect(cfg.cookieSecure).toBe(false);
     expect(cfg.webDist).toBeUndefined();
   });
 
@@ -35,7 +34,6 @@ describe('loadConfig', () => {
     const cfg = loadConfig(testEnv({ PORT: '4000', TRUST_CF_ACCESS: 'true', PUBLIC_URL: 'https://books.example.com' }));
     expect(cfg.PORT).toBe(4000);
     expect(cfg.TRUST_CF_ACCESS).toBe(true);
-    expect(cfg.cookieSecure).toBe(true);
     expect(() => loadConfig(testEnv({ PUBLIC_URL: 'not a url' }))).toThrowError(/PUBLIC_URL/);
     expect(() => loadConfig(testEnv({ PORT: '99999' }))).toThrowError(/PORT/);
   });

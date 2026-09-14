@@ -26,7 +26,7 @@ Fastify 5 API for immich-bookbinder: admin auth, encrypted settings, Immich prox
 | `PORT` | | `3080` | |
 | `HOST` | | `0.0.0.0` | |
 | `DATA_DIR` | | `./data` | Holds `bookbinder.sqlite` (WAL), `cache/`, `exports/`. Created on start. |
-| `PUBLIC_URL` | | | Absolute URL the app is reached at. When `https://`, the session cookie is `Secure`. |
+| `PUBLIC_URL` | | | Absolute external URL for share links and Lulu PDF downloads. The session cookie is `Secure` only on HTTPS requests (`secure: 'auto'`), so plain `http://nas:3080` logins keep working. |
 | `TRUST_CF_ACCESS` | | `false` | When `true`, a request carrying `Cf-Access-Authenticated-User-Email` counts as the authenticated admin. Only enable behind Cloudflare Access. |
 | `LOG_LEVEL` | | `info` | pino level. |
 | `NODE_ENV` | | `development` | `production` enables the CSP and JSON logs; `test` silences logging. |

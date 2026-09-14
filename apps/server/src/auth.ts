@@ -69,23 +69,25 @@ export function resolveAuth(app: FastifyInstance, request: FastifyRequest): Auth
   return { authenticated: false, via: null };
 }
 
-export function setSessionCookie(app: FastifyInstance, reply: FastifyReply, sessionId: string): void {
+export function setSessionCookie(_app: FastifyInstance, reply: FastifyReply, sessionId: string): void {
   reply.setCookie(SESSION_COOKIE, sessionId, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
-    secure: app.config.cookieSecure,
+    // 'auto': Secure only when this request came over HTTPS (directly, or via X-Forwarded-Proto behind
+    // the tunnel). A fixed flag derived from PUBLIC_URL locked people out on plain http://nas:3080.
+    secure: 'auto',
     signed: true,
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
 }
 
-export function clearSessionCookie(app: FastifyInstance, reply: FastifyReply): void {
+export function clearSessionCookie(_app: FastifyInstance, reply: FastifyReply): void {
   reply.clearCookie(SESSION_COOKIE, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
-    secure: app.config.cookieSecure,
+    secure: 'auto',
   });
 }
 

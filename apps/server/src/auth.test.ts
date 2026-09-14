@@ -37,9 +37,22 @@ describe('auth flow', () => {
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite?.toLowerCase()).toBe('lax');
     expect(cookie?.path).toBe('/');
+    // Plain HTTP request: the cookie must not be Secure, or browsers on http://nas:3080 drop it.
     expect(cookie?.secure).toBeFalsy();
     // Signed cookies carry a `.signature` suffix.
     expect(cookie?.value).toContain('.');
+  });
+
+  it('marks the cookie Secure when the request was forwarded over HTTPS (tunnel)', async () => {
+    const res = await t.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { password: TEST_PASSWORD },
+      headers: { 'x-forwarded-proto': 'https' },
+      remoteAddress: '10.8.8.8',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.cookies.find((c) => c.name === 'bb_session')?.secure).toBe(true);
   });
 
   it('protects /api/settings without a cookie and allows it with one', async () => {
