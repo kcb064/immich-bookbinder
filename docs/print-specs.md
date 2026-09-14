@@ -29,22 +29,46 @@ Presets (`FORMAT_PRESETS`): Lulu `0850X0850` 8.5 in square (default), `0750X0750
 
 ## Cover PDF
 
-- **One page** containing the whole spread: back cover, spine, front cover, plus wrap. Its size comes from Lulu's `POST /cover-dimensions/` for the exact `pod_package_id` and interior page count (spine width depends on paper and page count), requested in `pt`. The app never guesses the spine width.
-- Casewrap covers wrap around board, so Lulu's cover spec has a wider wrap than the interior bleed and a 0.75 in safety from the trim on hardcovers. Spine text reads bottom-to-top and is placed only when the spine is at least 0.25 in wide.
-- Same font, colour and image rules as the interior.
+- **One page** containing the whole sheet: back cover, spine, front cover, plus the wrap on every outer edge. Only Lulu formats get a cover; the `home-*` presets answer 409 to a cover render.
+- Geometry comes from `coverGeometry(format, product, pageCount, override?)` in `packages/layout/src/cover.ts`:
+  - width = 2 × wrap + 2 × trim width + spine, height = 2 × wrap + trim height; the front cover's trim box starts at `wrap + trimW + spine` from the left edge.
+  - **M4 estimate** (`source: 'estimate'`): spine = pages × caliper + board, with caliper 0.002252 in for `080CW444` and 0.0025 in for `060UW444` / `060UC444` (Lulu's 444 pages-per-inch figures), board 0.25 in and wrap 0.75 in for hardcovers (`CW`, `LW`), board 0 and wrap = bleed for soft covers. A 24-page 8.5 in casewrap comes out at 18.80 × 10.00 in with a 0.30 in spine. These numbers are marked `ESTIMATE, verified against Lulu /cover-dimensions/ in M5` in code.
+  - **M5** passes Lulu's `POST /cover-dimensions/` answer for the exact `pod_package_id` and page count as `override` (`source: 'lulu'`); the render records which source sized the sheet (`renders.data`, and the PDF's Subject line).
+- The cover template (`cover-editorial`) uses trim-width units: back cover x in [-1, 0], front in [0, 1]; the renderer inserts the spine at 0 and stretches bleed slots to the sheet edge so the hero photo wraps the boards. Text sits on the front over a soft scrim (title, rule, dates), the blurb on the back; spine text reads bottom-to-top and is drawn only when the spine is at least 0.25 in wide.
+- The cover is created with the first layout (best-scored placed photo, framed on its faces; title, dates and spine text inherited from the book) and edited on the book page: photo, title, subtitle, spine, back-cover text. Free placement is M6.
+- Same font, colour and image rules as the interior; a pdf-lib post-pass checks that the one page measures the geometry's width × height in points.
+
+## Page previews (PNG)
+
+- A `preview` render screenshots every `.bb-sheet` of the same print document at a device scale factor that puts the longest edge at **1600 px**, writing `DATA_DIR/exports/<book>/<render>/0000.png`, `0001.png`, ... plus `cover.png` (the whole cover sheet, 1600 px wide) when the book has a cover. Images come from Immich previews at 180 ppi, JPEG 85, so a preview costs about what a proof does.
+- The admin UI reads them at `/api/books/:id/renders/:rid/pages/:n.png` and `/cover.png`; the public viewer reads the newest done preview through `/s/:token/pages/:n.png` and `/s/:token/cover.png` and crops the bleed (and, for the cover, the back and spine) in CSS, so viewers see the trimmed book.
+
+## Preflight
+
+`GET /api/books/:id/preflight` runs `preflightBook` (`packages/layout/src/preflight.ts`) and the book page shows the result as "Print readiness". Errors block ordering (M5); warnings are the user's call. Checks, in order:
+
+| Code | Level | Rule |
+|---|---|---|
+| `page-count` | error | Page count outside `minPages..maxPages` or not a multiple of `pageMultiple`. |
+| `empty-slot` | warn | A photo slot with no photo. |
+| `low-resolution` | error < 150 ppi, warn < 200 ppi | `effectivePpi` of the source in its printed slot (crop zoom included). |
+| `caption-safety` | warn | A caption box reaching into the safety band: `safetyIn` from the outer trim edges, `max(safetyIn, gutterSafetyIn)` on the spine side, 0.02 in tolerance. Only captions that would print (user text, or a page with photos) count. |
+| `cover-missing` | error (no cover document) / warn (no cover PDF) | Lulu formats only. |
+| `cover-stale` | warn | The newest cover PDF was sized for a different page count (spine width), or the book changed after it was rendered. |
+| `render-missing` | warn | No done print PDF, or the book changed after the last one. Marking a book "rendered" does not count as a change. |
 
 ## Rendering pipeline
 
 1. The server renders the same React page components the editor shows (`packages/pages`) to static HTML with `react-dom/server`: one `.bb-sheet` per page, `@page` set to trim + 2 × bleed with zero margin, `print-color-adjust: exact`. No HTTP print route and no login is involved; the HTML never leaves the process.
 2. Photos in that HTML point at a fake origin (`https://render.bookbinder.local/img/<asset>?w=&h=&fx=&fy=`). Playwright intercepts those requests and answers them from `sharp`: the Immich source is cover-fitted around the focal point and resized to exactly the slot's pixel size at the render's ppi, never upscaled.
 3. Playwright's Chromium headless shell loads batches of 12 pages, emulates print media, waits for `document.fonts.ready` and every image's `decode()`, then calls `page.pdf` with `preferCSSPageSize`, `printBackground` and zero margins. Batches are merged with `pdf-lib`, which also writes the title and producer and checks the page count and size. One browser, one render at a time, so a NAS never runs two.
-4. Two render kinds: **proof** (Immich `preview` thumbnails, 110 ppi, JPEG 80: fast, small, for checking the layout) and **print** (Immich originals, 300 ppi, JPEG 92; originals sharp cannot decode, such as HEIC on most builds, fall back to Immich's `fullsize` JPEG). Sources are cached under `DATA_DIR/cache/immich`. Cover PDFs and per-page PNG previews arrive with M4.
+4. Four render kinds: **proof** (Immich `preview` thumbnails, 110 ppi, JPEG 80: fast, small, for checking the layout), **print** (Immich originals, 300 ppi, JPEG 92; originals sharp cannot decode, such as HEIC on most builds, fall back to Immich's `fullsize` JPEG), **cover** (one sheet from originals at 300 ppi, see below) and **preview** (page PNGs for the web viewer, see below). Sources are cached under `DATA_DIR/cache/immich`.
 5. Every photo slot in the editor shows its effective pixels per printed inch; below 200 it gets a warning badge, below 150 a red one.
 
 ## Checklist before ordering
 
 - Page count even and inside the preset's range (the app enforces this).
 - No warning badges left in the editor, or you accept them.
-- Cover generated *after* the final page count (the spine width depends on it; the app invalidates the cover when pages change).
+- Cover generated *after* the final page count (the spine width depends on it; preflight reports `cover-stale` when the page count moved).
 - Proof PDF checked at 100% zoom for cropped faces near the safety line.
 - Lulu's `/validate-interior/` and `/validate-cover/` pass; the app runs both before creating a print job.

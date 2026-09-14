@@ -8,6 +8,7 @@ import { EditorPage } from './pages/Editor.tsx';
 import { NewBookPage } from './pages/NewBook.tsx';
 import { ReviewPage } from './pages/Review.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
+import { ViewerPage } from './pages/Viewer.tsx';
 import { NotFoundPage } from './pages/NotFound.tsx';
 import { isApiError } from './lib/api.ts';
 
@@ -27,6 +28,8 @@ export const queryClient = new QueryClient({
 
 export const router = createBrowserRouter([
   { path: '/login', Component: LoginPage },
+  // The public viewer: no shell, no session; the server gates it by share token.
+  { path: '/s/:token', Component: ViewerPage },
   {
     // The editor takes the whole viewport (no sidebar) but still needs a session.
     path: '/books/:id/edit',

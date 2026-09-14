@@ -8,6 +8,7 @@ import type { RenderService } from './render/service.js';
 import type { SelectionService } from './selection/service.js';
 import type { CandidateStore } from './selection/store.js';
 import type { SettingsStore } from './settings.js';
+import type { ShareStore } from './shares/store.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -19,6 +20,7 @@ declare module 'fastify' {
     renders: RenderService;
     candidates: CandidateStore;
     selections: SelectionService;
+    shares: ShareStore;
     /** Client for the stored Immich connection, or undefined until Settings has a URL and key. */
     immichClient: () => ImmichClient | undefined;
   }

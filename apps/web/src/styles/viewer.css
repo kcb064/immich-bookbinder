@@ -1,0 +1,321 @@
+/* ---------- Public viewer (/s/:token): dark backdrop, the book and nothing else ---------- */
+.viewer-root,
+.viewer-root body {
+  background: #0b0d11;
+  overscroll-behavior: none;
+}
+.viewer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b0d11;
+  color: var(--text);
+  font-family: var(--font-ui);
+  user-select: none;
+}
+.viewer--centered {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.viewer__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 380px;
+  padding: 32px 28px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.viewer__h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.viewer__p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.viewer__p--error {
+  color: var(--red);
+}
+.viewer__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+.viewer__input {
+  height: var(--control-h);
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+}
+.viewer__input:focus-visible {
+  box-shadow: var(--focus);
+}
+.viewer__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.viewer__btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+.viewer__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.viewer__btn--primary {
+  height: var(--control-h);
+  background: var(--accent-strong);
+  border-color: transparent;
+  color: #fff;
+  font-size: 15px;
+}
+.viewer__btn--primary:hover {
+  background: var(--accent);
+}
+.viewer__btn--on {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.viewer__btn--icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.viewer__bar {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 17, 21, 0.9);
+}
+.viewer__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.viewer__name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer__sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer__counter {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.viewer__chapter {
+  font-family: var(--font-ui);
+  color: var(--text-faint);
+}
+.viewer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.viewer__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.viewer__stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  touch-action: pan-y;
+}
+.vspread {
+  display: flex;
+  filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.6));
+}
+.vpage {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  background: #1a1c22;
+}
+.vpage img {
+  display: block;
+  pointer-events: none;
+}
+.vpage--left {
+  box-shadow: inset -12px 0 18px -14px rgba(0, 0, 0, 0.55);
+}
+.vpage--right {
+  box-shadow: inset 12px 0 18px -14px rgba(0, 0, 0, 0.55);
+}
+.vpage--cover {
+  border-radius: 2px 6px 6px 2px;
+}
+.viewer__nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(23, 26, 33, 0.85);
+  color: var(--text);
+  opacity: 0.75;
+  transition: opacity 120ms ease;
+}
+.viewer__nav:hover {
+  opacity: 1;
+}
+.viewer__nav:disabled {
+  opacity: 0.2;
+}
+.viewer__nav--prev {
+  left: 12px;
+}
+.viewer__nav--next {
+  right: 12px;
+}
+
+.viewer__drawer {
+  flex: none;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  overflow-y: auto;
+}
+.viewer__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+.viewer__chapters {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 16px;
+}
+.viewer__chapter-btn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.viewer__chapter-btn:hover {
+  background: var(--surface-2);
+}
+.viewer__chapter-btn--on {
+  background: var(--accent-soft);
+}
+.viewer__chapter-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+.viewer__chapter-sub {
+  grid-column: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.viewer__chapter-page {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.viewer__progress {
+  flex: none;
+  height: 3px;
+  background: var(--surface-2);
+}
+.viewer__progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+@media (max-width: 719px) {
+  .viewer__bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: 48px;
+    padding: 0 10px;
+  }
+  .viewer__counter {
+    display: none;
+  }
+  .viewer__btn-label {
+    display: none;
+  }
+  .viewer__sub {
+    display: none;
+  }
+  .viewer__nav {
+    width: 36px;
+    height: 52px;
+  }
+  .viewer__drawer {
+    position: absolute;
+    inset: 48px 0 0 auto;
+    width: min(280px, 85vw);
+    box-shadow: var(--shadow-pop);
+    z-index: 2;
+  }
+  .viewer__body {
+    position: relative;
+  }
+}

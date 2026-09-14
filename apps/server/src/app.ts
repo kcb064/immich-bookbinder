@@ -22,8 +22,10 @@ import { immichRoutes } from './routes/immich.js';
 import { publicRoutes } from './routes/public.js';
 import { selectionRoutes } from './routes/selection.js';
 import { settingsRoutes } from './routes/settings.js';
+import { shareRoutes } from './routes/shares.js';
 import { staticRoutes } from './routes/static.js';
 import { SettingsStore } from './settings.js';
+import { ShareStore } from './shares/store.js';
 
 type LoggerOption = NonNullable<FastifyServerOptions['logger']>;
 
@@ -78,6 +80,7 @@ ${conn.apiKey}`;
   const candidates = new CandidateStore(database.db);
   app.decorate('books', books);
   app.decorate('candidates', candidates);
+  app.decorate('shares', new ShareStore(database.db));
   app.decorate('immichClient', immichClient);
   app.decorate(
     'selections',
@@ -143,6 +146,7 @@ ${conn.apiKey}`;
   await app.register(immichRoutes);
   await app.register(bookRoutes);
   await app.register(selectionRoutes);
+  await app.register(shareRoutes);
   await app.register(publicRoutes);
   if (config.webDist) {
     await app.register(staticRoutes, { root: config.webDist });

@@ -8,6 +8,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: 'http://localhost:3080', changeOrigin: false },
+      // Public viewer data (book.json, PNGs, pdf, unlock); the SPA route itself stays with Vite.
+      '^/s/[^/]+/.+': { target: 'http://localhost:3080', changeOrigin: false },
     },
   },
   build: { outDir: 'dist', sourcemap: false },

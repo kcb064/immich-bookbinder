@@ -1,11 +1,12 @@
-import type { RenderJob, RenderKind } from '@bookbinder/shared';
+import { renderCoverUrl, renderPageUrl, type RenderJob, type RenderKind } from '@bookbinder/shared';
 import { Button, Chip, Note } from './ui.tsx';
-import { Icon } from './Icon.tsx';
+import { Icon, type IconName } from './Icon.tsx';
 import { useCreateRender, useDeleteRender, useRenders } from '../lib/queries.ts';
 import { errorMessage } from '../lib/api.ts';
 import { formatDateTime } from '../lib/format.ts';
 
-export const RENDER_KIND_LABELS: Record<RenderKind, string> = { proof: 'Proof PDF', print: 'Print PDF' };
+export const RENDER_KIND_LABELS: Record<RenderKind, string> = { proof: 'Proof PDF', print: 'Print PDF', cover: 'Cover PDF', preview: 'Web preview' };
+const RENDER_KIND_ICONS: Record<RenderKind, IconName> = { proof: 'file', print: 'printer', cover: 'book', preview: 'image' };
 
 export function formatBytes(n: number | undefined): string {
   if (n === undefined) return '';
@@ -49,23 +50,44 @@ interface RenderButtonsProps {
   disabled?: boolean | undefined;
   disabledReason?: string | undefined;
   size?: 'default' | 'sm' | undefined;
+  /** Which kinds to offer (default: proof and print). */
+  kinds?: readonly RenderKind[] | undefined;
 }
 
-/** "Proof PDF" and "Print PDF" buttons that queue a render; disabled while one is active. */
-export function RenderButtons({ bookId, disabled, disabledReason, size }: RenderButtonsProps) {
+const RENDER_HINTS: Record<RenderKind, string> = {
+  proof: 'Screen-resolution PDF for checking the layout',
+  print: '300 ppi from the originals, ready for the printer',
+  cover: 'One-page cover PDF: back, spine and front at 300 ppi',
+  preview: 'Page images for the shareable web viewer',
+};
+
+/** Buttons that queue a render of each kind; disabled while one is active. */
+export function RenderButtons({ bookId, disabled, disabledReason, size, kinds = ['proof', 'print'] }: RenderButtonsProps) {
   const renders = useRenders(bookId);
   const create = useCreateRender(bookId);
   const busy = renders.data?.some(isActiveRender) ?? false;
   const title = disabledReason ?? (busy ? 'A render is already running' : undefined);
   return (
     <>
-      <Button icon="file" size={size} onClick={() => create.mutate('proof')} disabled={disabled || busy} loading={create.isPending && create.variables === 'proof'} title={title ?? 'Screen-resolution PDF for checking the layout'}>
-        Proof PDF
-      </Button>
-      <Button icon="printer" size={size} onClick={() => create.mutate('print')} disabled={disabled || busy} loading={create.isPending && create.variables === 'print'} title={title ?? '300 ppi from the originals, ready for the printer'}>
-        Print PDF
-      </Button>
+      {kinds.map((kind) => (
+        <Button key={kind} icon={RENDER_KIND_ICONS[kind]} size={size} onClick={() => create.mutate(kind)} disabled={disabled || busy} loading={create.isPending && create.variables === kind} title={title ?? RENDER_HINTS[kind]}>
+          {RENDER_KIND_LABELS[kind]}
+        </Button>
+      ))}
     </>
+  );
+}
+
+/** Cover and first pages of a done preview render, as small thumbnails. */
+function PreviewStrip({ r }: { r: RenderJob }) {
+  const pages = Math.min(3, r.pageCount ?? 0);
+  return (
+    <div className="render__strip" aria-label="Preview pages">
+      {r.data?.hasCover ? <img src={renderCoverUrl(r.bookId, r.id)} alt="Cover" loading="lazy" style={{ aspectRatio: '1.9' }} /> : null}
+      {Array.from({ length: pages }, (_, i) => (
+        <img key={i} src={renderPageUrl(r.bookId, r.id, i)} alt={`Page ${i + 1}`} loading="lazy" />
+      ))}
+    </div>
   );
 }
 
@@ -95,12 +117,12 @@ export function RenderList({ bookId }: { bookId: string }) {
           Could not delete: {errorMessage(remove.error)}
         </Note>
       ) : null}
-      {list.length === 0 ? <div className="muted small">No PDFs yet. A proof is quick and uses Immich previews; the print PDF pulls originals at 300 ppi.</div> : null}
+      {list.length === 0 ? <div className="muted small">Nothing rendered yet. A proof is quick and uses Immich previews; the print and cover PDFs pull originals at 300 ppi; the web preview feeds share links.</div> : null}
       <ul className="renders">
         {list.map((r) => (
           <li key={r.id} className="render">
             <div className="render__icon">
-              <Icon name={r.kind === 'print' ? 'printer' : 'file'} />
+              <Icon name={RENDER_KIND_ICONS[r.kind]} />
             </div>
             <div className="render__body">
               <div className="render__title">
@@ -109,9 +131,10 @@ export function RenderList({ bookId }: { bookId: string }) {
               </div>
               <div className="render__meta">
                 {formatDateTime(r.createdAt)}
-                {r.status === 'done' ? ` · ${r.pageCount ?? r.pagesTotal} pages · ${formatBytes(r.fileSizeBytes)}` : ''}
+                {r.status === 'done' ? ` · ${r.pageCount ?? r.pagesTotal} page${(r.pageCount ?? r.pagesTotal) === 1 ? '' : 's'} · ${formatBytes(r.fileSizeBytes)}` : ''}
               </div>
               {isActiveRender(r) ? <RenderProgress r={r} /> : null}
+              {r.kind === 'preview' && r.status === 'done' ? <PreviewStrip r={r} /> : null}
               {r.status === 'error' && r.error ? <div className="render__error">{r.error}</div> : null}
               {r.status === 'done' && r.warnings.length > 0 ? (
                 <ul className="render__warnings">

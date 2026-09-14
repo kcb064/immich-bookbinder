@@ -74,6 +74,15 @@ export class BookStore {
     return next;
   }
 
+  /** Changes only the status (column and document); updatedAt stays because no content changed. */
+  setStatus(id: string, status: Book['status']): Book | undefined {
+    const book = this.get(id);
+    if (!book || book.status === status) return book;
+    const next: Book = { ...book, status };
+    this.db.update(books).set({ status, data: JSON.stringify(next) }).where(eq(books.id, id)).run();
+    return next;
+  }
+
   delete(id: string): boolean {
     return this.db.delete(books).where(eq(books.id, id)).run().changes > 0;
   }

@@ -138,7 +138,9 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   }, [dirty]);
 
   const spreads = useMemo(() => toSpreads(pages), [pages]);
-  const requestedSpread = Number(search.get('spread') ?? 0);
+  // ?page=N (from preflight links) wins over ?spread=N.
+  const requestedPage = search.get('page');
+  const requestedSpread = requestedPage !== null && Number.isFinite(Number(requestedPage)) ? spreadIndexOfPage(Math.max(0, Number(requestedPage))) : Number(search.get('spread') ?? 0);
   const spreadIndex = Math.max(0, Math.min(spreads.length - 1, Number.isFinite(requestedSpread) ? requestedSpread : 0));
   const spread: Spread | undefined = spreads[spreadIndex];
   const gotoSpread = useCallback(
@@ -146,6 +148,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       const clamped = Math.max(0, Math.min(spreads.length - 1, i));
       setSearch((prev) => {
         const next = new URLSearchParams(prev);
+        next.delete('page');
         if (clamped === 0) next.delete('spread');
         else next.set('spread', String(clamped));
         return next;

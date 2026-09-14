@@ -9,7 +9,7 @@ Target setup: a NAS or home server running Docker with [Dockge](https://github.c
 3. Open the **.env** panel and paste [`docker/.env.example`](../docker/.env.example). Fill in:
    - `SECRET_KEY`: run `openssl rand -hex 32` anywhere and paste the result. Back it up together with the data; without it the stored Immich and Lulu credentials cannot be decrypted.
    - `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`; see the comments in the example file).
-   - `PUBLIC_URL`: the HTTPS URL you will use from outside, e.g. `https://books.example.com`. Leave it empty until the tunnel exists; share links then use whatever host you typed in the browser, and Lulu ordering stays disabled.
+   - `PUBLIC_URL`: the HTTPS URL you will use from outside, e.g. `https://books.example.com`. Share links are built on it (the Settings page can override it). Leave it empty until the tunnel exists; share links then use whatever host you typed in the browser (the Share card warns about this), and Lulu ordering stays disabled.
    - `TZ`.
 4. Check the Immich network name with `docker network ls` on the NAS. If it is not `immich_default`, change `name:` at the bottom of the compose file. Alternatively delete both `networks:` blocks and point the app at `http://<NAS-IP>:2283` later.
 5. **Deploy**. The first pull is a few hundred megabytes (Node, Chromium headless shell and its libraries). The container turns healthy once `/api/health` answers.
@@ -33,7 +33,7 @@ The app is meant to sit behind `cloudflared` so that share links and Lulu's PDF 
 
 Putting the admin UI behind Access adds an identity login in front of the app's own password. If you do that:
 
-- Create the Access application for `books.example.com`, **but exclude the public paths**: add bypass rules (or separate applications with an "Everyone -> Bypass" policy) for `books.example.com/s/*` (shared viewer) and `books.example.com/public/*` (PDFs that Lulu downloads). Without this, people who receive a share link get a Cloudflare login page, and Lulu's download fails.
+- Create the Access application for `books.example.com`, **but exclude the public paths**: add bypass rules (or separate applications with an "Everyone -> Bypass" policy) for `books.example.com/s/*` (shared viewer: the page, `book.json`, page PNGs, the PDF and the password unlock all live under the token) and `books.example.com/public/*` (PDFs that Lulu downloads). Without this, people who receive a share link get a Cloudflare login page, and Lulu's download fails. The app rate-limits `/s/*` itself (60 requests per minute per IP, 10 unlock attempts) and share tokens are 32 random bytes, so bypassing Access there exposes nothing guessable.
 - Add a **WAF skip rule** for `/public/exports/*`. Lulu fetches large PDFs from a data-centre IP with a non-browser client, which managed rules and Bot Fight Mode may block. Expression: `(http.host eq "books.example.com" and starts_with(http.request.uri.path, "/public/exports/"))`, action Skip: all remaining custom rules, managed rules, and Bot Fight Mode / Super Bot Fight Mode. The export URLs contain a 64-character random token and expire, so skipping the WAF here does not expose anything guessable.
 - Optionally set `TRUST_CF_ACCESS=true` so an Access-authenticated user is treated as the admin without the app password. Only do this when the container is **unreachable except through the tunnel** (no `ports:` published on a routable interface, or firewall rules), because the `Cf-Access-Authenticated-User-Email` header is trivial to forge on a direct connection.
 - Large PDFs: a 100-page book can be 200-300 MB. Cloudflare proxies responses of that size, but if Lulu reports a download failure use the app's **Check reachability** button (it fetches the export URL from outside through `PUBLIC_URL`) and, failing that, upload the exported PDFs on lulu.com by hand.
@@ -45,8 +45,7 @@ Everything the app owns is in the `/data` volume (`./data` on the host):
 | Path | Contents | Back up? |
 |---|---|---|
 | `data/bookbinder.sqlite` (+ `-wal`, `-shm`) | Books, pages, selections, settings (credentials encrypted with `SECRET_KEY`), order history | yes |
-| `data/exports/` | Final PDFs served to you and to Lulu | yes, or regenerate |
-| `data/renders/` | Per-render PDFs and page PNG previews | optional |
+| `data/exports/<book>/` | Per-render PDFs (proof, print, cover) and page PNG previews (one folder per preview render); served to you, to share links and to Lulu | yes, or regenerate |
 | `data/cache/` | Thumbnails and originals pulled from Immich, resized print images | no; rebuilt on demand |
 | `data/models/` | Downloaded ONNX scoring model | no |
 

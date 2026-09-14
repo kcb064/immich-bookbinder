@@ -862,3 +862,117 @@
   object-fit: cover;
   background: var(--surface-3);
 }
+
+/* ---------- Book detail: print readiness, sharing, cover (M4) ---------- */
+.preflight {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.preflight__item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.preflight__item > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.preflight__item--error {
+  background: var(--red-soft);
+}
+.preflight__item--error > svg {
+  color: var(--red);
+}
+.preflight__item--warn > svg {
+  color: var(--amber);
+}
+.shares {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.share--dead {
+  opacity: 0.7;
+}
+.share__url {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.share__url .input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+}
+.share__form {
+  padding: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+.render__strip {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.render__strip img {
+  height: 56px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--surface-2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.cover-preview {
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #0b0d11;
+  padding: 10px;
+  display: flex;
+  justify-content: center;
+}
+.thumb-pick {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  overflow: hidden;
+}
+.thumb-pick img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.thumb-pick--on {
+  border-color: var(--accent);
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+}

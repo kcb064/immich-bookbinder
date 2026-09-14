@@ -18,7 +18,7 @@ pnpm generate:immich
 pnpm dev
 ```
 
-`pnpm lint`, `pnpm typecheck` and `pnpm test` must pass; CI runs exactly those plus `pnpm -r build` and a Docker build. Formatting is Prettier (`pnpm format`, settings in `.prettierrc`).
+`pnpm check` (lint, typecheck, test, build) must pass; CI runs exactly that plus a Docker build. Roadmap milestones have specs in [docs/milestones/](docs/milestones/README.md). Formatting is Prettier (`pnpm format`, settings in `.prettierrc`).
 
 ## Pull requests
 

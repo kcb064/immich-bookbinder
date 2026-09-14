@@ -8,8 +8,15 @@ import sharp from 'sharp';
 import { ImmichApiError, type ImmichClient, type ImmichMediaSize } from '../immich/client.js';
 
 /** Pixels per inch each render kind targets; sources are never upscaled past their own resolution. */
-export const RENDER_PPI: Record<RenderKind, number> = { proof: 110, print: 300 };
-export const JPEG_QUALITY: Record<RenderKind, number> = { proof: 80, print: 92 };
+export const RENDER_PPI: Record<RenderKind, number> = { proof: 110, print: 300, cover: 300, preview: 180 };
+export const JPEG_QUALITY: Record<RenderKind, number> = { proof: 80, print: 92, cover: 92, preview: 85 };
+/** Which Immich variants a render kind may draw from: print work wants originals, screen work is happy with previews. */
+const SOURCE_VARIANTS: Record<RenderKind, SourceImage['variant'][]> = {
+  proof: ['preview'],
+  preview: ['preview'],
+  print: ['original', 'fullsize', 'preview'],
+  cover: ['original', 'fullsize', 'preview'],
+};
 
 export interface SourceImage {
   path: string;
@@ -83,9 +90,9 @@ export class ImageStore {
     return this.limit(() => this.download(assetId, 'preview'));
   }
 
-  /** The best decodable source for a render kind: print wants originals, proof is happy with previews. */
+  /** The best decodable source for a render kind: print and cover want originals, proof and preview take previews. */
   source(asset: BookAsset, kind: RenderKind): Promise<SourceImage> {
-    const key = `${kind}:${asset.id}`;
+    const key = `${SOURCE_VARIANTS[kind].join(',')}:${asset.id}`;
     let p = this.inflight.get(key);
     if (!p) {
       p = this.limit(() => this.resolveSource(asset, kind)).finally(() => this.inflight.delete(key));
@@ -95,7 +102,7 @@ export class ImageStore {
   }
 
   private async resolveSource(asset: BookAsset, kind: RenderKind): Promise<SourceImage> {
-    const order: SourceImage['variant'][] = kind === 'print' ? ['original', 'fullsize', 'preview'] : ['preview'];
+    const order = SOURCE_VARIANTS[kind];
     let lastError: unknown;
     for (const variant of order) {
       try {

@@ -42,7 +42,10 @@ export const bookAssets = sqliteTable(
   (t) => [primaryKey({ columns: [t.bookId, t.assetId] })],
 );
 
-/** PDF renders (proof or print) of a book; the file lives under DATA_DIR/exports. */
+/**
+ * Renders of a book: PDFs (proof, print, cover) as one file, page PNGs (preview) as a directory,
+ * all under DATA_DIR/exports/<book id>. `data` is the shared `RenderData` JSON (cover geometry).
+ */
 export const renders = sqliteTable('renders', {
   id: text('id').primaryKey(),
   bookId: text('book_id')
@@ -61,6 +64,8 @@ export const renders = sqliteTable('renders', {
   createdAt: text('created_at').notNull(),
   startedAt: text('started_at'),
   finishedAt: text('finished_at'),
+  /** JSON `RenderData`, set when done. */
+  data: text('data'),
 });
 
 /**
@@ -102,6 +107,25 @@ export const selectionRuns = sqliteTable('selection_runs', {
   finishedAt: text('finished_at'),
 });
 
+/**
+ * Public share links to a book's viewer (M4). The token is the URL secret; a password, when set,
+ * is an argon2 hash checked by POST /s/:token/unlock. Revoked and expired rows are kept for the admin list.
+ */
+export const shares = sqliteTable('shares', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id')
+    .notNull()
+    .references(() => books.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  passwordHash: text('password_hash'),
+  expiresAt: text('expires_at'),
+  allowDownload: integer('allow_download', { mode: 'boolean' }).notNull().default(false),
+  revokedAt: text('revoked_at'),
+  createdAt: text('created_at').notNull(),
+  lastViewedAt: text('last_viewed_at'),
+  views: integer('views').notNull().default(0),
+});
+
 export type SettingRow = typeof settings.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type BookRow = typeof books.$inferSelect;
@@ -109,3 +133,4 @@ export type BookAssetRow = typeof bookAssets.$inferSelect;
 export type RenderRow = typeof renders.$inferSelect;
 export type CandidateRow = typeof candidates.$inferSelect;
 export type SelectionRunRow = typeof selectionRuns.$inferSelect;
+export type ShareRow = typeof shares.$inferSelect;

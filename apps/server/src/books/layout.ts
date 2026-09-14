@@ -1,6 +1,7 @@
-import type { Book, BookAsset, FaceBox } from '@bookbinder/shared';
+import type { Book, BookAsset, BookCover, BookFormat, Candidate, FaceBox } from '@bookbinder/shared';
 import { FORMAT_PRESETS, chapterIndex, isPicked, planChapters } from '@bookbinder/shared';
-import { applyFaceCrops, paginate } from '@bookbinder/layout';
+import { applyFaceCrops, coverGeometry, faceFocal, getTemplate, paginate, placedAssetIds } from '@bookbinder/layout';
+import { formatHasCover } from '../render/service.js';
 import type { ImmichClient } from '../immich/client.js';
 import { gatherAssets } from '../immich/gather.js';
 import type { CandidateStore } from '../selection/store.js';
@@ -105,6 +106,42 @@ export async function layoutBook(
       ? applyFaceCrops(result.pages, format, faces, new Map(assets.map((a) => [a.id, a.ratio])))
       : result.pages;
 
-  const saved = deps.store.save({ ...book, pages, chapters: result.chapters, status: 'editing' });
+  // The cover is created once; later layouts keep the user's cover choices.
+  const cover = book.cover ?? (formatHasCover(format) ? defaultCover(book, format, pages, assets, candidates) : undefined);
+  const saved = deps.store.save({ ...book, pages, chapters: result.chapters, status: 'editing', ...(cover ? { cover } : {}) });
   return { book: saved, assets, warnings };
+}
+
+/**
+ * The cover a laid-out book starts with: the placed photo with the best composite score (the first
+ * placed photo when nothing was scored) as the wrap-around hero, framed on its faces; title, dates
+ * and spine text fall back to the book's own metadata (see `coverText` in packages/pages).
+ */
+export function defaultCover(
+  book: Pick<Book, 'luluProduct'>,
+  format: BookFormat,
+  pages: Book['pages'],
+  assets: readonly BookAsset[],
+  candidates: ReadonlyMap<string, Candidate>,
+): BookCover {
+  const placed = placedAssetIds(pages);
+  let heroId = placed[0];
+  let best = -1;
+  for (const id of placed) {
+    const score = candidates.get(id)?.scores.composite ?? -1;
+    if (score > best) {
+      best = score;
+      heroId = id;
+    }
+  }
+  const slots: BookCover['slots'] = [];
+  if (heroId) {
+    const asset = assets.find((a) => a.id === heroId);
+    const faces = candidates.get(heroId)?.faces ?? [];
+    const g = coverGeometry(format, book.luluProduct, pages.length);
+    const slot = getTemplate('cover-editorial').slots.find((s) => s.role === 'hero');
+    const crop = asset && slot && faces.length > 0 ? faceFocal(faces, asset.ratio, g.widthIn / g.heightIn) : undefined;
+    slots.push({ slotId: slot?.id ?? 'p1', assetId: heroId, ...(crop ? { crop } : {}) });
+  }
+  return { templateId: 'cover-editorial', slots };
 }

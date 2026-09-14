@@ -17,7 +17,7 @@
     {
       "name": "fake-immich",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@bookbinder/server", "exec", "tsx", "src/test/fake-immich.ts", "--photos", "90"],
+      "runtimeArgs": ["pnpm", "--filter", "@bookbinder/server", "exec", "tsx", "src/test/fake-immich.ts", "--photos", "90", "--home", "60"],
       "port": 2283,
       "autoPort": true
     },

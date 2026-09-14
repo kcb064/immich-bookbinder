@@ -120,6 +120,20 @@ export const Chapter = z.object({
 });
 export type Chapter = z.infer<typeof Chapter>;
 
+/**
+ * The book's cover: one cover template, the hero photo (and any text overrides) as slot contents,
+ * plus the spine and back-cover text. Text slots left out fall back to the book title and dates.
+ */
+export const BookCover = z.object({
+  templateId: z.literal('cover-editorial').default('cover-editorial'),
+  slots: z.array(SlotContent).default([]),
+  /** Text on the spine; defaults to the title. Hidden when the spine is thinner than 0.25 in. */
+  spineText: z.string().optional(),
+  /** Back-cover paragraph. */
+  blurb: z.string().optional(),
+});
+export type BookCover = z.infer<typeof BookCover>;
+
 export const BookStatus = z.enum(['draft', 'selecting', 'editing', 'rendering', 'rendered', 'ordered']);
 export type BookStatus = z.infer<typeof BookStatus>;
 
@@ -134,6 +148,8 @@ export const Book = z.object({
   rules: SelectionRules.optional(),
   chapters: z.array(Chapter).default([]),
   pages: z.array(Page).default([]),
+  /** Created by the layout when absent (M4); only Lulu formats render it. */
+  cover: BookCover.optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -345,12 +361,39 @@ export function targetPhotosFor(targetPages: number, chapterCount = 0): number {
   return Math.max(4, Math.round(body * PHOTOS_PER_PAGE) + chapterCount);
 }
 
-export const RenderKind = z.enum(['proof', 'print']);
+/**
+ * proof = interior PDF at screen resolution; print = interior PDF at 300 ppi from originals;
+ * cover = one-page cover PDF (back, spine, front) at 300 ppi; preview = one PNG per page for the viewer.
+ */
+export const RenderKind = z.enum(['proof', 'print', 'cover', 'preview']);
 export type RenderKind = z.infer<typeof RenderKind>;
 export const RenderStatus = z.enum(['queued', 'running', 'done', 'error']);
 export type RenderStatus = z.infer<typeof RenderStatus>;
 
-/** A PDF render of a book's interior (proof = screen resolution, print = 300 ppi from originals). */
+/** Size of the one-page cover PDF and how the spine was decided (see packages/layout/src/cover.ts). */
+export const CoverGeometry = z.object({
+  widthIn: z.number().positive(),
+  heightIn: z.number().positive(),
+  spineIn: z.number().nonnegative(),
+  /** Paper beyond the trim on every outer edge (wrap for hardcovers, bleed otherwise). */
+  wrapIn: z.number().nonnegative(),
+  /** Left edge of the front cover's trim box, from the sheet's left edge. */
+  frontLeftIn: z.number().nonnegative(),
+  /** estimate = caliper × pages (M4); lulu = Lulu's /cover-dimensions/ answer (M5). */
+  source: z.enum(['estimate', 'lulu']),
+});
+export type CoverGeometry = z.infer<typeof CoverGeometry>;
+
+/** Per-render facts the job needs later (stored as JSON in renders.data). */
+export const RenderData = z.object({
+  /** Cover renders: the geometry the sheet was sized with and the interior page count it assumed. */
+  cover: z.object({ geometry: CoverGeometry, pageCount: z.number().int().nonnegative() }).optional(),
+  /** Preview renders: whether cover.png was written next to the page PNGs. */
+  hasCover: z.boolean().optional(),
+});
+export type RenderData = z.infer<typeof RenderData>;
+
+/** A render job of a book: a PDF (proof, print, cover) or the page PNGs the public viewer shows (preview). */
 export const RenderJob = z.object({
   id: Id,
   bookId: Id,
@@ -366,10 +409,19 @@ export const RenderJob = z.object({
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().optional(),
   finishedAt: z.iso.datetime().optional(),
-  /** Authenticated download URL (relative), present when done. */
+  data: RenderData.optional(),
+  /** Authenticated download URL (relative), present when a PDF render is done. */
   downloadUrl: z.string().optional(),
 });
 export type RenderJob = z.infer<typeof RenderJob>;
+
+/** Admin URL of one page PNG of a done preview render (`n` is the 0-based page index). */
+export function renderPageUrl(bookId: string, renderId: string, n: number): string {
+  return `/api/books/${encodeURIComponent(bookId)}/renders/${encodeURIComponent(renderId)}/pages/${n}.png`;
+}
+export function renderCoverUrl(bookId: string, renderId: string): string {
+  return `/api/books/${encodeURIComponent(bookId)}/renders/${encodeURIComponent(renderId)}/cover.png`;
+}
 
 export const CreateRenderInput = z.object({ kind: RenderKind.default('proof') });
 export type CreateRenderInput = z.infer<typeof CreateRenderInput>;

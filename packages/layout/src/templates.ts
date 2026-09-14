@@ -125,7 +125,7 @@ const raw: Template[] = [
     slots: [
       hero('p1', -B, -B, 1 + 2 * B, f(560) + B, { aspect: [1.5, 1.78], bleed: true }),
       ...[0, 1, 2].map((i) => photo(`p${i + 2}`, S + i * ((C + GAP) / 3), f(588), (C - 2 * GAP) / 3, f(136), { aspect: [1.5], importance: 1 })),
-      text('cap', 'caption', S, 1 - S - f(4), C, f(20)),
+      text('cap', 'caption', S, 1 - S - f(20), C, f(20)),
     ],
   },
   {

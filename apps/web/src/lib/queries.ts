@@ -1,7 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { Book, BookAsset, ImmichStatus, RenderJob, SelectionRun, SelectionView, SettingsView } from '@bookbinder/shared';
-import type { DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules, SelectionSource } from '@bookbinder/shared';
+import { Book, BookAsset, ImmichStatus, Preflight, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
+import type { CreateShareInput, DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -91,6 +92,8 @@ export const keys = {
   bookAssets: (id: string) => ['books', id, 'assets'] as const,
   renders: (id: string) => ['books', id, 'renders'] as const,
   selection: (id: string) => ['books', id, 'selection'] as const,
+  preflight: (id: string) => ['books', id, 'preflight'] as const,
+  shares: (id: string) => ['books', id, 'shares'] as const,
 };
 
 /* ---------- Auth ---------- */
@@ -324,7 +327,7 @@ export function useSaveBook(id: string) {
     mutationFn: (book: Book) => put(`/api/books/${encodeURIComponent(id)}`, book, Book),
     onSuccess: async (book) => {
       qc.setQueryData(keys.book(id), book);
-      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
+      await Promise.all([qc.invalidateQueries({ queryKey: keys.books, exact: true }), qc.invalidateQueries({ queryKey: keys.preflight(id) })]);
     },
   });
 }
@@ -394,12 +397,23 @@ export function useRenders(id: string | undefined) {
   });
 }
 
+/** Re-fetches preflight whenever the set of active renders settles (a job just finished). */
+export function useInvalidateOnRenderSettle(id: string, renders: RenderJob[] | undefined): void {
+  const qc = useQueryClient();
+  const active = renders?.filter((r) => ACTIVE_RENDER.has(r.status)).length ?? 0;
+  const prev = useRef(active);
+  useEffect(() => {
+    if (prev.current > 0 && active === 0) void qc.invalidateQueries({ queryKey: keys.preflight(id) });
+    prev.current = active;
+  }, [active, id, qc]);
+}
+
 export function useCreateRender(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (kind: RenderKind) => post(`/api/books/${encodeURIComponent(id)}/renders`, { kind }, RenderJob),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: keys.renders(id) });
+      await Promise.all([qc.invalidateQueries({ queryKey: keys.renders(id) }), qc.invalidateQueries({ queryKey: keys.preflight(id) })]);
     },
   });
 }
@@ -409,7 +423,58 @@ export function useDeleteRender(id: string) {
   return useMutation({
     mutationFn: (renderId: string) => del(`/api/books/${encodeURIComponent(id)}/renders/${encodeURIComponent(renderId)}`),
     onSuccess: async () => {
-      await Promise.all([qc.invalidateQueries({ queryKey: keys.renders(id) }), qc.invalidateQueries({ queryKey: keys.book(id) })]);
+      await Promise.all([qc.invalidateQueries({ queryKey: keys.renders(id) }), qc.invalidateQueries({ queryKey: keys.book(id) }), qc.invalidateQueries({ queryKey: keys.preflight(id) })]);
+    },
+  });
+}
+
+/* ---------- Print readiness and sharing (M4) ---------- */
+
+/** Preflight depends on the book, its assets and its renders; the card re-fetches when any of those change. */
+export function usePreflight(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: keys.preflight(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/preflight`, Preflight, signal),
+    enabled: Boolean(id) && enabled,
+    staleTime: 5_000,
+  });
+}
+
+export function useShares(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.shares(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/shares`, z.array(ShareView), signal),
+    enabled: Boolean(id),
+  });
+}
+
+export function useCreateShare(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateShareInput) => post(`/api/books/${encodeURIComponent(id)}/shares`, input, ShareView),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.shares(id) });
+    },
+  });
+}
+
+export function useUpdateShare(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ shareId, ...input }: UpdateShareInput & { shareId: string }) =>
+      put(`/api/books/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, input, ShareView),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.shares(id) });
+    },
+  });
+}
+
+export function useRevokeShare(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (shareId: string) => del(`/api/books/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, ShareView),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.shares(id) });
     },
   });
 }

@@ -6,15 +6,19 @@
   "license": "AGPL-3.0-only",
   "repository": "github:kcb064/immich-bookbinder",
   "type": "module",
-  "engines": { "node": ">=22", "pnpm": ">=10" },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
   "packageManager": "pnpm@12.4.1",
   "scripts": {
-    "dev": "pnpm -r --parallel --filter ./apps/* dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
+    "dev": "corepack pnpm -r --parallel --filter ./apps/* dev",
+    "build": "corepack pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
+    "check": "corepack pnpm lint && corepack pnpm -r typecheck && corepack pnpm test && corepack pnpm -r build",
     "generate:immich": "openapi-typescript specs/immich-openapi.json -o apps/server/src/immich/generated/immich.d.ts"
   },
   "devDependencies": {

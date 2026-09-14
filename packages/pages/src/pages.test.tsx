@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { FORMAT_PRESETS, THEMES, type BookAsset, type Page } from '@bookbinder/shared';
-import { paginate } from '@bookbinder/layout';
+import { FORMAT_PRESETS, LuluProduct, THEMES, type BookAsset, type BookCover, type Page } from '@bookbinder/shared';
+import { TEMPLATES, coverGeometry, paginate } from '@bookbinder/layout';
 import { describe, expect, it } from 'vitest';
 import { autoCaption, dateRangeLabel, formatTakenDate } from './captions.js';
+import { CoverView, coverSlotPx, coverText } from './CoverView.js';
 import { PageView, pagePhotos, type ImageSrc } from './PageView.js';
 import { bookMetaFor } from './meta.js';
 import { renderPrintDocument, sideOf } from './print.js';
@@ -150,5 +151,53 @@ describe('chapter openers', () => {
     expect(html).toContain('>4<');
     expect(html).not.toContain('>2<');
     expect(html).not.toContain('>3<');
+  });
+});
+
+describe('cover', () => {
+  const cover: BookCover = { templateId: 'cover-editorial', slots: [{ slotId: 'p1', assetId: 'a0' }], blurb: 'A week in Portugal.' };
+  const g = coverGeometry(format, LuluProduct.parse({}), 48);
+
+  it('falls back to the book title and dates for text slots', () => {
+    expect(coverText(cover, 'title', meta)).toBe('Portugal');
+    expect(coverText(cover, 'subtitle', meta)).toBe('May 12 – 14, 2026');
+    expect(coverText(cover, 'spine', meta)).toBe('Portugal');
+    expect(coverText(cover, 'back-blurb', meta)).toBe('A week in Portugal.');
+    expect(coverText({ ...cover, spineText: 'PT 2026', slots: [{ slotId: 'title', text: 'Lisboa' }] }, 'title', meta)).toBe('Lisboa');
+    expect(coverText({ ...cover, spineText: 'PT 2026' }, 'spine', meta)).toBe('PT 2026');
+  });
+
+  it('maps back, spine and front onto the sheet and runs bleed slots to the sheet edge', () => {
+    const t = TEMPLATES.find((x) => x.id === 'cover-editorial')!;
+    const hero = coverSlotPx(t.slots.find((s) => s.id === 'p1')!, format, g, 100);
+    expect(hero).toEqual({ x: 0, y: 0, w: Math.round(g.widthIn * 100), h: Math.round(g.heightIn * 100) });
+    const title = coverSlotPx(t.slots.find((s) => s.id === 'title')!, format, g, 100);
+    expect(title.x).toBeGreaterThanOrEqual(Math.round(g.frontLeftIn * 100));
+    const blurb = coverSlotPx(t.slots.find((s) => s.id === 'back-blurb')!, format, g, 100);
+    expect(blurb.x + blurb.w).toBeLessThan(Math.round((g.wrapIn + 8.5) * 100));
+    const spine = coverSlotPx(t.slots.find((s) => s.id === 'spine')!, format, g, 100);
+    expect(spine).toEqual({ x: Math.round((g.wrapIn + 8.5) * 100), y: Math.round(g.wrapIn * 100), w: Math.round(g.spineIn * 100), h: 850 });
+  });
+
+  it('draws the hero, the texts and a rotated spine; hides the spine text when the spine is thin', () => {
+    const { assets } = fixtures(2);
+    const html = renderToStaticMarkup(<CoverView cover={cover} geometry={g} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html).toContain('img://a0?');
+    expect(html).toContain('>Portugal<');
+    expect(html).toContain('A week in Portugal.');
+    expect(html).toContain('bb-text--spine');
+    expect(html).toContain('rotate(-90deg)');
+    const thin = coverGeometry(format, LuluProduct.parse({ binding: 'PB' }), 24);
+    expect(thin.spineIn).toBeLessThan(0.25);
+    const html2 = renderToStaticMarkup(<CoverView cover={cover} geometry={thin} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html2).not.toContain('bb-text--spine');
+  });
+
+  it('makes a cover-only print document whose @page is the cover size', () => {
+    const { assets } = fixtures(2);
+    const html = renderPrintDocument({ pages: [], firstPageIndex: 0, cover: { cover, geometry: g }, format, theme, assets, imageSrc, meta, webFonts: false });
+    expect(html).toContain(`@page { size: ${g.widthIn}in ${g.heightIn}in; margin: 0; }`);
+    expect(html.match(/class="bb-sheet bb-sheet--cover"/g)).toHaveLength(1);
+    expect(html).not.toContain('class="bb-sheet"');
   });
 });

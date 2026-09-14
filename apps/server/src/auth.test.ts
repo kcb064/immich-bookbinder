@@ -152,10 +152,10 @@ describe('auth flow', () => {
     expect(results[6]).toBe(429);
   });
 
-  it('leaves /s/* and /public/* unauthenticated (404 placeholders)', async () => {
-    const s = await t.app.inject({ method: 'GET', url: '/s/some-token/index.json' });
+  it('leaves /s/* and /public/* unauthenticated (404 for unknown links)', async () => {
+    const s = await t.app.inject({ method: 'GET', url: '/s/some-token/book.json' });
     expect(s.statusCode).toBe(404);
-    expect(s.json().message).toMatch(/not available yet/);
+    expect(s.json().message).toMatch(/does not exist/);
     const p = await t.app.inject({ method: 'GET', url: '/public/x.jpg' });
     expect(p.statusCode).toBe(404);
   });

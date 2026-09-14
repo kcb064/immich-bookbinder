@@ -17,3 +17,6 @@ apps/server/src/immich/generated/*.ts
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+# Local dev data (SQLite, caches, renders) used by apps/server/.env
+.devdata/

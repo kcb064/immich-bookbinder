@@ -4,8 +4,11 @@ import { dateRangeLabel, PageView, bookMetaFor, toSpreads } from '@bookbinder/pa
 import { PageHeader } from '../components/Shell.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, RenderList } from '../components/Renders.tsx';
+import { PreflightCard } from '../components/Preflight.tsx';
+import { ShareCard } from '../components/Share.tsx';
+import { CoverCard } from '../components/CoverCard.tsx';
 import { BookCover } from './Dashboard.tsx';
-import { isActiveRun, useBook, useBookAssets, useDeleteBook, useLayoutBook, useSelection, useSettings } from '../lib/queries.ts';
+import { isActiveRun, useBook, useBookAssets, useDeleteBook, useInvalidateOnRenderSettle, useLayoutBook, useRenders, useSelection, useSettings } from '../lib/queries.ts';
 import { STATUS_LABELS, STATUS_TONES, bindingName, bookPageCount, formatDateTime, formatNumber, formatTrim, pluralize, themeFor } from '../lib/format.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { editorImageSrc } from './Editor.tsx';
@@ -68,6 +71,8 @@ export function BookDetailPage() {
   const remove = useDeleteBook();
   const layout = useLayoutBook(id ?? '');
   const selection = useSelection(id);
+  const renders = useRenders(id);
+  useInvalidateOnRenderSettle(id ?? '', renders.data);
 
   if (book.isPending) {
     return (
@@ -102,6 +107,7 @@ export function BookDetailPage() {
   const theme = themeFor(b.themeId);
   const format = FORMAT_PRESETS[b.formatId];
   const hasPages = b.pages.length > 0;
+  const luluFormat = format?.vendor === 'lulu';
   const immichReady = Boolean(settings.data?.immich.url && settings.data.immich.apiKeySet);
   const photoList = assets.data ?? [];
   const placedCount = new Set(b.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean))).size;
@@ -227,15 +233,25 @@ export function BookDetailPage() {
 
         <div className="detail">
           <div className="stack" style={{ gap: 24 }}>
+            <PreflightCard bookId={b.id} enabled={hasPages} />
+
             <section className="card card--pad stack">
-              <div className="row row--between">
-                <h2 className="h2">PDFs</h2>
-                <div className="row">
-                  <RenderButtons bookId={b.id} size="sm" disabled={!hasPages || !immichReady} disabledReason={!hasPages ? 'Lay out the book first' : !immichReady ? 'Connect Immich first' : undefined} />
+              <div className="row row--between" style={{ alignItems: 'flex-start' }}>
+                <h2 className="h2">PDFs and previews</h2>
+                <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6 }}>
+                  <RenderButtons
+                    bookId={b.id}
+                    size="sm"
+                    kinds={luluFormat ? ['proof', 'print', 'cover', 'preview'] : ['proof', 'print', 'preview']}
+                    disabled={!hasPages || !immichReady}
+                    disabledReason={!hasPages ? 'Lay out the book first' : !immichReady ? 'Connect Immich first' : undefined}
+                  />
                 </div>
               </div>
               <RenderList bookId={b.id} />
             </section>
+
+            <ShareCard book={b} disabled={!hasPages} />
 
             <section className="card card--pad stack">
               <h2 className="h2">Overview</h2>
@@ -342,10 +358,14 @@ export function BookDetailPage() {
           </div>
 
           <aside className="stack">
-            <BookCover book={b} className="detail__cover" />
-            <div className="muted small" style={{ lineHeight: 1.5 }}>
-              Cover placeholder using the {theme.name} paper color. The real cover is designed in a later milestone.
-            </div>
+            {hasPages && luluFormat ? (
+              <CoverCard book={b} assets={photoList} />
+            ) : (
+              <>
+                <BookCover book={b} className="detail__cover" />
+                <CoverCard book={b} assets={photoList} />
+              </>
+            )}
           </aside>
         </div>
       </div>

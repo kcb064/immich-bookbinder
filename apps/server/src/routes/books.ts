@@ -1,11 +1,13 @@
-import { Book, CreateRenderInput, Id, SelectionRules, LuluProduct, type BookAsset, type RenderJob } from '@bookbinder/shared';
-import type { FastifyPluginAsync } from 'fastify';
+import { Book, CreateRenderInput, FORMAT_PRESETS, Id, SelectionRules, LuluProduct, type BookAsset, type Preflight, type RenderJob } from '@bookbinder/shared';
+import { preflightBook } from '@bookbinder/layout';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { z } from 'zod';
 import { LayoutError, layoutBook } from '../books/layout.js';
 import type { BookSummary } from '../books/store.js';
+import { formatHasCover } from '../render/service.js';
 
 const CreateBookInput = z.object({
   title: z.string().min(1),
@@ -19,6 +21,7 @@ export type CreateBookInput = z.infer<typeof CreateBookInput>;
 
 const IdParams = z.object({ id: Id });
 const RenderParams = z.object({ id: Id, rid: Id });
+const PageParams = z.object({ id: Id, rid: Id, n: z.coerce.number().int().nonnegative() });
 const LayoutInput = z.object({ refetch: z.boolean().optional() });
 
 function zodMessage(err: z.ZodError): string {
@@ -119,6 +122,18 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  /* ---------- Print readiness ---------- */
+
+  app.get('/api/books/:id/preflight', async (request, reply): Promise<Preflight | undefined> => {
+    const params = IdParams.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid book id');
+    const book = store.get(params.data.id);
+    if (!book) return reply.notFound('Book not found');
+    const format = FORMAT_PRESETS[book.formatId];
+    if (!format) return reply.badRequest(`Unknown format ${book.formatId}`);
+    return preflightBook({ book, format, assets: store.assetMap(book.id), renders: app.renders.list(book.id) });
+  });
+
   /* ---------- Renders ---------- */
 
   app.get('/api/books/:id/renders', async (request, reply): Promise<RenderJob[] | undefined> => {
@@ -137,8 +152,43 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     if (!book) return reply.notFound('Book not found');
     if (book.pages.length === 0) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: 'Lay out the book before rendering it' });
     if (!app.immichClient()) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: 'Immich is not configured' });
+    if (body.data.kind === 'cover') {
+      const format = FORMAT_PRESETS[book.formatId];
+      if (!format || !formatHasCover(format)) {
+        return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: `${format?.name ?? book.formatId} is a home-print format and has no cover; choose a Lulu format for a cover PDF` });
+      }
+      if (!book.cover) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: 'The book has no cover yet. Lay it out again or set one on the book page' });
+    }
     const job = app.renders.create(book, body.data.kind);
     return reply.code(202).send(job);
+  });
+
+  const sendPng = async (reply: FastifyReply, path: string | undefined) => {
+    if (!path) return reply.notFound('No such image');
+    let size: number;
+    try {
+      size = (await stat(path)).size;
+    } catch {
+      return reply.notFound('Image file is missing on disk');
+    }
+    return reply.type('image/png').header('content-length', String(size)).header('cache-control', 'private, max-age=3600').send(createReadStream(path));
+  };
+
+  /** One page of a done preview render (0-based index). */
+  app.get('/api/books/:id/renders/:rid/pages/:n.png', async (request, reply) => {
+    const params = PageParams.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid id');
+    const job = app.renders.get(params.data.rid);
+    if (!job || job.bookId !== params.data.id) return reply.notFound('Render not found');
+    return sendPng(reply, app.renders.previewPagePath(job.id, params.data.n));
+  });
+
+  app.get('/api/books/:id/renders/:rid/cover.png', async (request, reply) => {
+    const params = RenderParams.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid id');
+    const job = app.renders.get(params.data.rid);
+    if (!job || job.bookId !== params.data.id) return reply.notFound('Render not found');
+    return sendPng(reply, app.renders.previewCoverPath(job.id));
   });
 
   app.get('/api/books/:id/renders/:rid', async (request, reply) => {
@@ -168,8 +218,8 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     const job = app.renders.get(params.data.rid);
     const book = store.get(params.data.id);
     if (!job || !book || job.bookId !== params.data.id) return reply.notFound('Render not found');
-    const path = app.renders.filePath(job.id);
-    if (!path) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: `Render is ${job.status}` });
+    const path = job.downloadUrl ? app.renders.filePath(job.id) : undefined;
+    if (!path) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: job.status === 'done' ? 'This render is not a PDF' : `Render is ${job.status}` });
     let size: number;
     try {
       size = (await stat(path)).size;

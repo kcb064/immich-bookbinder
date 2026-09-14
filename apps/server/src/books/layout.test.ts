@@ -1,6 +1,8 @@
-import { Book, BookAsset, RenderJob } from '@bookbinder/shared';
-import { placedAssetIds } from '@bookbinder/layout';
+import { Book, BookAsset, FORMAT_PRESETS, Preflight, RenderJob } from '@bookbinder/shared';
+import { coverGeometry, placedAssetIds } from '@bookbinder/layout';
+import { readdirSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromiumAvailable } from '../render/renderer.js';
@@ -50,6 +52,9 @@ describe('album → layout → render', () => {
     expect(book.pages.length).toBe(24);
     expect(book.pages[0]!.templateId).toBe('title-page');
     expect(placedAssetIds(book.pages)).toHaveLength(26);
+    // A Lulu book gets a default cover: the hero is one of the placed photos, text falls back to the book.
+    expect(book.cover?.templateId).toBe('cover-editorial');
+    expect(placedAssetIds(book.pages)).toContain(book.cover?.slots[0]?.assetId);
 
     const assets = z.array(BookAsset).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/assets`, headers: { cookie } })).json());
     expect(assets).toHaveLength(26);
@@ -64,6 +69,8 @@ describe('album → layout → render', () => {
     const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/layout`, headers: { cookie }, payload: { refetch: false } });
     expect(res.statusCode).toBe(200);
     expect(immich.requests.length).toBe(before);
+    // The cover survives a re-layout.
+    expect(LayoutResponse.parse(res.json()).book.cover?.slots[0]?.assetId).toBeTruthy();
     const again = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/layout`, headers: { cookie }, payload: { refetch: true } });
     expect(again.statusCode).toBe(200);
     expect(immich.requests.length).toBeGreaterThan(before);
@@ -145,4 +152,104 @@ describe('album → layout → render', () => {
     const book = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
     expect(book.status).toBe('rendered');
   }, 120_000);
+
+  it('reports print readiness for the laid-out book', async () => {
+    const res = await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/preflight`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const p = Preflight.parse(res.json());
+    // 24 pages and a cover document, but the fake's 1200 px originals print soft: resolution errors
+    // with page links, plus the missing-render warnings.
+    expect(p.ok).toBe(false);
+    for (const item of p.items) expect(['low-resolution', 'cover-missing', 'render-missing']).toContain(item.code);
+    const res1 = p.items.find((i) => i.code === 'low-resolution');
+    expect(res1).toMatchObject({ level: 'error', pageIndex: expect.any(Number), slotId: expect.any(String) });
+    // The print render above is newer than the book (marking it "rendered" must not bump updatedAt).
+    expect(p.items.filter((i) => i.code === 'render-missing')).toHaveLength(hasChromium ? 0 : 1);
+    expect(p.items.filter((i) => i.code === 'cover-missing')).toHaveLength(1);
+  });
+
+  it('refuses a cover render for a home-print format', async () => {
+    const created = await t.app.inject({
+      method: 'POST',
+      url: '/api/books',
+      headers: { cookie },
+      payload: { title: 'Home', formatId: 'home-letter', themeId: 'warm-editorial', rules: { sources: [{ kind: 'album', albumIds: ['album-trip'] }], targetPages: 12 } },
+    });
+    const id = Book.parse(created.json()).id;
+    const laid = await t.app.inject({ method: 'POST', url: `/api/books/${id}/layout`, headers: { cookie }, payload: {} });
+    expect(laid.statusCode).toBe(200);
+    expect(LayoutResponse.parse(laid.json()).book.cover).toBeUndefined();
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${id}/renders`, headers: { cookie }, payload: { kind: 'cover' } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/home-print format/);
+    const preflight = Preflight.parse((await t.app.inject({ method: 'GET', url: `/api/books/${id}/preflight`, headers: { cookie } })).json());
+    expect(preflight.items.some((i) => i.code.startsWith('cover'))).toBe(false);
+  });
+
+  it.skipIf(!hasChromium)('renders a one-page cover PDF at the estimated cover geometry', async () => {
+    const book = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
+    const queued = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/renders`, headers: { cookie }, payload: { kind: 'cover' } });
+    expect(queued.statusCode, queued.body).toBe(202);
+    expect(RenderJob.parse(queued.json()).pagesTotal).toBe(1);
+    await t.app.renders.idle();
+    const job = RenderJob.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${RenderJob.parse(queued.json()).id}`, headers: { cookie } })).json());
+    expect(job.status, job.error).toBe('done');
+    expect(job.warnings).toEqual([]);
+    expect(job.pageCount).toBe(1);
+    const g = coverGeometry(FORMAT_PRESETS['lulu-square-8.5']!, book.luluProduct, book.pages.length);
+    expect(job.data?.cover).toEqual({ geometry: g, pageCount: 24 });
+    expect(g.source).toBe('estimate');
+
+    const pdf = await t.app.inject({ method: 'GET', url: job.downloadUrl!, headers: { cookie } });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers['content-disposition']).toContain('portugal-2026-cover.pdf');
+    const doc = await PDFDocument.load(pdf.rawPayload);
+    expect(doc.getPageCount()).toBe(1);
+    const { width, height } = doc.getPage(0).getSize();
+    expect(width).toBeCloseTo(g.widthIn * 72, 0);
+    expect(height).toBeCloseTo(g.heightIn * 72, 0);
+    expect(doc.getSubject()).toContain('estimate');
+
+    // The cover counts as current in preflight now.
+    const p = Preflight.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/preflight`, headers: { cookie } })).json());
+    expect(p.items.some((i) => i.code.startsWith('cover'))).toBe(false);
+  }, 120_000);
+
+  it.skipIf(!hasChromium)('writes one PNG per page plus the cover for a preview render and serves them', async () => {
+    const queued = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/renders`, headers: { cookie }, payload: { kind: 'preview' } });
+    expect(queued.statusCode, queued.body).toBe(202);
+    const id = RenderJob.parse(queued.json()).id;
+    expect(RenderJob.parse(queued.json()).pagesTotal).toBe(25);
+    await t.app.renders.idle();
+    const job = RenderJob.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${id}`, headers: { cookie } })).json());
+    expect(job.status, job.error).toBe('done');
+    expect(job.pageCount).toBe(24);
+    expect(job.pagesDone).toBe(25);
+    expect(job.data).toEqual({ hasCover: true });
+    expect(job.downloadUrl).toBeUndefined();
+    expect(job.fileSizeBytes).toBeGreaterThan(24 * 1000);
+    const dir = t.app.renders.filePath(id)!;
+    const files = readdirSync(dir).sort();
+    expect(files).toHaveLength(25);
+    expect(files[0]).toBe('0000.png');
+    expect(files[23]).toBe('0023.png');
+    expect(files).toContain('cover.png');
+
+    const png = await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${id}/pages/3.png`, headers: { cookie } });
+    expect(png.statusCode).toBe(200);
+    expect(png.headers['content-type']).toBe('image/png');
+    const meta = await sharp(png.rawPayload).metadata();
+    expect(Math.abs(Math.max(meta.width ?? 0, meta.height ?? 0) - 1600)).toBeLessThanOrEqual(1);
+    const cover = await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${id}/cover.png`, headers: { cookie } });
+    expect(cover.statusCode).toBe(200);
+    const cm = await sharp(cover.rawPayload).metadata();
+    expect(Math.abs(cm.width! - 1600)).toBeLessThanOrEqual(1);
+    expect(cm.width! > cm.height!).toBe(true);
+    expect((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${id}/pages/24.png`, headers: { cookie } })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${id}/pdf`, headers: { cookie } })).statusCode).toBe(409);
+
+    // Deleting a preview removes the directory.
+    expect((await t.app.inject({ method: 'DELETE', url: `/api/books/${bookId}/renders/${id}`, headers: { cookie } })).statusCode).toBe(204);
+    expect(() => readdirSync(dir)).toThrow();
+  }, 180_000);
 });
