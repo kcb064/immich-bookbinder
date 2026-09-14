@@ -1,11 +1,11 @@
 import { Link, useNavigate, useParams } from 'react-router';
-import { FORMAT_PRESETS, THEMES, type Book, type BookAsset } from '@bookbinder/shared';
+import { FORMAT_PRESETS, THEMES, targetPhotosFor, type Book, type BookAsset } from '@bookbinder/shared';
 import { dateRangeLabel, PageView, bookMetaFor, toSpreads } from '@bookbinder/pages';
 import { PageHeader } from '../components/Shell.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, RenderList } from '../components/Renders.tsx';
 import { BookCover } from './Dashboard.tsx';
-import { useBook, useBookAssets, useDeleteBook, useLayoutBook, useSettings } from '../lib/queries.ts';
+import { isActiveRun, useBook, useBookAssets, useDeleteBook, useLayoutBook, useSelection, useSettings } from '../lib/queries.ts';
 import { STATUS_LABELS, STATUS_TONES, bindingName, bookPageCount, formatDateTime, formatNumber, formatTrim, pluralize, themeFor } from '../lib/format.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { editorImageSrc } from './Editor.tsx';
@@ -73,6 +73,7 @@ export function BookDetailPage() {
   const settings = useSettings();
   const remove = useDeleteBook();
   const layout = useLayoutBook(id ?? '');
+  const selection = useSelection(id);
 
   if (book.isPending) {
     return (
@@ -110,6 +111,10 @@ export function BookDetailPage() {
   const immichReady = Boolean(settings.data?.immich.url && settings.data.immich.apiKeySet);
   const photoList = assets.data ?? [];
   const placedCount = new Set(b.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean))).size;
+  const summary = selection.data?.summary;
+  const hasSelection = Boolean(summary && summary.total > 0);
+  const selecting = isActiveRun(selection.data?.run);
+  const reviewHref = `/books/${encodeURIComponent(b.id)}/review`;
 
   const onDelete = () => {
     if (!window.confirm(`Delete "${b.title}"? This cannot be undone.`)) return;
@@ -139,8 +144,13 @@ export function BookDetailPage() {
         <Button icon="trash" variant="danger" onClick={onDelete} loading={remove.isPending}>
           Delete
         </Button>
+        {hasSelection || selecting ? (
+          <LinkButton to={reviewHref} icon="sparkles" variant={hasPages ? 'default' : hasSelection ? 'default' : 'primary'}>
+            Review picks
+          </LinkButton>
+        ) : null}
         {hasPages ? (
-          <Button icon="layout" onClick={() => runLayout(false)} loading={layout.isPending} title="Automatic layout again from the stored photo list">
+          <Button icon="layout" onClick={() => runLayout(false)} loading={layout.isPending} title="Automatic layout again from the current picks">
             Re-lay out
           </Button>
         ) : null}
@@ -148,10 +158,14 @@ export function BookDetailPage() {
           <LinkButton to={`/books/${encodeURIComponent(b.id)}/edit`} variant="primary" icon="edit">
             Open editor
           </LinkButton>
-        ) : (
-          <Button variant="primary" icon="layout" onClick={() => runLayout(true)} loading={layout.isPending} disabled={!immichReady} title={immichReady ? undefined : 'Connect Immich in Settings first'}>
-            Fetch photos & lay out
+        ) : hasSelection ? (
+          <Button variant="primary" icon="layout" onClick={() => runLayout(false)} loading={layout.isPending} disabled={!immichReady || (summary?.picked ?? 0) === 0} title={immichReady ? undefined : 'Connect Immich in Settings first'}>
+            Lay out pages
           </Button>
+        ) : (
+          <LinkButton to={reviewHref} variant="primary" icon="sparkles">
+            Select photos
+          </LinkButton>
         )}
       </PageHeader>
 
@@ -177,14 +191,23 @@ export function BookDetailPage() {
         ) : null}
         {!hasPages && !layout.isPending ? (
           <Note tone="accent">
-            {immichReady ? (
+            {!immichReady ? (
               <>
-                Nothing is laid out yet. <strong>Fetch photos &amp; lay out</strong> pulls the album{(b.rules?.sources.length ?? 0) > 1 ? 's' : ''} from Immich and places every photo in date order on the
-                template library. You can then swap, remove and reorder in the editor.
+                <Link to="/settings">Connect Immich in Settings</Link> before selecting photos for this book.
+              </>
+            ) : selecting ? (
+              <>
+                Photos are being scored right now. <Link to={reviewHref}>Watch the progress on the review page</Link>.
+              </>
+            ) : hasSelection ? (
+              <>
+                {formatNumber(summary?.picked)} of {formatNumber(summary?.total)} photos are picked. <Link to={reviewHref}>Review the picks</Link>, then <strong>Lay out pages</strong> places them
+                in date order on the template library.
               </>
             ) : (
               <>
-                <Link to="/settings">Connect Immich in Settings</Link> before laying out this book.
+                Nothing is selected yet. <strong>Select photos</strong> pulls the album{(b.rules?.sources.length ?? 0) > 1 ? 's' : ''} from Immich, scores every photo for sharpness, exposure,
+                people and composition, collapses bursts and picks about {formatNumber(targetPhotosFor(b.rules?.targetPages ?? 48))} for a {b.rules?.targetPages ?? 48}-page book. Every pick is explained and reversible.
               </>
             )}
           </Note>
@@ -262,6 +285,21 @@ export function BookDetailPage() {
                 </dd>
                 <dt>Sources</dt>
                 <dd>{describeSources(b)}</dd>
+                <dt>Selection</dt>
+                <dd>
+                  {summary ? (
+                    <>
+                      {formatNumber(summary.picked)} picked · {formatNumber(summary.alternates)} alternates · {formatNumber(summary.rejected)} rejected{' '}
+                      <Link to={reviewHref} className="small">
+                        Review
+                      </Link>
+                    </>
+                  ) : selecting ? (
+                    <span className="muted">running…</span>
+                  ) : (
+                    <span className="muted">not run yet</span>
+                  )}
+                </dd>
                 <dt>Created</dt>
                 <dd>{formatDateTime(b.createdAt)}</dd>
                 <dt>Updated</dt>
@@ -275,9 +313,9 @@ export function BookDetailPage() {
               <section className="card card--pad stack">
                 <div className="row row--between">
                   <h2 className="h2">Photos</h2>
-                  <Button size="sm" variant="ghost" icon="refresh" onClick={() => runLayout(true)} loading={layout.isPending} title="Fetch the album again from Immich and lay out afresh">
-                    Refetch from Immich
-                  </Button>
+                  <LinkButton size="sm" variant="ghost" icon="sparkles" to={reviewHref}>
+                    Review picks
+                  </LinkButton>
                 </div>
                 <div className="thumb-grid">
                   {photoList.slice(0, 40).map((a) => (

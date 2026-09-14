@@ -78,6 +78,11 @@ export class ImageStore {
     }
   }
 
+  /** Path of the cached Immich `preview` JPEG (downloaded on first use); the selection engine scores from it. */
+  preview(assetId: string): Promise<string> {
+    return this.limit(() => this.download(assetId, 'preview'));
+  }
+
   /** The best decodable source for a render kind: print wants originals, proof is happy with previews. */
   source(asset: BookAsset, kind: RenderKind): Promise<SourceImage> {
     const key = `${kind}:${asset.id}`;

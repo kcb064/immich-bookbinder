@@ -196,6 +196,9 @@ importers:
       '@bookbinder/pages':
         specifier: workspace:*
         version: link:../../packages/pages
+      '@bookbinder/scoring':
+        specifier: workspace:*
+        version: link:../../packages/scoring
       '@bookbinder/shared':
         specifier: workspace:*
         version: link:../../packages/shared

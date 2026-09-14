@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/Dashboard.tsx';
 import { BookDetailPage } from './pages/BookDetail.tsx';
 import { EditorPage } from './pages/Editor.tsx';
 import { NewBookPage } from './pages/NewBook.tsx';
+import { ReviewPage } from './pages/Review.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
 import { NotFoundPage } from './pages/NotFound.tsx';
 import { isApiError } from './lib/api.ts';
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       { index: true, Component: DashboardPage },
       { path: 'new', Component: NewBookPage },
       { path: 'books/:id', Component: BookDetailPage },
+      { path: 'books/:id/review', Component: ReviewPage },
       { path: 'settings', Component: SettingsPage },
       { path: '*', Component: NotFoundPage },
     ],

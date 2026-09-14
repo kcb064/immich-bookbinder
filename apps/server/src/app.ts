@@ -13,11 +13,14 @@ import { openDb } from './db/index.js';
 import { createImmichClient, type ImmichClient } from './immich/client.js';
 import { ChromiumRenderer } from './render/renderer.js';
 import { RenderService } from './render/service.js';
+import { SelectionService } from './selection/service.js';
+import { CandidateStore } from './selection/store.js';
 import { authRoutes } from './routes/auth.js';
 import { bookRoutes } from './routes/books.js';
 import { healthRoutes } from './routes/health.js';
 import { immichRoutes } from './routes/immich.js';
 import { publicRoutes } from './routes/public.js';
+import { selectionRoutes } from './routes/selection.js';
 import { settingsRoutes } from './routes/settings.js';
 import { staticRoutes } from './routes/static.js';
 import { SettingsStore } from './settings.js';
@@ -29,6 +32,8 @@ export interface BuildAppOptions {
   logger?: LoggerOption;
   /** Render tuning (tests use small batches and no web fonts). */
   render?: { batchSize?: number; webFonts?: boolean };
+  /** Selection tuning (tests cap the analysis workers). */
+  selection?: { concurrency?: number };
 }
 
 function loggerFor(config: Config): LoggerOption {
@@ -70,8 +75,22 @@ ${conn.apiKey}`;
   app.decorate('db', database.db);
   app.decorate('secrets', secrets);
   app.decorate('settings', settings);
+  const candidates = new CandidateStore(database.db);
   app.decorate('books', books);
+  app.decorate('candidates', candidates);
   app.decorate('immichClient', immichClient);
+  app.decorate(
+    'selections',
+    new SelectionService({
+      db: database.db,
+      store: books,
+      candidates,
+      client: immichClient,
+      cacheDir: config.cacheDir,
+      log: app.log,
+      ...(opts.selection?.concurrency !== undefined ? { concurrency: opts.selection.concurrency } : {}),
+    }),
+  );
   app.decorate(
     'renders',
     new RenderService({
@@ -123,6 +142,7 @@ ${conn.apiKey}`;
   await app.register(settingsRoutes);
   await app.register(immichRoutes);
   await app.register(bookRoutes);
+  await app.register(selectionRoutes);
   await app.register(publicRoutes);
   if (config.webDist) {
     await app.register(staticRoutes, { root: config.webDist });

@@ -27,6 +27,7 @@ describe('toBookAsset', () => {
       city: 'Lisbon',
       country: 'Portugal',
       isFavorite: true,
+      people: [],
       fileName: 'IMG_1.HEIC',
     });
   });

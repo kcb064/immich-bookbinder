@@ -1,4 +1,4 @@
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /** Key/value settings. Secret values are stored AES-256-GCM encrypted (see crypto.ts). */
 export const settings = sqliteTable('settings', {
@@ -63,8 +63,49 @@ export const renders = sqliteTable('renders', {
   finishedAt: text('finished_at'),
 });
 
+/**
+ * Selection-engine output per photo: the shared `Candidate` JSON in `data`, with the decision,
+ * cluster and composite score denormalized. Rows survive re-runs so user decisions and image
+ * analysis are kept; rows for photos no longer in book_assets are pruned.
+ */
+export const candidates = sqliteTable(
+  'candidates',
+  {
+    bookId: text('book_id')
+      .notNull()
+      .references(() => books.id, { onDelete: 'cascade' }),
+    assetId: text('asset_id').notNull(),
+    decision: text('decision').notNull(),
+    clusterId: text('cluster_id'),
+    composite: real('composite').notNull().default(0),
+    data: text('data').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.assetId] })],
+);
+
+/** Selection jobs (gather, analyse previews, fetch faces, pick); one row per run. */
+export const selectionRuns = sqliteTable('selection_runs', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id')
+    .notNull()
+    .references(() => books.id, { onDelete: 'cascade' }),
+  status: text('status').notNull(),
+  phase: text('phase').notNull().default('queued'),
+  total: integer('total').notNull().default(0),
+  done: integer('done').notNull().default(0),
+  /** JSON array of strings. */
+  warnings: text('warnings').notNull().default('[]'),
+  error: text('error'),
+  createdAt: text('created_at').notNull(),
+  startedAt: text('started_at'),
+  finishedAt: text('finished_at'),
+});
+
 export type SettingRow = typeof settings.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type BookRow = typeof books.$inferSelect;
 export type BookAssetRow = typeof bookAssets.$inferSelect;
 export type RenderRow = typeof renders.$inferSelect;
+export type CandidateRow = typeof candidates.$inferSelect;
+export type SelectionRunRow = typeof selectionRuns.$inferSelect;

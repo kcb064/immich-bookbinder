@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { Book, BookAsset, ImmichStatus, RenderJob, SettingsView } from '@bookbinder/shared';
-import type { ImmichConnectionInput, RenderKind, SelectionRules } from '@bookbinder/shared';
+import { Book, BookAsset, ImmichStatus, RenderJob, SelectionRun, SelectionView, SettingsView } from '@bookbinder/shared';
+import type { DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -63,6 +63,7 @@ export const keys = {
   book: (id: string) => ['books', id] as const,
   bookAssets: (id: string) => ['books', id, 'assets'] as const,
   renders: (id: string) => ['books', id, 'renders'] as const,
+  selection: (id: string) => ['books', id, 'selection'] as const,
 };
 
 /* ---------- Auth ---------- */
@@ -258,6 +259,57 @@ export function useSaveBook(id: string) {
     mutationFn: (book: Book) => put(`/api/books/${encodeURIComponent(id)}`, book, Book),
     onSuccess: async (book) => {
       qc.setQueryData(keys.book(id), book);
+      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
+    },
+  });
+}
+
+/* ---------- Selection (M2) ---------- */
+
+const ACTIVE_RUN = new Set(['queued', 'running']);
+
+export function isActiveRun(run: SelectionRun | undefined): boolean {
+  return Boolean(run && ACTIVE_RUN.has(run.status));
+}
+
+/** Candidates, summary and the latest run; polls while a run is queued or running. */
+export function useSelection(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.selection(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/selection`, SelectionView, signal),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (isActiveRun(query.state.data?.run) ? 700 : false),
+  });
+}
+
+export interface StartSelectionInput {
+  refetch?: boolean;
+  rules?: SelectionRules;
+}
+
+/** Queues a selection run (optionally saving new rules first). The selection query then polls it. */
+export function useStartSelection(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StartSelectionInput = {}) => post(`/api/books/${encodeURIComponent(id)}/selection/runs`, input, SelectionRun),
+    onSuccess: async (run, input) => {
+      qc.setQueryData<SelectionView>(keys.selection(id), (prev) => ({ candidates: prev?.candidates ?? [], ...(prev?.summary ? { summary: prev.summary } : {}), run }));
+      const tasks: Promise<unknown>[] = [qc.invalidateQueries({ queryKey: keys.selection(id) })];
+      if (input.rules) tasks.push(qc.invalidateQueries({ queryKey: keys.book(id) }));
+      if (input.refetch) tasks.push(qc.invalidateQueries({ queryKey: keys.bookAssets(id) }));
+      await Promise.all(tasks);
+    },
+  });
+}
+
+/** user-in / user-out / auto for one or more photos; replaces the cached selection with the server's answer. */
+export function useSetDecisions(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (decisions: Array<{ assetId: string; decision: DecisionChoice }>) =>
+      put(`/api/books/${encodeURIComponent(id)}/selection/decisions`, { decisions }, SelectionView),
+    onSuccess: async (view) => {
+      qc.setQueryData(keys.selection(id), view);
       await qc.invalidateQueries({ queryKey: keys.books, exact: true });
     },
   });

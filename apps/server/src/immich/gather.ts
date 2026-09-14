@@ -33,6 +33,8 @@ export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
   const ratio = width && height ? width / height : 1.5;
 
   const takenAt = exif?.dateTimeOriginal ?? a.fileCreatedAt;
+  const rating = typeof exif?.rating === 'number' && exif.rating >= 1 && exif.rating <= 5 ? Math.round(exif.rating) : undefined;
+  const people = (a.people ?? []).filter((p) => !p.isHidden).map((p) => ({ id: p.id, name: p.name ?? '' }));
   return {
     id: a.id,
     ...(takenAt ? { takenAt } : {}),
@@ -43,6 +45,9 @@ export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
     ...(clean(exif?.country) ? { country: clean(exif?.country)! } : {}),
     ...(clean(exif?.description) ? { description: clean(exif?.description)! } : {}),
     isFavorite: a.isFavorite,
+    ...(rating !== undefined ? { rating } : {}),
+    people,
+    ...(a.duplicateId ? { duplicateId: a.duplicateId } : {}),
     ...(a.originalFileName ? { fileName: a.originalFileName } : {}),
   };
 }
@@ -51,9 +56,9 @@ async function fromSource(client: ImmichClient, source: SelectionSource, warning
   switch (source.kind) {
     case 'album':
       // Immich 3.2 dropped assets[] from GET /albums/:id; album contents come from the metadata search.
-      return client.searchMetadataAll({ albumIds: [...source.albumIds], type: 'IMAGE', withExif: true, withStacked: true, size: 1000 });
+      return client.searchMetadataAll({ albumIds: [...source.albumIds], type: 'IMAGE', withExif: true, withPeople: true, withStacked: true, size: 1000 });
     case 'favorites':
-      return client.searchMetadataAll({ isFavorite: true, type: 'IMAGE', withExif: true, withStacked: true, size: 1000 });
+      return client.searchMetadataAll({ isFavorite: true, type: 'IMAGE', withExif: true, withPeople: true, withStacked: true, size: 1000 });
     case 'trip':
     case 'people':
     case 'smart':

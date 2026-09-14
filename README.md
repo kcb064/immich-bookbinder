@@ -2,12 +2,12 @@
 
 Turn an [Immich](https://immich.app) library into printed photo books. immich-bookbinder runs next to your Immich server, picks the photos worth printing, lays them out on real page templates, renders print-ready PDFs with Chromium, publishes a web viewer you can share, and orders hardcover copies through the Lulu Print API. One container, one language (TypeScript), no cloud services except the printer you choose.
 
-> **Status: early development (M1).** You can connect Immich, pick an album, get a chronological automatic layout on the template library, tweak it in the editor (swap, remove, reorder, captions, templates) and download a proof or 300 ppi print PDF. Photo scoring, trips, people, covers, the public viewer and Lulu ordering are still being built milestone by milestone (see the roadmap).
+> **Status: early development (M2).** You can connect Immich, pick an album, have every photo scored and de-duplicated, review why each one is in or out (and overrule it), get a chronological automatic layout of the picks on the template library, tweak it in the editor (swap, remove, reorder, captions, templates) and download a proof or 300 ppi print PDF. Trips, people, covers, the public viewer and Lulu ordering are still being built milestone by milestone (see the roadmap).
 
 ## What it does
 
 - **Sources.** Start a book from an album; from a trip (date range plus a place, detected from Immich's map markers); from people and pets (named faces, or a saved smart-search query for a pet); or from a free-text smart search.
-- **Scoring and de-duplication.** Every candidate is scored for sharpness, exposure, faces and (optionally) aesthetics; bursts and near-duplicates collapse to the best frame using Immich's duplicate groups and a perceptual hash. Every in/out decision is explained and reversible.
+- **Scoring and de-duplication.** Every candidate is scored for sharpness, exposure, people and a simple aesthetic proxy; bursts and near-duplicates collapse to the best frame using Immich's duplicate groups and a perceptual hash; the picker spreads the book across days and places. Every in/out decision is explained on the review page and reversible with one click. Details in [docs/selection.md](docs/selection.md).
 - **Automatic layout.** Chronological pagination into chapters (by day and place) using a template library in the warm editorial style: off-white paper, serif titles, big place-and-date typography, magazine grids. Swap, crop, caption and reorder afterwards.
 - **Print-ready PDFs.** Chromium's print engine produces interior and cover PDFs with bleed, gutter safety, embedded fonts and 300 ppi images, using Lulu format presets (8.5 in square by default, plus letter, A4, 9x7 and 7.5 in square) or a borderless home-print preset.
 - **Shareable web viewer.** A tokenised public link shows the finished book as spreads, with optional expiry, password and PDF download. Immich itself is never exposed.
@@ -33,7 +33,7 @@ Full instructions, Cloudflare Tunnel and Access notes, backups and updates: [doc
 | D0 design | App UI and book template canvases; decisions in `docs/design.md` | done |
 | M0 scaffold | pnpm workspace, Fastify + Vite, SQLite via drizzle, admin login, Immich connection test, Dockerfile, compose, CI, first GHCR image | done |
 | M1 album to PDF | Album source, chronological auto-pagination on the template library, page editor (swap, remove, reorder, template, caption, undo), Chromium proof and print PDFs | done |
-| M2 selection engine | Scoring, near-duplicate collapse, diversity picking, explainable in/out UI, alternates tray, weight presets | planned |
+| M2 selection engine | Scoring (sharpness, exposure, aesthetic proxy, people), near-duplicate collapse, diversity picking, explainable in/out review page, alternates, weight presets | done |
 | M3 trips, people, pets | Date range + geo clustering, trip suggestions, person filters, pet as smart query, face-aware crops, chapter openers | planned |
 | M4 print-ready + viewer | Vendor presets, bleed/trim/spine, cover PDF, 300 ppi checks, public token viewer | planned |
 | M5 Lulu ordering | Sandbox flow end to end, cost quote, public PDF URLs, order tracking | planned |
@@ -47,7 +47,7 @@ The two Claude Design canvases are the visual spec; decisions and page geometry 
 - App UI (dashboard, new-book wizard, selection review, editor, viewer, order flow): https://claude.ai/code/artifact/e8dfd26e-db6d-4e3f-909b-e51dc6739dc3
 - Book templates at real trim size (cover spread, chapter opener, interior templates, both styles): https://claude.ai/code/artifact/7847f459-736f-45be-a2b4-55e1cc246f44
 
-Print geometry and PDF rules: [docs/print-specs.md](docs/print-specs.md). Lulu account and SKU notes: [docs/lulu-setup.md](docs/lulu-setup.md).
+Print geometry and PDF rules: [docs/print-specs.md](docs/print-specs.md). How photos are scored, de-duplicated and picked: [docs/selection.md](docs/selection.md). Lulu account and SKU notes: [docs/lulu-setup.md](docs/lulu-setup.md).
 
 ## Development
 

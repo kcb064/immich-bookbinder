@@ -204,7 +204,7 @@ export function NewBookPage() {
         themeId: DEFAULT_THEME_ID,
         rules: { sources: [{ kind: 'album', albumIds }], targetPages: TARGET_PAGES },
       },
-      { onSuccess: (book) => navigate(`/books/${encodeURIComponent(book.id)}`) },
+      { onSuccess: (book) => navigate(`/books/${encodeURIComponent(book.id)}/review`) },
     );
   };
 
@@ -342,7 +342,7 @@ export function NewBookPage() {
               </div>
               <div className="divider" />
               <div className="muted small" style={{ lineHeight: 1.5 }}>
-                You can change every pick later. Nothing is fetched from Immich until you continue.
+                Creating the book fetches the album and scores every photo; the review page then shows what is in, what is out and why. You can change every pick.
               </div>
             </div>
             {create.isError ? (

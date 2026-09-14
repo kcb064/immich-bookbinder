@@ -1,8 +1,9 @@
 import type { Book, BookAsset } from '@bookbinder/shared';
-import { FORMAT_PRESETS } from '@bookbinder/shared';
+import { FORMAT_PRESETS, isPicked } from '@bookbinder/shared';
 import { paginate } from '@bookbinder/layout';
 import type { ImmichClient } from '../immich/client.js';
 import { gatherAssets } from '../immich/gather.js';
+import type { CandidateStore } from '../selection/store.js';
 import type { BookStore } from './store.js';
 
 export interface LayoutOptions {
@@ -28,10 +29,12 @@ export class LayoutError extends Error {
 
 /**
  * Gathers the book's photos (from Immich or the stored list) and lays them out chronologically on
- * the template library, replacing any existing pages. The book moves to `editing`.
+ * the template library, replacing any existing pages. When the selection engine has run, only the
+ * picked photos are placed and their scores steer hero slots; otherwise every photo goes in (M1).
+ * The book moves to `editing`.
  */
 export async function layoutBook(
-  deps: { store: BookStore; client: () => ImmichClient | undefined },
+  deps: { store: BookStore; candidates: CandidateStore; client: () => ImmichClient | undefined },
   book: Book,
   opts: LayoutOptions = {},
 ): Promise<LayoutResult> {
@@ -48,11 +51,22 @@ export async function layoutBook(
     warnings.push(...gathered.warnings);
     assets = gathered.assets;
     deps.store.replaceAssets(book.id, assets);
+    deps.candidates.prune(book.id, assets.map((a) => a.id));
   }
   if (assets.length === 0) throw new LayoutError('No photos were found for this book. Check its albums in Immich.', 422);
 
+  const candidates = deps.candidates.map(book.id);
+  let photos = assets;
+  if (candidates.size > 0) {
+    photos = assets.filter((a) => {
+      const c = candidates.get(a.id);
+      return c ? isPicked(c) : false;
+    });
+    if (photos.length === 0) throw new LayoutError('No photos are picked. Keep at least one photo on the review page before laying out.', 422);
+  }
+
   const result = paginate(
-    assets.map((a) => ({ id: a.id, ratio: a.ratio, takenAt: a.takenAt })),
+    photos.map((a) => ({ id: a.id, ratio: a.ratio, takenAt: a.takenAt, score: candidates.get(a.id)?.scores.composite })),
     { format, targetPages: book.rules.targetPages },
   );
   warnings.push(...result.warnings);

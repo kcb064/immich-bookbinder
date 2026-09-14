@@ -6,9 +6,18 @@
  *   corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80
  *
  * Then in the app's Settings use http://127.0.0.1:2283 and any API key of 10+ characters.
+ *
+ * The generated library exercises the selection engine: every tenth photo is followed by two
+ * near-identical burst frames (same scene, seconds apart), some photos are blurred, some show
+ * recognised people (with face boxes from /faces), and one pair is flagged as an Immich duplicate group.
  */
 import Fastify, { type FastifyInstance } from 'fastify';
 import sharp from 'sharp';
+
+export interface FakePerson {
+  id: string;
+  name: string;
+}
 
 export interface FakeAsset {
   id: string;
@@ -25,6 +34,14 @@ export interface FakeAsset {
   stackPrimaryId?: string;
   orientation?: string;
   hue: number;
+  /** Big label drawn on the image; defaults to the asset number. Burst frames share their parent's. */
+  label?: string;
+  /** Burst frame k (1, 2) of a parent photo: same scene, the subject moved a little. */
+  burst?: number;
+  blurry?: boolean;
+  rating?: number;
+  people?: FakePerson[];
+  duplicateId?: string;
 }
 
 export interface FakeImmichOptions {
@@ -43,6 +60,7 @@ export interface FakeImmich {
   app: FastifyInstance;
   assets: FakeAsset[];
   albums: { id: string; name: string }[];
+  people: FakePerson[];
   /** Requests seen, oldest first. */
   requests: { method: string; path: string }[];
   close(): Promise<void>;
@@ -59,27 +77,44 @@ const SHAPES: Array<[number, number]> = [
   [3, 2],
 ];
 const CITIES = ['Lisbon', 'Sintra', 'Porto', 'Pinhão'];
+export const FAKE_PEOPLE: FakePerson[] = [
+  { id: 'person-kevin', name: 'Kevin' },
+  { id: 'person-sam', name: 'Sam' },
+];
 
 export function makeFakeAssets(n: number, longEdge = 1800): FakeAsset[] {
   const out: FakeAsset[] = [];
   for (let i = 0; i < n; i++) {
-    const [rw, rh] = SHAPES[(i * 5) % SHAPES.length]!;
+    // Burst frames (i % 10 in {5, 6}) copy the previous "parent" photo (i % 10 === 4).
+    const burst = i % 10 === 5 ? 1 : i % 10 === 6 ? 2 : 0;
+    const parent = burst ? i - burst : i;
+    const [rw, rh] = SHAPES[(parent * 5) % SHAPES.length]!;
     const scale = longEdge / Math.max(rw, rh);
-    const day = Math.floor(i / 12);
+    const day = Math.floor(parent / 12);
     const albumIds = ['album-trip'];
     if (i % 4 === 0) albumIds.push('album-best');
+    const base = Date.UTC(2026, 4, 12 + day, 8 + (parent % 12), (parent * 7) % 60);
+    const people: FakePerson[] = [];
+    if (parent % 3 === 0) people.push(FAKE_PEOPLE[0]!);
+    if (parent % 7 === 0) people.push(FAKE_PEOPLE[1]!);
     out.push({
       id: `asset-${String(i).padStart(4, '0')}`,
       fileName: `IMG_${4000 + i}.JPG`,
       width: Math.round(rw * scale),
       height: Math.round(rh * scale),
-      takenAt: new Date(Date.UTC(2026, 4, 12 + day, 8 + (i % 12), (i * 7) % 60)).toISOString(),
+      takenAt: new Date(base + burst * 4500).toISOString(),
       city: CITIES[day % CITIES.length]!,
       country: 'Portugal',
       ...(i % 9 === 0 ? { description: `Photo ${i}: ${CITIES[day % CITIES.length]} at ${8 + (i % 12)}h` } : {}),
       isFavorite: i % 5 === 0,
       albumIds,
-      hue: (i * 47) % 360,
+      hue: (parent * 47) % 360,
+      ...(burst ? { burst, label: `#${String(parent).padStart(4, '0')}` } : {}),
+      ...(i % 13 === 7 ? { blurry: true } : {}),
+      ...(i % 11 === 3 ? { rating: 5 } : {}),
+      ...(people.length ? { people } : {}),
+      // One Immich duplicate group per 25 photos, on two frames that are otherwise unrelated.
+      ...(i % 25 === 8 || i % 25 === 9 ? { duplicateId: `dup-${Math.floor(i / 25)}` } : {}),
     });
   }
   return out;
@@ -89,21 +124,74 @@ function hsl(h: number, s: number, l: number): string {
   return `hsl(${h} ${s}% ${l}%)`;
 }
 
-/** A recognisable test photo: gradient, big index label, and a tick mark at the focal corner. */
+/** Per-scene composition derived from the parent photo's number, so different photos hash differently. */
+function composition(a: FakeAsset) {
+  const n = Number(a.id.replace('asset-', '')) - (a.burst ?? 0);
+  const rnd = (k: number): number => ((n * 9301 + k * 49297) % 233280) / 233280;
+  const shift = (a.burst ?? 0) * 0.015;
+  return {
+    sunX: 0.15 + rnd(1) * 0.7 + shift,
+    sunY: 0.12 + rnd(2) * 0.4,
+    sunR: 0.06 + rnd(3) * 0.06,
+    horizon: 0.5 + rnd(4) * 0.3,
+    wave: (rnd(5) - 0.5) * 0.3,
+    blockX: rnd(6) * 0.8,
+    blockW: 0.1 + rnd(7) * 0.3,
+    blockH: 0.1 + rnd(8) * 0.35,
+    dark: rnd(9) > 0.5,
+    labelY: 0.3 + rnd(10) * 0.4,
+    /** Gradient direction: one of eight compass directions. */
+    dir: Math.floor(rnd(11) * 8),
+    moonX: rnd(12),
+    moonY: rnd(13) * 0.6,
+    moonR: 0.1 + rnd(14) * 0.2,
+    bandY: rnd(15) * 0.8,
+    bandH: 0.05 + rnd(16) * 0.2,
+  };
+}
+const DIRS: Array<[number, number, number, number]> = [
+  [0, 0, 0, 1],
+  [0, 0, 1, 1],
+  [0, 0, 1, 0],
+  [0, 1, 1, 0],
+  [0, 1, 0, 0],
+  [1, 1, 0, 0],
+  [1, 0, 0, 0],
+  [1, 0, 0, 1],
+];
+
+/** Fractions of the frame where the fake face sits (matches the drawn "sun" circle). */
+export function fakeFaceBox(a: FakeAsset): { x: number; y: number; w: number; h: number } {
+  const c = composition(a);
+  const r = Math.min(a.width, a.height) * c.sunR;
+  return { x: c.sunX - r / a.width, y: c.sunY - r / a.height, w: (2 * r) / a.width, h: (2 * r) / a.height };
+}
+
+/** A recognisable test photo: gradient, big index label, a "sun" circle where the face is, a block and a wave. */
 export async function renderFakeJpeg(a: FakeAsset, longEdge: number, quality = 82): Promise<Buffer> {
   const scale = longEdge / Math.max(a.width, a.height);
   const w = Math.max(16, Math.round(a.width * scale));
   const h = Math.max(16, Math.round(a.height * scale));
-  const label = a.id.replace('asset-', '#');
+  const label = a.label ?? a.id.replace('asset-', '#');
+  const c = composition(a);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hsl(a.hue, 45, 78)}"/><stop offset="0.6" stop-color="${hsl(a.hue, 50, 48)}"/><stop offset="1" stop-color="${hsl(a.hue, 40, 22)}"/></linearGradient></defs>
+  <defs><linearGradient id="g" x1="${DIRS[c.dir]![0]}" y1="${DIRS[c.dir]![1]}" x2="${DIRS[c.dir]![2]}" y2="${DIRS[c.dir]![3]}"><stop offset="0" stop-color="${hsl(a.hue, 45, c.dark ? 30 : 78)}"/><stop offset="0.6" stop-color="${hsl(a.hue, 50, 48)}"/><stop offset="1" stop-color="${hsl(a.hue, 40, c.dark ? 70 : 22)}"/></linearGradient></defs>
   <rect width="100%" height="100%" fill="url(#g)"/>
-  <circle cx="${w * 0.7}" cy="${h * 0.3}" r="${Math.min(w, h) * 0.08}" fill="rgba(255,240,210,0.85)"/>
-  <path d="M0 ${h * 0.72} Q ${w * 0.25} ${h * 0.55} ${w * 0.5} ${h * 0.68} T ${w} ${h * 0.6} V ${h} H 0 Z" fill="rgba(10,20,25,0.45)"/>
-  <text x="${w / 2}" y="${h / 2}" font-family="Arial, sans-serif" font-size="${Math.min(w, h) * 0.22}" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle" dominant-baseline="middle">${label}</text>
-  <text x="${w / 2}" y="${h / 2 + Math.min(w, h) * 0.16}" font-family="Arial, sans-serif" font-size="${Math.min(w, h) * 0.07}" fill="rgba(255,255,255,0.8)" text-anchor="middle">${a.width}×${a.height} · ${a.city ?? ''}</text>
+  <circle cx="${w * c.moonX}" cy="${h * c.moonY}" r="${Math.min(w, h) * c.moonR}" fill="${hsl((a.hue + 180) % 360, 40, c.dark ? 75 : 25)}" opacity="0.7"/>
+  <rect x="0" y="${h * c.bandY}" width="${w}" height="${h * c.bandH}" fill="${hsl((a.hue + 90) % 360, 35, c.dark ? 80 : 20)}" opacity="0.6"/>
+  <circle cx="${w * c.sunX}" cy="${h * c.sunY}" r="${Math.min(w, h) * c.sunR}" fill="rgba(255,240,210,0.85)"/>
+  <rect x="${w * c.blockX}" y="${h * (c.horizon - c.blockH)}" width="${w * c.blockW}" height="${h * c.blockH}" fill="rgba(20,30,40,0.55)"/>
+  <path d="M0 ${h * (c.horizon + 0.05)} Q ${w * 0.25} ${h * (c.horizon + c.wave)} ${w * 0.5} ${h * c.horizon} T ${w} ${h * (c.horizon - c.wave)} V ${h} H 0 Z" fill="rgba(10,20,25,0.45)"/>
+  <text x="${w / 2}" y="${h * c.labelY}" font-family="Arial, sans-serif" font-size="${Math.min(w, h) * 0.22}" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="middle" dominant-baseline="middle">${label}</text>
+  <text x="${w / 2}" y="${h * c.labelY + Math.min(w, h) * 0.16}" font-family="Arial, sans-serif" font-size="${Math.min(w, h) * 0.07}" fill="rgba(255,255,255,0.8)" text-anchor="middle">${a.width}×${a.height} · ${a.city ?? ''}</text>
 </svg>`;
-  return sharp(Buffer.from(svg)).jpeg({ quality }).toBuffer();
+  let img = sharp(Buffer.from(svg));
+  if (a.blurry) img = img.blur(Math.max(3, longEdge / 120));
+  return img.jpeg({ quality }).toBuffer();
+}
+
+function personDto(p: FakePerson) {
+  return { id: p.id, name: p.name, birthDate: null, thumbnailPath: '', isHidden: false, isFavorite: false, updatedAt: '2026-01-01T00:00:00.000Z', color: null };
 }
 
 function assetDto(a: FakeAsset) {
@@ -156,11 +244,11 @@ function assetDto(a: FakeAsset) {
       country: a.country ?? null,
       description: a.description ?? '',
       projectionType: null,
-      rating: null,
+      rating: a.rating ?? null,
     },
-    people: [],
+    people: (a.people ?? []).map(personDto),
     tags: [],
-    duplicateId: null,
+    duplicateId: a.duplicateId ?? null,
     stack: a.stackPrimaryId ? { id: `stack-${a.stackPrimaryId}`, primaryAssetId: a.stackPrimaryId, assetCount: 2 } : null,
     resized: true,
   };
@@ -227,7 +315,13 @@ export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<Fak
     if (!al) return reply.code(400).send({ message: 'Not found or no album.read access', statusCode: 400 });
     return albumDto(al);
   });
-  app.get('/api/people', async () => ({ people: [], total: 0, hidden: 0, hasNextPage: false }));
+  app.get('/api/people', async () => ({ people: FAKE_PEOPLE.map(personDto), total: FAKE_PEOPLE.length, hidden: 0, hasNextPage: false }));
+  app.get<{ Params: { id: string } }>('/api/people/:id/thumbnail', async (req, reply) => {
+    const person = FAKE_PEOPLE.find((p) => p.id === req.params.id);
+    if (!person) return reply.code(404).send({ message: 'Not found', statusCode: 404 });
+    const first = assets.find((a) => a.people?.some((p) => p.id === person.id)) ?? assets[0]!;
+    return reply.type('image/jpeg').send(await image(first, 250));
+  });
   // Metadata search with the 3.2 cursor paging; pages are capped at 10 so callers must follow nextCursor.
   app.post<{ Body: { isFavorite?: boolean; albumIds?: string[]; size?: number; cursor?: string; type?: string } }>('/api/search/metadata', async (req) => {
     const body = req.body ?? {};
@@ -258,23 +352,42 @@ export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<Fak
     if (!a) return reply.code(404).send({ message: 'Not found', statusCode: 404 });
     return reply.type('image/jpeg').send(await image(a, longEdge));
   });
-  app.get('/api/faces', async () => []);
-  app.get('/api/duplicates', async () => []);
+  app.get<{ Querystring: { id?: string } }>('/api/faces', async (req, reply) => {
+    const a = req.query.id ? byId.get(req.query.id) : undefined;
+    if (!a) return reply.code(400).send({ message: 'id must be a UUID', statusCode: 400 });
+    const box = fakeFaceBox(a);
+    return (a.people ?? []).map((p, i) => ({
+      id: `face-${a.id}-${i}`,
+      imageWidth: a.width,
+      imageHeight: a.height,
+      boundingBoxX1: Math.round((box.x + i * 0.12) * a.width),
+      boundingBoxY1: Math.round(box.y * a.height),
+      boundingBoxX2: Math.round((box.x + i * 0.12 + box.w) * a.width),
+      boundingBoxY2: Math.round((box.y + box.h) * a.height),
+      person: personDto(p),
+      sourceType: 'machine-learning',
+    }));
+  });
+  app.get('/api/duplicates', async () => {
+    const groups = new Map<string, FakeAsset[]>();
+    for (const a of assets) if (a.duplicateId) groups.set(a.duplicateId, [...(groups.get(a.duplicateId) ?? []), a]);
+    return [...groups.entries()].map(([duplicateId, members]) => ({ duplicateId, assets: members.map(assetDto), suggestedKeepAssetIds: [members[0]!.id] }));
+  });
   app.get('/api/tags', async () => []);
   app.get('/api/timeline/buckets', async () => []);
   app.get('/api/map/markers', async () => []);
 
   const url = await app.listen({ port: opts.port ?? 0, host: opts.host ?? '127.0.0.1' });
-  return { url, app, assets, albums, requests, close: () => app.close() };
+  return { url, app, assets, albums, people: FAKE_PEOPLE, requests, close: () => app.close() };
 }
 
-// Run directly: node/tsx src/test/fake-immich.ts [--port N] [--photos N]
+// Run directly: node/tsx src/test/fake-immich.ts [--port N] [--photos N] [--edge N]; PORT in the environment also sets the port.
 if (process.argv[1] && /fake-immich\.[tj]s$/.test(process.argv[1])) {
   const arg = (name: string, fallback: number): number => {
     const i = process.argv.indexOf(`--${name}`);
     return i > 0 ? Number(process.argv[i + 1]) : fallback;
   };
-  startFakeImmich({ port: arg('port', 2283), photos: arg('photos', 80), originalLongEdge: arg('edge', 2400), logger: true })
+  startFakeImmich({ port: arg('port', Number(process.env['PORT']) || 2283), photos: arg('photos', 80), originalLongEdge: arg('edge', 2400), logger: true })
     .then((s) => console.log(`fake Immich listening at ${s.url} with ${s.assets.length} photos in ${s.albums.length} albums`))
     .catch((err) => {
       console.error(err);

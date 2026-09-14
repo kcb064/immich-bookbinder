@@ -5,6 +5,8 @@ import type { SecretBox } from './crypto.js';
 import type { Db } from './db/index.js';
 import type { ImmichClient } from './immich/client.js';
 import type { RenderService } from './render/service.js';
+import type { SelectionService } from './selection/service.js';
+import type { CandidateStore } from './selection/store.js';
 import type { SettingsStore } from './settings.js';
 
 declare module 'fastify' {
@@ -15,6 +17,8 @@ declare module 'fastify' {
     settings: SettingsStore;
     books: BookStore;
     renders: RenderService;
+    candidates: CandidateStore;
+    selections: SelectionService;
     /** Client for the stored Immich connection, or undefined until Settings has a URL and key. */
     immichClient: () => ImmichClient | undefined;
   }

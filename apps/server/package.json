@@ -19,6 +19,7 @@
   "dependencies": {
     "@bookbinder/layout": "workspace:*",
     "@bookbinder/pages": "workspace:*",
+    "@bookbinder/scoring": "workspace:*",
     "@bookbinder/shared": "workspace:*",
     "@fastify/cookie": "^11.1.2",
     "@fastify/helmet": "^13.1.1",

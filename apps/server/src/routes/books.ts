@@ -108,7 +108,7 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     const book = store.get(params.data.id);
     if (!book) return reply.notFound('Book not found');
     try {
-      const result = await layoutBook({ store, client: () => app.immichClient() }, book, { refetch: body.data.refetch });
+      const result = await layoutBook({ store, candidates: app.candidates, client: () => app.immichClient() }, book, { refetch: body.data.refetch });
       return { book: result.book, warnings: result.warnings, photoCount: result.assets.length };
     } catch (err) {
       if (err instanceof LayoutError) {

@@ -8,6 +8,8 @@ export interface PhotoInput {
   /** Width / height. */
   ratio: number;
   takenAt?: string | undefined;
+  /** Composite selection score 0..1 (M2); higher scores are steered to hero slots. */
+  score?: number | undefined;
 }
 
 export interface PaginateOptions {
@@ -58,9 +60,14 @@ export function aspectCost(ratio: number, slot: SlotSpec): number {
   return best;
 }
 
+/** Extra cost of putting a high-scoring photo in a low-importance slot (per importance step). */
+const SCORE_SLOT_COST = 0.08;
+
 /**
- * Assigns photos to a template's photo slots minimizing total aspect mismatch. Tries every permutation
- * (templates hold at most six photos, so 720 candidates) and returns the slot contents plus the mean cost.
+ * Assigns photos to a template's photo slots minimizing total aspect mismatch, with a small tie-breaker
+ * that steers higher-scored photos (when scores are present) to higher-importance slots. Tries every
+ * permutation (templates hold at most six photos, so 720 candidates) and returns the slot contents
+ * plus the mean aspect cost (score steering does not count, so template choice stays aspect-driven).
  */
 export function assignPhotos(template: Template, photos: readonly PhotoInput[]): { slots: SlotContent[]; cost: number } {
   const slots = photoSlots(template);
@@ -68,7 +75,9 @@ export function assignPhotos(template: Template, photos: readonly PhotoInput[]):
   const n = slots.length;
   if (n === 0) return { slots: [], cost: 0 };
 
-  const cost = slots.map((s) => photos.map((p) => aspectCost(p.ratio, s)));
+  const aspect = slots.map((s) => photos.map((p) => aspectCost(p.ratio, s)));
+  const scored = photos.some((p) => p.score !== undefined);
+  const cost = slots.map((s, si) => photos.map((p, pi) => aspect[si]![pi]! + (scored ? SCORE_SLOT_COST * (3 - s.importance) * (p.score ?? 0.5) : 0)));
   let best: number[] = [];
   let bestCost = Number.POSITIVE_INFINITY;
   const order: number[] = [];
@@ -91,9 +100,11 @@ export function assignPhotos(template: Template, photos: readonly PhotoInput[]):
   };
   walk(0, 0);
 
+  let aspectTotal = 0;
+  for (let i = 0; i < n; i++) aspectTotal += aspect[i]![best[i] ?? i]!;
   return {
     slots: slots.map((s, i) => ({ slotId: s.id, assetId: photos[best[i] ?? i]!.id })),
-    cost: bestCost / n,
+    cost: aspectTotal / n,
   };
 }
 

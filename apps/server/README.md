@@ -14,7 +14,7 @@ Fastify 5 API for immich-bookbinder: admin auth, encrypted settings, Immich prox
 | `pnpm generate:immich` (root) | `openapi-typescript specs/immich-openapi.json` -> `src/immich/generated/immich.d.ts` (gitignored) |
 | `pnpm --filter @bookbinder/server db:generate` | drizzle-kit: new migration from `src/db/schema.ts` into `drizzle/` |
 | `pnpm --filter @bookbinder/server exec playwright install chromium-headless-shell` | one-time: the browser the PDF renderer launches (the Docker image has it) |
-| `pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80` | a stand-in Immich with generated photos for development without a real server |
+| `pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80` | a stand-in Immich with generated photos (bursts, blurred frames, two recognised people, a duplicate group) for development without a real server |
 
 ## Environment
 
@@ -58,7 +58,11 @@ Everything under `/api` except `/api/health` and `/api/auth/*` requires the `bb_
 | GET | `/api/books/:id` | | `Book` |
 | PUT | `/api/books/:id` | full `Book` | `Book` (server sets `updatedAt`, keeps `createdAt`) |
 | GET | `/api/books/:id/assets` | | `BookAsset[]` gathered for the book, chronological |
-| POST | `/api/books/:id/layout` | `{refetch?: boolean}` | `{book, warnings, photoCount}`: gathers the sources from Immich (or reuses the stored list), lays every photo out on the template library, status `editing`. 409 without Immich, 422 when nothing was found |
+| GET | `/api/books/:id/selection` | | `SelectionView` `{candidates, summary?, run?}` (see docs/selection.md) |
+| POST | `/api/books/:id/selection/runs` | `{refetch?, rules?}` | 202 `SelectionRun`; 409 without Immich; rules are saved on the book first |
+| GET | `/api/books/:id/selection/runs/:rid` | | `SelectionRun` with `phase`, `done`/`total`, `warnings` |
+| PUT | `/api/books/:id/selection/decisions` | `{decisions: [{assetId, decision: 'user-in' \| 'user-out' \| 'auto'}]}` | updated `SelectionView`; 409 while a run is active |
+| POST | `/api/books/:id/layout` | `{refetch?: boolean}` | `{book, warnings, photoCount}`: gathers the sources from Immich (or reuses the stored list), lays the picked photos (every photo when no selection has run) out on the template library, scores steering hero slots, status `editing`. 409 without Immich, 422 when nothing was found or nothing is picked |
 | GET | `/api/books/:id/renders` | | `RenderJob[]`, newest first |
 | POST | `/api/books/:id/renders` | `{kind: 'proof' \| 'print'}` | 202 `RenderJob` (queued; poll GET). 409 before the layout exists |
 | GET | `/api/books/:id/renders/:rid` | | `RenderJob` with `pagesDone/pagesTotal`, `warnings`, `downloadUrl` when done |

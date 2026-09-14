@@ -16,6 +16,7 @@ function fixtures(n: number): { assets: Map<string, BookAsset>; pages: Page[] } 
     const landscape = i % 3 !== 1;
     assets.set(`a${i}`, {
       id: `a${i}`,
+      people: [],
       takenAt: new Date(Date.UTC(2026, 4, 12 + Math.floor(i / 4), 10, i)).toISOString(),
       width: landscape ? 6000 : 4000,
       height: landscape ? 4000 : 6000,
@@ -46,7 +47,7 @@ describe('captions', () => {
   });
 
   it('prefers a description, then place · date', () => {
-    const base: BookAsset = { id: 'x', ratio: 1, isFavorite: false, city: 'Porto', country: 'Portugal', takenAt: '2026-05-16T09:00:00Z' };
+    const base: BookAsset = { id: 'x', ratio: 1, isFavorite: false, people: [], city: 'Porto', country: 'Portugal', takenAt: '2026-05-16T09:00:00Z' };
     expect(autoCaption([base])).toBe('Porto, Portugal · May 16, 2026');
     expect(autoCaption([{ ...base, description: '  Ribeira at dawn ' }])).toBe('Ribeira at dawn');
     expect(autoCaption([undefined])).toBe('');

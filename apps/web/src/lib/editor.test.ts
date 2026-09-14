@@ -19,7 +19,7 @@ import {
   userCaption,
 } from './editor.ts';
 
-const asset = (id: string, ratio = 1.5): BookAsset => ({ id, ratio, isFavorite: false });
+const asset = (id: string, ratio = 1.5): BookAsset => ({ id, ratio, isFavorite: false, people: [] });
 const assets = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, i) => asset(id, i % 2 ? 0.667 : 1.5));
 const ratios = ratiosOf(assets);
 
