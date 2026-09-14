@@ -10,6 +10,9 @@
  * The generated library exercises the selection engine: every tenth photo is followed by two
  * near-identical burst frames (same scene, seconds apart), some photos are blurred, some show
  * recognised people (with face boxes from /faces), and one pair is flagged as an Immich duplicate group.
+ * The trip photos (May 2026, four Portuguese towns, GPS on most) sit in albums; a second set of
+ * "home" photos (Austin, one every few days, plus a New Orleans weekend) is in no album, so trip
+ * detection has a home to compare against. Every sixth trip photo carries no GPS.
  */
 import Fastify, { type FastifyInstance } from 'fastify';
 import sharp from 'sharp';
@@ -26,7 +29,10 @@ export interface FakeAsset {
   height: number;
   takenAt: string;
   city?: string;
+  state?: string;
   country?: string;
+  lat?: number;
+  lon?: number;
   description?: string;
   isFavorite: boolean;
   albumIds: string[];
@@ -47,7 +53,10 @@ export interface FakeAsset {
 export interface FakeImmichOptions {
   port?: number;
   host?: string;
+  /** Trip photos (in the albums). */
   photos?: number;
+  /** Home photos outside any album (default: half the trip photos). */
+  homePhotos?: number;
   /** Long edge of the "original" files (default 1800 to keep tests quick). */
   originalLongEdge?: number;
   /** Require this API key (default: accept any key of 10+ characters). */
@@ -76,11 +85,32 @@ const SHAPES: Array<[number, number]> = [
   [3, 2],
   [3, 2],
 ];
+
+export interface FakePlace {
+  city: string;
+  state: string;
+  country: string;
+  lat: number;
+  lon: number;
+}
+export const FAKE_PLACES: Record<string, FakePlace> = {
+  Lisbon: { city: 'Lisbon', state: 'Lisboa', country: 'Portugal', lat: 38.72, lon: -9.14 },
+  Sintra: { city: 'Sintra', state: 'Lisboa', country: 'Portugal', lat: 38.8, lon: -9.39 },
+  Porto: { city: 'Porto', state: 'Porto', country: 'Portugal', lat: 41.15, lon: -8.61 },
+  Pinhão: { city: 'Pinhão', state: 'Vila Real', country: 'Portugal', lat: 41.19, lon: -7.54 },
+  Austin: { city: 'Austin', state: 'Texas', country: 'United States of America', lat: 30.27, lon: -97.74 },
+  'New Orleans': { city: 'New Orleans', state: 'Louisiana', country: 'United States of America', lat: 29.95, lon: -90.07 },
+};
 const CITIES = ['Lisbon', 'Sintra', 'Porto', 'Pinhão'];
 export const FAKE_PEOPLE: FakePerson[] = [
   { id: 'person-kevin', name: 'Kevin' },
   { id: 'person-sam', name: 'Sam' },
 ];
+
+/** A spot a few hundred metres to a few km from the town centre, deterministic per index. */
+function near(place: FakePlace, i: number): { lat: number; lon: number } {
+  return { lat: place.lat + (((i * 37) % 100) - 50) / 2500, lon: place.lon + (((i * 53) % 100) - 50) / 2000 };
+}
 
 export function makeFakeAssets(n: number, longEdge = 1800): FakeAsset[] {
   const out: FakeAsset[] = [];
@@ -97,15 +127,19 @@ export function makeFakeAssets(n: number, longEdge = 1800): FakeAsset[] {
     const people: FakePerson[] = [];
     if (parent % 3 === 0) people.push(FAKE_PEOPLE[0]!);
     if (parent % 7 === 0) people.push(FAKE_PEOPLE[1]!);
+    const place = FAKE_PLACES[CITIES[day % CITIES.length]!]!;
+    const gps = i % 6 !== 5;
     out.push({
       id: `asset-${String(i).padStart(4, '0')}`,
       fileName: `IMG_${4000 + i}.JPG`,
       width: Math.round(rw * scale),
       height: Math.round(rh * scale),
       takenAt: new Date(base + burst * 4500).toISOString(),
-      city: CITIES[day % CITIES.length]!,
-      country: 'Portugal',
-      ...(i % 9 === 0 ? { description: `Photo ${i}: ${CITIES[day % CITIES.length]} at ${8 + (i % 12)}h` } : {}),
+      city: place.city,
+      state: place.state,
+      country: place.country,
+      ...(gps ? near(place, parent) : {}),
+      ...(i % 9 === 0 ? { description: `Photo ${i}: ${place.city} at ${8 + (i % 12)}h` } : {}),
       isFavorite: i % 5 === 0,
       albumIds,
       hue: (parent * 47) % 360,
@@ -115,6 +149,36 @@ export function makeFakeAssets(n: number, longEdge = 1800): FakeAsset[] {
       ...(people.length ? { people } : {}),
       // One Immich duplicate group per 25 photos, on two frames that are otherwise unrelated.
       ...(i % 25 === 8 || i % 25 === 9 ? { duplicateId: `dup-${Math.floor(i / 25)}` } : {}),
+    });
+  }
+  return out;
+}
+
+/** Photos at home (Austin) every third day from January 2026, plus a New Orleans weekend in March; none in an album. */
+export function makeHomeAssets(startIndex: number, n: number, longEdge = 1800): FakeAsset[] {
+  const out: FakeAsset[] = [];
+  const weekend = Math.min(10, Math.max(0, n - 6));
+  for (let k = 0; k < n; k++) {
+    const i = startIndex + k;
+    const [rw, rh] = SHAPES[(i * 3) % SHAPES.length]!;
+    const scale = longEdge / Math.max(rw, rh);
+    const isWeekend = k < weekend;
+    const place = isWeekend ? FAKE_PLACES['New Orleans']! : FAKE_PLACES['Austin']!;
+    const takenAt = isWeekend ? Date.UTC(2026, 2, 14 + Math.floor(k / 5), 15 + (k % 5), 12 * k) : Date.UTC(2026, 0, 5 + (k - weekend) * 3, 18, (k * 11) % 60);
+    out.push({
+      id: `asset-${String(i).padStart(4, '0')}`,
+      fileName: `IMG_${4000 + i}.JPG`,
+      width: Math.round(rw * scale),
+      height: Math.round(rh * scale),
+      takenAt: new Date(takenAt).toISOString(),
+      city: place.city,
+      state: place.state,
+      country: place.country,
+      ...near(place, i),
+      isFavorite: k % 7 === 0,
+      albumIds: [],
+      hue: (i * 61) % 360,
+      ...(k % 4 === 0 ? { people: [FAKE_PEOPLE[1]!] } : {}),
     });
   }
   return out;
@@ -237,10 +301,10 @@ function assetDto(a: FakeAsset) {
       focalLength: 35,
       iso: 100,
       exposureTime: '1/250',
-      latitude: null,
-      longitude: null,
+      latitude: a.lat ?? null,
+      longitude: a.lon ?? null,
       city: a.city ?? null,
-      state: null,
+      state: a.state ?? null,
       country: a.country ?? null,
       description: a.description ?? '',
       projectionType: null,
@@ -254,9 +318,27 @@ function assetDto(a: FakeAsset) {
   };
 }
 
+function parseBBox(s: string | undefined): [number, number, number, number] | undefined {
+  if (!s) return undefined;
+  const parts = s.split(',').map(Number);
+  return parts.length === 4 && parts.every(Number.isFinite) ? (parts as [number, number, number, number]) : undefined;
+}
+const inBox = (a: FakeAsset, box: [number, number, number, number]): boolean => a.lat !== undefined && a.lon !== undefined && a.lon >= box[0] && a.lat >= box[1] && a.lon <= box[2] && a.lat <= box[3];
+
+/** Words of a smart query that appear in a photo's city, description or file name; crude but deterministic. */
+function smartRelevance(a: FakeAsset, query: string): number {
+  const hay = `${a.city ?? ''} ${a.state ?? ''} ${a.country ?? ''} ${a.description ?? ''} ${a.fileName} ${a.people?.map((p) => p.name).join(' ') ?? ''}`.toLowerCase();
+  const words = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
+  let score = 0;
+  for (const w of words) if (hay.includes(w)) score++;
+  return score;
+}
+
 export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<FakeImmich> {
   const longEdge = opts.originalLongEdge ?? 1800;
-  const assets = makeFakeAssets(opts.photos ?? 40, longEdge);
+  const tripCount = opts.photos ?? 40;
+  const trip = makeFakeAssets(tripCount, longEdge);
+  const assets = [...trip, ...makeHomeAssets(tripCount, opts.homePhotos ?? Math.ceil(tripCount / 2), longEdge)];
   const albums = [
     { id: 'album-trip', name: 'Portugal 2026' },
     { id: 'album-best', name: 'Best of Portugal' },
@@ -323,22 +405,46 @@ export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<Fak
     return reply.type('image/jpeg').send(await image(first, 250));
   });
   // Metadata search with the 3.2 cursor paging; pages are capped at 10 so callers must follow nextCursor.
-  app.post<{ Body: { isFavorite?: boolean; albumIds?: string[]; size?: number; cursor?: string; type?: string } }>('/api/search/metadata', async (req) => {
+  app.post<{ Body: { isFavorite?: boolean; albumIds?: string[]; personIds?: string[]; takenAfter?: string; takenBefore?: string; size?: number; cursor?: string; type?: string } }>(
+    '/api/search/metadata',
+    async (req) => {
+      const body = req.body ?? {};
+      const matching = assets.filter(
+        (a) =>
+          (body.isFavorite === undefined || a.isFavorite === body.isFavorite) &&
+          (body.albumIds === undefined || a.albumIds.some((id) => body.albumIds!.includes(id))) &&
+          (body.personIds === undefined || body.personIds.every((id) => a.people?.some((p) => p.id === id))) &&
+          (body.takenAfter === undefined || a.takenAt >= body.takenAfter) &&
+          (body.takenBefore === undefined || a.takenAt <= body.takenBefore) &&
+          (body.type === undefined || (a.type ?? 'IMAGE') === body.type),
+      );
+      const pageSize = Math.min(body.size ?? 250, 10);
+      const start = body.cursor ? Number(body.cursor) : 0;
+      const items = matching.slice(start, start + pageSize);
+      const next = start + pageSize < matching.length ? String(start + pageSize) : null;
+      return {
+        albums: { total: 0, count: 0, items: [], facets: [] },
+        assets: { total: matching.length, count: items.length, items: items.map(assetDto), facets: [], nextCursor: next, nextPage: null },
+      };
+    },
+  );
+  app.post<{ Body: { query?: string; queryAssetId?: string; size?: number } }>('/api/search/smart', async (req, reply) => {
     const body = req.body ?? {};
-    const matching = assets.filter(
-      (a) =>
-        (body.isFavorite === undefined || a.isFavorite === body.isFavorite) &&
-        (body.albumIds === undefined || a.albumIds.some((id) => body.albumIds!.includes(id))) &&
-        (body.type === undefined || (a.type ?? 'IMAGE') === body.type),
-    );
-    const pageSize = Math.min(body.size ?? 250, 10);
-    const start = body.cursor ? Number(body.cursor) : 0;
-    const items = matching.slice(start, start + pageSize);
-    const next = start + pageSize < matching.length ? String(start + pageSize) : null;
-    return {
-      albums: { total: 0, count: 0, items: [], facets: [] },
-      assets: { total: matching.length, count: items.length, items: items.map(assetDto), facets: [], nextCursor: next, nextPage: null },
-    };
+    if (!body.query && !body.queryAssetId) return reply.code(400).send({ message: 'query is required', statusCode: 400 });
+    const size = Math.min(body.size ?? 100, 1000);
+    const ranked = assets
+      .map((a) => ({ a, r: body.query ? smartRelevance(a, body.query) : 0 }))
+      .filter((x) => x.r > 0 || !body.query)
+      .sort((x, y) => y.r - x.r || x.a.id.localeCompare(y.a.id))
+      .slice(0, size)
+      .map((x) => assetDto(x.a));
+    return { albums: { total: 0, count: 0, items: [], facets: [] }, assets: { total: ranked.length, count: ranked.length, items: ranked, facets: [], nextCursor: null, nextPage: null } };
+  });
+  app.get<{ Querystring: { name?: string } }>('/api/search/places', async (req) => {
+    const q = (req.query.name ?? '').toLowerCase();
+    return Object.values(FAKE_PLACES)
+      .filter((p) => p.city.toLowerCase().includes(q))
+      .map((p) => ({ name: p.city, admin1name: p.state, admin2name: '', latitude: p.lat, longitude: p.lon }));
   });
   app.get<{ Params: { id: string }; Querystring: { size?: string } }>('/api/assets/:id/thumbnail', async (req, reply) => {
     const a = byId.get(req.params.id);
@@ -374,20 +480,66 @@ export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<Fak
     return [...groups.entries()].map(([duplicateId, members]) => ({ duplicateId, assets: members.map(assetDto), suggestedKeepAssetIds: [members[0]!.id] }));
   });
   app.get('/api/tags', async () => []);
-  app.get('/api/timeline/buckets', async () => []);
-  app.get('/api/map/markers', async () => []);
+
+  // Timeline: month buckets (YYYY-MM-01), columnar bucket contents, optional bbox and withCoordinates.
+  type TimelineQ = { bbox?: string; withCoordinates?: string; timeBucket?: string };
+  const timelineAssets = (q: TimelineQ): FakeAsset[] => {
+    const box = parseBBox(q.bbox);
+    return assets.filter((a) => (q.withCoordinates !== 'true' || (a.lat !== undefined && a.lon !== undefined)) && (!box || inBox(a, box)));
+  };
+  const bucketOf = (a: FakeAsset): string => `${a.takenAt.slice(0, 7)}-01`;
+  app.get<{ Querystring: TimelineQ }>('/api/timeline/buckets', async (req) => {
+    const counts = new Map<string, number>();
+    for (const a of timelineAssets(req.query)) counts.set(bucketOf(a), (counts.get(bucketOf(a)) ?? 0) + 1);
+    return [...counts.entries()]
+      .sort((x, y) => y[0].localeCompare(x[0]))
+      .map(([timeBucket, count]) => ({ timeBucket, count }));
+  });
+  app.get<{ Querystring: TimelineQ }>('/api/timeline/bucket', async (req, reply) => {
+    if (!req.query.timeBucket) return reply.code(400).send({ message: 'timeBucket is required', statusCode: 400 });
+    const members = timelineAssets(req.query)
+      .filter((a) => bucketOf(a) === req.query.timeBucket)
+      .sort((x, y) => y.takenAt.localeCompare(x.takenAt));
+    return {
+      id: members.map((a) => a.id),
+      ownerId: members.map(() => 'user-1'),
+      ratio: members.map((a) => a.width / a.height),
+      isFavorite: members.map((a) => a.isFavorite),
+      isImage: members.map((a) => (a.type ?? 'IMAGE') === 'IMAGE'),
+      isTrashed: members.map(() => false),
+      visibility: members.map(() => 'timeline'),
+      thumbhash: members.map(() => null),
+      fileCreatedAt: members.map((a) => a.takenAt),
+      createdAt: members.map((a) => a.takenAt),
+      localOffsetHours: members.map(() => 0),
+      duration: members.map(() => null),
+      livePhotoVideoId: members.map(() => null),
+      projectionType: members.map(() => null),
+      stack: members.map(() => null),
+      latitude: members.map((a) => a.lat ?? null),
+      longitude: members.map((a) => a.lon ?? null),
+      city: members.map((a) => a.city ?? null),
+      country: members.map((a) => a.country ?? null),
+    };
+  });
+  app.get<{ Querystring: { fileCreatedAfter?: string; fileCreatedBefore?: string } }>('/api/map/markers', async (req) =>
+    assets
+      .filter((a) => a.lat !== undefined && a.lon !== undefined && (!req.query.fileCreatedAfter || a.takenAt >= req.query.fileCreatedAfter) && (!req.query.fileCreatedBefore || a.takenAt <= req.query.fileCreatedBefore))
+      .map((a) => ({ id: a.id, lat: a.lat, lon: a.lon, city: a.city ?? null, state: a.state ?? null, country: a.country ?? null })),
+  );
 
   const url = await app.listen({ port: opts.port ?? 0, host: opts.host ?? '127.0.0.1' });
   return { url, app, assets, albums, people: FAKE_PEOPLE, requests, close: () => app.close() };
 }
 
-// Run directly: node/tsx src/test/fake-immich.ts [--port N] [--photos N] [--edge N]; PORT in the environment also sets the port.
+// Run directly: node/tsx src/test/fake-immich.ts [--port N] [--photos N] [--home N] [--edge N]; PORT in the environment also sets the port.
 if (process.argv[1] && /fake-immich\.[tj]s$/.test(process.argv[1])) {
   const arg = (name: string, fallback: number): number => {
     const i = process.argv.indexOf(`--${name}`);
     return i > 0 ? Number(process.argv[i + 1]) : fallback;
   };
-  startFakeImmich({ port: arg('port', Number(process.env['PORT']) || 2283), photos: arg('photos', 80), originalLongEdge: arg('edge', 2400), logger: true })
+  const photos = arg('photos', 80);
+  startFakeImmich({ port: arg('port', Number(process.env['PORT']) || 2283), photos, homePhotos: arg('home', Math.ceil(photos / 2)), originalLongEdge: arg('edge', 2400), logger: true })
     .then((s) => console.log(`fake Immich listening at ${s.url} with ${s.assets.length} photos in ${s.albums.length} albums`))
     .catch((err) => {
       console.error(err);

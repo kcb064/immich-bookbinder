@@ -6,13 +6,23 @@ import { PX_PER_IN } from '@bookbinder/shared';
 import { getTemplate, objectPosition, pagePx, slotToPx } from '@bookbinder/layout';
 import { autoCaption, photographsLabel } from './captions.js';
 
-/** Book-level text the templates can draw (title page, running captions). */
+/** A chapter as the opener pages need it. */
+export interface ChapterMeta {
+  title: string;
+  subtitle?: string | undefined;
+  /** Photos placed in the chapter (opener included). */
+  photoCount: number;
+}
+
+/** Book-level text the templates can draw (title page, chapter openers, running captions). */
 export interface BookMeta {
   title: string;
   subtitle?: string | undefined;
   photoCount: number;
   /** "May 12 – 21, 2026" or "" */
   dateRange: string;
+  /** By chapter id; pages carry `chapterId`. */
+  chapters?: ReadonlyMap<string, ChapterMeta> | undefined;
 }
 
 /** What a photo slot needs from the image provider: the asset and the printed slot size in inches. */
@@ -82,14 +92,28 @@ function textFor(template: Template, slot: SlotSpec, content: SlotContent | unde
     if (slot.id === 'subtitle') return meta.subtitle ?? [meta.dateRange, photographsLabel(meta.photoCount)].filter(Boolean).join(' · ');
     return '';
   }
+  if (template.id === 'chapter-title') {
+    const chapter = page.chapterId ? meta.chapters?.get(page.chapterId) : undefined;
+    if (slot.id === 'title') return chapter?.title ?? '';
+    if (slot.id === 'subtitle') return chapter?.subtitle ?? '';
+    if (slot.id === 'body') return chapter ? photographsLabel(chapter.photoCount) : '';
+    return '';
+  }
   if (slot.role === 'caption') return autoCaption(pagePhotos(page, assets));
   return '';
 }
 
-function textStyle(theme: Theme, template: Template, slot: SlotSpec, h: number): CSSProperties {
+/** Title size that fits `text` on one line of `w` px in the italic display face (about 0.48 em per glyph), capped by the slot height. */
+function fitTitleSize(text: string, w: number, h: number): number {
+  const byHeight = h * 0.85;
+  const byWidth = text.length > 0 ? w / (0.48 * text.length) : byHeight;
+  return Math.max(28, Math.round(Math.min(byHeight, byWidth)));
+}
+
+function textStyle(theme: Theme, template: Template, slot: SlotSpec, w: number, h: number, text: string): CSSProperties {
   switch (slot.role) {
     case 'title': {
-      const size = template.id === 'title-page' ? Math.round(h * 0.56) : Math.round(h * 0.9);
+      const size = template.id === 'title-page' ? Math.round(h * 0.56) : template.id === 'chapter-title' ? fitTitleSize(text, w, h) : Math.round(h * 0.9);
       return {
         fontFamily: theme.displayFont,
         fontStyle: 'italic',
@@ -115,7 +139,7 @@ function textStyle(theme: Theme, template: Template, slot: SlotSpec, h: number):
         textOverflow: 'ellipsis',
       };
     case 'text':
-      return { fontFamily: theme.bodyFont, fontSize: 15, lineHeight: 1.6, color: theme.ink, overflow: 'hidden' };
+      return { fontFamily: theme.bodyFont, fontSize: 15, lineHeight: 1.6, color: template.id === 'chapter-title' ? theme.caption : theme.ink, overflow: 'hidden' };
     case 'folio':
       return { background: theme.accent };
     default:
@@ -229,10 +253,17 @@ export function PageView({
           if (slot.role === 'map' || slot.role === 'qr') return null;
 
           const text = textFor(template, slot, content, page, assets, meta);
-          if (slot.role === 'folio') return <div key={slot.id} className="bb-rule" style={{ ...base, ...textStyle(theme, template, slot, r.h) }} />;
+          if (slot.role === 'folio') {
+            // The chapter rule only appears under a chapter title.
+            if (template.id === 'chapter-title') {
+              const titleSlot = template.slots.find((s) => s.id === 'title')!;
+              if (!textFor(template, titleSlot, contentById.get('title'), page, assets, meta)) return null;
+            }
+            return <div key={slot.id} className="bb-rule" style={{ ...base, ...textStyle(theme, template, slot, r.w, r.h, '') }} />;
+          }
           if (!text) return null;
           return (
-            <div key={slot.id} className={`bb-text bb-text--${slot.role}`} data-slot-id={slot.id} style={{ ...base, ...textStyle(theme, template, slot, r.h) }}>
+            <div key={slot.id} className={`bb-text bb-text--${slot.role}`} data-slot-id={slot.id} style={{ ...base, ...textStyle(theme, template, slot, r.w, r.h, text) }}>
               {slot.role === 'title' ? <span style={{ display: 'block', width: '100%' }}>{text}</span> : text}
             </div>
           );

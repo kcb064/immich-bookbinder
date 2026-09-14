@@ -4,6 +4,7 @@ import { paginate } from '@bookbinder/layout';
 import { describe, expect, it } from 'vitest';
 import { autoCaption, dateRangeLabel, formatTakenDate } from './captions.js';
 import { PageView, pagePhotos, type ImageSrc } from './PageView.js';
+import { bookMetaFor } from './meta.js';
 import { renderPrintDocument, sideOf } from './print.js';
 import { spreadIndexOfPage, spreadLabel, toSpreads } from './spreads.js';
 
@@ -112,5 +113,42 @@ describe('spreads', () => {
     expect(spreadIndexOfPage(3)).toBe(2);
     expect(spreadLabel(spreads[1]!)).toBe('pages 2–3');
     expect(spreadLabel(spreads[0]!)).toBe('page 1');
+  });
+});
+
+describe('chapter openers', () => {
+  it('draws the chapter title, subtitle and photo count on the title page and nothing without a chapter', () => {
+    const { assets } = fixtures(4);
+    const page: Page = { id: 'ct', index: 4, templateId: 'chapter-title', chapterId: 'ch1', slots: [] };
+    const chapters = new Map([['ch1', { title: 'Sintra', subtitle: 'May 14, 2026', photoCount: 7 }]]);
+    const html = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={{ ...meta, chapters }} />);
+    expect(html).toContain('Sintra');
+    expect(html).toContain('May 14, 2026');
+    expect(html).toContain('7 photographs');
+    expect(html).toContain('class="bb-rule"');
+    const orphan = renderToStaticMarkup(<PageView page={{ ...page, chapterId: 'gone' }} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={{ ...meta, chapters }} />);
+    expect(orphan).not.toContain('bb-text');
+    expect(orphan).not.toContain('bb-rule');
+    // A user-typed title wins and long titles shrink to fit one line.
+    const typed = renderToStaticMarkup(<PageView page={{ ...page, slots: [{ slotId: 'title', text: 'Serra de Sintra and the coast' }] }} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={{ ...meta, chapters }} />);
+    expect(typed).toContain('Serra de Sintra and the coast');
+    const size = Number(/font-size:(\d+)px/.exec(typed)?.[1]);
+    expect(size).toBeLessThan(80);
+  });
+
+  it('counts a chapter\x27s photos from its pages and prints no folio on opener pages', () => {
+    const { assets } = fixtures(4);
+    const pages: Page[] = [
+      { id: 't', index: 0, templateId: 'title-page', slots: [] },
+      { id: 'o', index: 1, templateId: 'chapter-photo', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a0' }] },
+      { id: 'c', index: 2, templateId: 'chapter-title', chapterId: 'ch1', slots: [] },
+      { id: 'b', index: 3, templateId: 'two-up', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a1' }, { slotId: 'p2', assetId: 'a2' }] },
+    ];
+    const m = bookMetaFor({ title: 'T', chapters: [{ id: 'ch1', title: 'Lisbon', startsAtPage: 1 }], pages }, assets.values(), 3);
+    expect(m.chapters?.get('ch1')).toEqual({ title: 'Lisbon', subtitle: undefined, photoCount: 3 });
+    const html = renderPrintDocument({ pages, firstPageIndex: 0, format, theme, assets, imageSrc, meta: m, webFonts: false });
+    expect(html).toContain('>4<');
+    expect(html).not.toContain('>2<');
+    expect(html).not.toContain('>3<');
   });
 });

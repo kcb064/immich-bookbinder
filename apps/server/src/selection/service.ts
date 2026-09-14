@@ -1,4 +1,4 @@
-import { targetPhotosFor, type Book, type BookAsset, type Candidate, type FaceBox, type SelectionPhase, type SelectionRun } from '@bookbinder/shared';
+import type { Book, BookAsset, Candidate, FaceBox, SelectionPhase, SelectionRun } from '@bookbinder/shared';
 import { buildSelection, type SelectionInput } from '@bookbinder/scoring';
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -216,10 +216,10 @@ export class SelectionService {
         const f = faces ?? (reuse ? prev?.faces : undefined);
         return { asset: a, metrics: an?.metrics, phash: an?.phash, faces: f, decision };
       };
-      const targetPhotos = targetPhotosFor(book.rules.targetPages);
-
       // 3. Faces for a shortlist: the strongest candidates that show people and have no boxes yet.
-      const preliminary = buildSelection(assets.map((a) => inputFor(a)), { rules: book.rules, targetPhotos });
+      // The preliminary pass also fixes the target (chapters reserve opener pages).
+      const preliminary = buildSelection(assets.map((a) => inputFor(a)), { rules: book.rules });
+      const targetPhotos = preliminary.summary.targetPhotos;
       const ranked = [...preliminary.candidates].sort((a, b) => b.scores.composite - a.scores.composite);
       const shortlistSize = Math.min(ranked.length, Math.max(60, targetPhotos * 2));
       const byId = new Map(assets.map((a) => [a.id, a]));
@@ -253,7 +253,7 @@ export class SelectionService {
 
       // 4. Score, cluster, pick
       this.update(id, { phase: 'pick', total: assets.length, done: assets.length });
-      const result = buildSelection(assets.map((a) => inputFor(a, faces.get(a.id))), { rules: book.rules, targetPhotos });
+      const result = buildSelection(assets.map((a) => inputFor(a, faces.get(a.id))), { rules: book.rules });
       this.deps.candidates.replace(book.id, result.candidates);
       const latest = this.deps.store.get(book.id);
       if (latest && latest.status === 'draft') this.deps.store.save({ ...latest, status: 'selecting' });

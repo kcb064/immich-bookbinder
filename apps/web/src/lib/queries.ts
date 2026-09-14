@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { Book, BookAsset, ImmichStatus, RenderJob, SelectionRun, SelectionView, SettingsView } from '@bookbinder/shared';
-import type { DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules } from '@bookbinder/shared';
+import type { DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules, SelectionSource } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -33,6 +33,30 @@ export const PeopleResponse = z.object({
   total: z.number().int().nonnegative(),
 });
 export type PeopleResponse = z.infer<typeof PeopleResponse>;
+export type PersonSummary = PeopleResponse['people'][number];
+
+/** What GET /api/immich/trips returns: trips detected from geotagged photos in a date range. */
+export const TripPlace = z.object({ name: z.string(), bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]), count: z.number().int().nonnegative() });
+export type TripPlace = z.infer<typeof TripPlace>;
+export const TripSuggestion = z.object({
+  id: z.string(),
+  title: z.string(),
+  start: z.string(),
+  end: z.string(),
+  days: z.number().int().nonnegative(),
+  photoCount: z.number().int().nonnegative(),
+  places: z.array(TripPlace),
+  country: z.string().optional(),
+});
+export type TripSuggestion = z.infer<typeof TripSuggestion>;
+export const TripsResponse = z.object({ from: z.string(), to: z.string(), geotagged: z.number().int().nonnegative(), trips: z.array(TripSuggestion) });
+export type TripsResponse = z.infer<typeof TripsResponse>;
+
+export const PlaceHit = z.object({ name: z.string(), region: z.string().nullish(), latitude: z.number(), longitude: z.number() });
+export type PlaceHit = z.infer<typeof PlaceHit>;
+
+export const SmartPreview = z.object({ items: z.array(z.object({ id: z.string(), fileName: z.string().nullish(), thumbnailUrl: z.string() })) });
+export type SmartPreview = z.infer<typeof SmartPreview>;
 
 /** What GET /api/books returns: a light row per book, not the full document. */
 export const BookSummary = z.object({
@@ -58,6 +82,9 @@ export const keys = {
   immichStatus: ['immich', 'status'] as const,
   albums: ['immich', 'albums'] as const,
   people: ['immich', 'people'] as const,
+  trips: (from: string, to: string) => ['immich', 'trips', from, to] as const,
+  places: (name: string) => ['immich', 'places', name] as const,
+  smart: (q: string) => ['immich', 'smart', q] as const,
   /** The list. Invalidate with `exact: true`: the per-book keys below share the prefix. */
   books: ['books'] as const,
   book: (id: string) => ['books', id] as const,
@@ -180,6 +207,36 @@ export function usePeople(enabled = true) {
   });
 }
 
+/** Trip suggestions for a YYYY-MM-DD range; the server scans the timeline month by month. */
+export function useTrips(from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.trips(from, to),
+    queryFn: ({ signal }) => get(`/api/immich/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, TripsResponse, signal),
+    staleTime: 10 * 60_000,
+    enabled: enabled && Boolean(from && to),
+  });
+}
+
+export function usePlaces(name: string, enabled = true) {
+  const q = name.trim();
+  return useQuery({
+    queryKey: keys.places(q),
+    queryFn: ({ signal }) => get(`/api/immich/places?name=${encodeURIComponent(q)}`, z.array(PlaceHit), signal),
+    staleTime: 10 * 60_000,
+    enabled: enabled && q.length > 1,
+  });
+}
+
+export function useSmartPreview(query: string, enabled = true) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: keys.smart(q),
+    queryFn: ({ signal }) => get(`/api/immich/smart?q=${encodeURIComponent(q)}&size=24`, SmartPreview, signal),
+    staleTime: 5 * 60_000,
+    enabled: enabled && q.length > 1,
+  });
+}
+
 /* ---------- Books ---------- */
 
 export function useBooks() {
@@ -197,11 +254,19 @@ export function useBook(id: string | undefined) {
   });
 }
 
+/** Sources as the wizard builds them: schema defaults (places, limit, includeUngeotagged) may be left out. */
+export type SourceInput =
+  | { kind: 'album'; albumIds: string[] }
+  | { kind: 'trip'; takenAfter: string; takenBefore: string; places?: Array<{ name: string; bbox: [number, number, number, number] }>; includeUngeotagged?: boolean }
+  | { kind: 'people'; personIds: string[] }
+  | { kind: 'smart'; query: string; limit?: number }
+  | { kind: 'favorites' };
+
 export interface CreateBookInput {
   title: string;
   formatId: string;
   themeId: string;
-  rules?: Partial<SelectionRules> & Pick<SelectionRules, 'sources'>;
+  rules?: Partial<Omit<SelectionRules, 'sources'>> & { sources: Array<SourceInput | SelectionSource> };
 }
 
 export function useCreateBook() {
@@ -293,7 +358,7 @@ export function useStartSelection(id: string) {
   return useMutation({
     mutationFn: (input: StartSelectionInput = {}) => post(`/api/books/${encodeURIComponent(id)}/selection/runs`, input, SelectionRun),
     onSuccess: async (run, input) => {
-      qc.setQueryData<SelectionView>(keys.selection(id), (prev) => ({ candidates: prev?.candidates ?? [], ...(prev?.summary ? { summary: prev.summary } : {}), run }));
+      qc.setQueryData<SelectionView>(keys.selection(id), (prev) => ({ candidates: prev?.candidates ?? [], chapters: prev?.chapters ?? [], ...(prev?.summary ? { summary: prev.summary } : {}), run }));
       const tasks: Promise<unknown>[] = [qc.invalidateQueries({ queryKey: keys.selection(id) })];
       if (input.rules) tasks.push(qc.invalidateQueries({ queryKey: keys.book(id) }));
       if (input.refetch) tasks.push(qc.invalidateQueries({ queryKey: keys.bookAssets(id) }));

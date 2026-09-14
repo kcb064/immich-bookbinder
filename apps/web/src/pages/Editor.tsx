@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { FORMAT_PRESETS, PX_PER_IN, type Book, type BookAsset, type BookFormat, type Page, type Theme } from '@bookbinder/shared';
-import { effectivePpi, getTemplate, pagePx, photoSlots, templatesForPhotos } from '@bookbinder/layout';
+import { NO_FOLIO_TEMPLATE_IDS, effectivePpi, getTemplate, pagePx, photoSlots, templatesForPhotos } from '@bookbinder/layout';
 import { PageView, bookMetaFor, formatTakenDate, placeLabel, spreadIndexOfPage, spreadLabel, toSpreads, type ImageSrc, type SlotOverlayContext, type Spread } from '@bookbinder/pages';
 import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
@@ -17,13 +17,18 @@ import {
   historyUndo,
   insertBlankPage,
   isBodyPage,
+  isFlexiblePage,
+  isOpenerPage,
   movePage,
   pageAssetIds,
   ratiosOf,
   removePage,
   removePhoto,
   setCaption,
+  setCrop,
+  setSlotText,
   setTemplate,
+  slotText,
   swapSlots,
   unplacedAssets,
   userCaption,
@@ -163,7 +168,14 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   }, [pages, selected, swapFrom]);
 
   const placed = useMemo(() => new Set(pages.flatMap(pageAssetIds)), [pages]);
-  const meta = useMemo(() => bookMetaFor(book, assets.filter((a) => placed.has(a.id)), placed.size), [book, assets, placed]);
+  // Chapter titles and photo counts follow the working copy of the pages, not the saved book.
+  const meta = useMemo(() => bookMetaFor({ ...book, pages }, assets.filter((a) => placed.has(a.id)), placed.size), [book, pages, assets, placed]);
+  const chapterStarts = useMemo(() => new Map(book.chapters.map((c) => [c.id, c])), [book.chapters]);
+  /** Chapter that opens on a spread (its opener photo page is the spread's left page). */
+  const chapterOpening = (sp: Spread) => {
+    const page = sp.left ?? sp.right;
+    return page?.templateId === 'chapter-photo' && page.chapterId ? chapterStarts.get(page.chapterId) : undefined;
+  };
   const tray = useMemo(() => unplacedAssets(pages, assets), [pages, assets]);
 
   // Fit the spread to the canvas.
@@ -233,10 +245,25 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const selectedPpi = selectedAsset?.width && selectedAsset.height && selectedSlotSpec ? effectivePpi(selectedAsset.width, selectedAsset.height, selectedSlotSpec.w * format.trimWidthIn, selectedSlotSpec.h * format.trimHeightIn) : undefined;
 
   const focusPhotos = focusPage ? pageAssetIds(focusPage).map((id) => ({ id, ratio: ratios.get(id) ?? 1.5 })) : [];
-  const templateChoices = focusPage && isBodyPage(focusPage) && focusPhotos.length > 0 ? templatesForPhotos(focusPhotos) : [];
+  const templateChoices = focusPage && isFlexiblePage(focusPage) && focusPhotos.length > 0 ? templatesForPhotos(focusPhotos) : [];
   const hasCaption = focusPage ? Boolean(captionSlotId(focusPage.templateId)) : false;
   const [captionDraft, setCaptionDraft] = useState<string | undefined>();
   useEffect(() => setCaptionDraft(undefined), [focusPageIndex]);
+  const focusChapter = focusPage?.chapterId ? meta.chapters?.get(focusPage.chapterId) : undefined;
+  const isChapterTitlePage = focusPage?.templateId === 'chapter-title';
+  const [chapterDraft, setChapterDraft] = useState<{ title?: string; subtitle?: string }>({});
+  useEffect(() => setChapterDraft({}), [focusPageIndex]);
+  const commitChapterText = (slotId: 'title' | 'subtitle') => {
+    const draft = chapterDraft[slotId];
+    if (!focusPage || draft === undefined) return;
+    const auto = slotId === 'title' ? (focusChapter?.title ?? '') : (focusChapter?.subtitle ?? '');
+    const current = slotText(focusPage, slotId) ?? '';
+    // Typing the automatic text back clears the override.
+    const next = draft.trim() === auto ? '' : draft;
+    if (next !== current) apply(setSlotText(pages, focusPageIndex, slotId, next));
+    setChapterDraft((d) => ({ ...d, [slotId]: undefined }));
+  };
+  const selectedContent = selected ? pages[selected.pageIndex]?.slots.find((s) => s.slotId === selected.slotId) : undefined;
 
   const slotOverlay = (ctx: SlotOverlayContext) => {
     if (!ctx.asset) return <span className="slot-empty">{swapFrom || selected ? 'Move here' : 'Empty'}</span>;
@@ -264,7 +291,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           imageSrc={PREVIEW_SRC}
           meta={meta}
           side={side}
-          folio={isBodyPage(page) && page.templateId !== 'blank' ? number : undefined}
+          folio={NO_FOLIO_TEMPLATE_IDS.has(page.templateId) ? undefined : number}
           scale={scale}
           guides
           selectedSlotId={selected?.pageIndex === page.index ? selected.slotId : swapFrom?.pageIndex === page.index ? swapFrom.slotId : undefined}
@@ -301,7 +328,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   };
 
   const moveFocus = (delta: number) => {
-    if (!focusPage || !isBodyPage(focusPage)) return;
+    if (!focusPage || !isFlexiblePage(focusPage)) return;
     const to = focusPageIndex + delta;
     if (to < 1 || to >= pages.length) return;
     apply(movePage(pages, focusPageIndex, to));
@@ -361,8 +388,9 @@ function Editor({ book, assets, format, theme }: EditorProps) {
               className={`film${sp.index === spreadIndex ? ' film--on' : ''}`}
               onClick={() => gotoSpread(sp.index)}
               aria-current={sp.index === spreadIndex ? 'true' : undefined}
-              aria-label={`Spread ${sp.index + 1}, ${spreadLabel(sp)}`}
+              aria-label={`Spread ${sp.index + 1}, ${spreadLabel(sp)}${chapterOpening(sp) ? `, opens ${chapterOpening(sp)!.title}` : ''}`}
             >
+              {chapterOpening(sp) ? <span className="film__chapter">{chapterOpening(sp)!.title}</span> : null}
               <span className="film__pages">
                 {sp.left ? <PageView page={sp.left} format={format} theme={theme} assets={assetMap} imageSrc={THUMB_SRC} meta={meta} side="left" scale={0.07} /> : <span className="film__blank" />}
                 {sp.right ? <PageView page={sp.right} format={format} theme={theme} assets={assetMap} imageSrc={THUMB_SRC} meta={meta} side="right" scale={0.07} /> : <span className="film__blank" />}
@@ -412,24 +440,63 @@ function Editor({ book, assets, format, theme }: EditorProps) {
               <div className="row row--between">
                 <div className="label">Page {focusPageIndex + 1}</div>
                 <span className="muted small">
-                  {isBodyPage(focusPage) ? `${focusPhotos.length} photo${focusPhotos.length === 1 ? '' : 's'} · ${getTemplate(focusPage.templateId).name}` : 'Title page'}
+                  {isOpenerPage(focusPage) ? getTemplate(focusPage.templateId).name : isBodyPage(focusPage) ? `${focusPhotos.length} photo${focusPhotos.length === 1 ? '' : 's'} · ${getTemplate(focusPage.templateId).name}` : 'Title page'}
                 </span>
               </div>
+              {focusChapter ? (
+                <span className="panel__chapter">
+                  <Icon name="chapter" size={13} /> {focusChapter.title}
+                  <span className="muted"> · {focusChapter.photoCount} photos</span>
+                </span>
+              ) : null}
+              {isChapterTitlePage ? (
+                <div className="stack" style={{ gap: 10 }}>
+                  <label className="stack" style={{ gap: 4 }}>
+                    <span className="field__label">Chapter title</span>
+                    <input
+                      className="input"
+                      value={chapterDraft.title ?? slotText(focusPage, 'title') ?? focusChapter?.title ?? ''}
+                      placeholder={focusChapter?.title ?? 'Chapter title'}
+                      onChange={(e) => setChapterDraft((d) => ({ ...d, title: e.target.value }))}
+                      onBlur={() => commitChapterText('title')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  </label>
+                  <label className="stack" style={{ gap: 4 }}>
+                    <span className="field__label">Subtitle</span>
+                    <input
+                      className="input"
+                      value={chapterDraft.subtitle ?? slotText(focusPage, 'subtitle') ?? focusChapter?.subtitle ?? ''}
+                      placeholder={focusChapter?.subtitle ?? 'Dates or a line about this chapter'}
+                      onChange={(e) => setChapterDraft((d) => ({ ...d, subtitle: e.target.value }))}
+                      onBlur={() => commitChapterText('subtitle')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  </label>
+                  <div className="muted small">The place and dates come from the photos; type over them to change this opener only.</div>
+                </div>
+              ) : null}
               {templateChoices.length > 1 ? (
                 <div className="tpl-grid">
                   {templateChoices.map(({ template }) => (
                     <TemplateThumb key={template.id} templateId={template.id} selected={template.id === focusPage.templateId} title={template.name} onClick={() => apply(setTemplate(pages, focusPageIndex, template.id, ratios))} />
                   ))}
                 </div>
-              ) : isBodyPage(focusPage) && focusPhotos.length > 0 ? (
+              ) : isFlexiblePage(focusPage) && focusPhotos.length > 0 ? (
                 <div className="muted small">Only one template holds {focusPhotos.length} photos. Add or remove a photo for more choices.</div>
+              ) : focusPage.templateId === 'chapter-photo' ? (
+                <div className="muted small">The opener photo fills the page and faces the chapter title. Swap it with any photo, or remove it to leave the page empty.</div>
               ) : null}
               {isBodyPage(focusPage) ? (
                 <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-                  <Button size="sm" icon="chevronLeft" onClick={() => moveFocus(-1)} disabled={focusPageIndex <= 1} title="Move this page one position earlier">
+                  <Button size="sm" icon="chevronLeft" onClick={() => moveFocus(-1)} disabled={focusPageIndex <= 1 || isOpenerPage(focusPage)} title={isOpenerPage(focusPage) ? 'Opener pages stay with their chapter' : 'Move this page one position earlier'}>
                     Earlier
                   </Button>
-                  <Button size="sm" iconRight="chevronRight" onClick={() => moveFocus(1)} disabled={focusPageIndex >= pages.length - 1} title="Move this page one position later">
+                  <Button size="sm" iconRight="chevronRight" onClick={() => moveFocus(1)} disabled={focusPageIndex >= pages.length - 1 || isOpenerPage(focusPage)} title={isOpenerPage(focusPage) ? 'Opener pages stay with their chapter' : 'Move this page one position later'}>
                     Later
                   </Button>
                   <Button size="sm" variant="ghost" icon="plus" onClick={() => apply(insertBlankPage(pages, focusPageIndex))} title="Insert a blank page after this one">
@@ -477,6 +544,16 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                 </div>
                 {selectedPpi !== undefined && selectedPpi < 200 ? (
                   <Note tone="amber">This photo has {Math.round(selectedPpi)} pixels per printed inch here; it will look soft. Move it to a smaller slot or pick another shot.</Note>
+                ) : null}
+                {selectedContent?.crop ? (
+                  <div className="row row--between small">
+                    <span className="muted">
+                      Framed on the faces ({Math.round(selectedContent.crop.focalX * 100)}%, {Math.round(selectedContent.crop.focalY * 100)}%)
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => selected && apply(setCrop(pages, selected, undefined))} title="Back to the centred crop">
+                      Centre
+                    </Button>
+                  </div>
                 ) : null}
                 <div className="row" style={{ gap: 8 }}>
                   <Button className="grow" icon="swap" onClick={() => setSwapFrom(selected)} aria-pressed={Boolean(swapFrom)} title="Then click another photo to exchange places">

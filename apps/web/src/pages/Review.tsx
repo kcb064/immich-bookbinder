@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router';
-import { WEIGHT_PRESETS, isPicked, presetFor, type BookAsset, type Candidate, type Reason, type ScoringWeights, type SelectionRules, type SelectionRun } from '@bookbinder/shared';
+import { WEIGHT_PRESETS, isPicked, presetFor, type BookAsset, type Candidate, type ChapterMode, type ChapterSummary, type Reason, type ScoringWeights, type SelectionRules, type SelectionRun } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import type { IconName } from '../components/Icon.tsx';
@@ -52,9 +52,23 @@ const REASON_ICONS: Record<Reason['kind'], IconName> = {
   duplicate: 'grid',
   blurry: 'eyeOff',
   variety: 'trip',
+  chapter: 'chapter',
   'below-cut': 'minus',
   'no-analysis': 'alert',
 };
+
+const CHAPTER_MODES: Array<{ id: ChapterMode; name: string; hint: string }> = [
+  { id: 'auto', name: 'By place (automatic)', hint: 'One chapter per run of a city or region; none when the whole book is one place.' },
+  { id: 'places', name: 'By place', hint: 'Same as automatic.' },
+  { id: 'days', name: 'By day', hint: 'One chapter per day or run of days.' },
+  { id: 'none', name: 'No chapters', hint: 'A continuous book after the title page.' },
+];
+
+type GroupBy = 'chapter' | 'day';
+
+function personThumb(id: string): string {
+  return `/api/immich/people/${encodeURIComponent(id)}/thumbnail`;
+}
 
 const score10 = (v: number): string => (v * 10).toFixed(1);
 const dayKey = (takenAt: string | undefined): string => (takenAt ? takenAt.slice(0, 10) : 'undated');
@@ -202,6 +216,7 @@ function RunProgress({ run }: { run: SelectionRun }) {
 function Detail({
   c,
   asset,
+  chapter,
   cluster,
   assets,
   busy,
@@ -211,6 +226,7 @@ function Detail({
 }: {
   c: Candidate;
   asset: BookAsset | undefined;
+  chapter: ChapterSummary | undefined;
   cluster: Candidate[];
   assets: Map<string, BookAsset>;
   busy: boolean;
@@ -233,6 +249,11 @@ function Detail({
             {takenLabel(asset?.takenAt)}
             {place ? ` · ${place}` : ''}
           </div>
+          {chapter ? (
+            <div className="muted small row" style={{ gap: 4 }}>
+              <Icon name="chapter" size={12} /> Chapter: {chapter.title}
+            </div>
+          ) : null}
         </div>
         <span className={`chip mono rdetail__score${picked ? ' chip--green' : ''}`}>{score10(c.scores.composite)}</span>
       </div>
@@ -341,6 +362,9 @@ export function ReviewPage() {
   const layout = useLayoutBook(id ?? '');
 
   const [filter, setFilter] = useState<Filter>('picked');
+  const [groupBy, setGroupBy] = useState<GroupBy>('chapter');
+  const [personFilter, setPersonFilter] = useState<string | undefined>(undefined);
+  const [chapterFilter, setChapterFilter] = useState<string | undefined>(undefined);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [rules, setRules] = useState<SelectionRules | undefined>(undefined);
   const savedRules = book.data?.rules;
@@ -352,8 +376,29 @@ export function ReviewPage() {
   const running = isActiveRun(run);
   const candidates = useMemo(() => selection.data?.candidates ?? [], [selection.data]);
   const summary = selection.data?.summary;
+  const chapters = useMemo(() => selection.data?.chapters ?? [], [selection.data]);
+  const chapterById = useMemo(() => new Map(chapters.map((c) => [c.id, c])), [chapters]);
   const assetMap = useMemo(() => new Map((assets.data ?? []).map((a) => [a.id, a])), [assets.data]);
   const byId = useMemo(() => new Map(candidates.map((c) => [c.assetId, c])), [candidates]);
+  const hasChapters = chapters.length > 0;
+  const grouping: GroupBy = hasChapters ? groupBy : 'day';
+
+  // People seen in the gathered photos, most frequent first, with how many of their photos are picked.
+  const peopleStats = useMemo(() => {
+    const stats = new Map<string, { id: string; name: string; total: number; picked: number }>();
+    for (const c of candidates) {
+      for (const p of assetMap.get(c.assetId)?.people ?? []) {
+        let s = stats.get(p.id);
+        if (!s) {
+          s = { id: p.id, name: p.name || 'Unnamed', total: 0, picked: 0 };
+          stats.set(p.id, s);
+        }
+        s.total++;
+        if (isPicked(c)) s.picked++;
+      }
+    }
+    return [...stats.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  }, [candidates, assetMap]);
 
   // Local copy of the rules for the sliders; re-synced when the server's copy changes (unless an edit is pending).
   useEffect(() => {
@@ -389,17 +434,31 @@ export function ReviewPage() {
   };
   useEffect(() => () => window.clearTimeout(applyTimer.current), []);
 
-  const visible = useMemo(() => candidates.filter((c) => matches(c, filter)), [candidates, filter]);
+  const visible = useMemo(
+    () =>
+      candidates.filter((c) => {
+        if (!matches(c, filter)) return false;
+        if (personFilter && !(assetMap.get(c.assetId)?.people ?? []).some((p) => p.id === personFilter)) return false;
+        if (chapterFilter && c.chapterId !== chapterFilter) return false;
+        return true;
+      }),
+    [candidates, filter, personFilter, chapterFilter, assetMap],
+  );
+  // Groups keep chronological order: chapters are numbered in the plan; days sort by key.
   const groups = useMemo(() => {
     const map = new Map<string, Candidate[]>();
     for (const c of visible) {
-      const k = dayKey(assetMap.get(c.assetId)?.takenAt);
+      const k = grouping === 'chapter' ? (c.chapterId ?? 'none') : dayKey(assetMap.get(c.assetId)?.takenAt);
       const g = map.get(k);
       if (g) g.push(c);
       else map.set(k, [c]);
     }
+    if (grouping === 'chapter') {
+      const order = new Map(chapters.map((c, i) => [c.id, i]));
+      return [...map.entries()].sort(([a], [b]) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9));
+    }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [visible, assetMap]);
+  }, [visible, assetMap, grouping, chapters]);
   const dayStats = useMemo(() => {
     const stats = new Map<string, { total: number; picked: number; places: Map<string, number> }>();
     for (const c of candidates) {
@@ -531,8 +590,71 @@ export function ReviewPage() {
                   <Toggle key={r.key} name={r.name} checked={rules[r.key]} onChange={(v) => updateRules({ ...rules, [r.key]: v })} />
                 ))}
               </div>
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="label">Chapters</div>
+                <Select value={rules.chapters} onChange={(e) => updateRules({ ...rules, chapters: e.target.value as ChapterMode })} aria-label="Chapter mode">
+                  {CHAPTER_MODES.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </Select>
+                {hasChapters ? (
+                  <div className="rchapters" role="group" aria-label="Chapters">
+                    {chapters.map((ch) => {
+                      const on = chapterFilter === ch.id;
+                      return (
+                        <button key={ch.id} type="button" className={`rchapter${on ? ' rchapter--on' : ''}`} aria-pressed={on} onClick={() => setChapterFilter(on ? undefined : ch.id)} title={ch.subtitle}>
+                          <Icon name="chapter" size={13} />
+                          <span className="rchapter__title">{ch.title}</span>
+                          <span className="rchapter__count">
+                            {ch.picked}/{ch.total}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="muted small">{CHAPTER_MODES.find((m) => m.id === rules.chapters)?.hint}</div>
+                )}
+              </div>
+              {peopleStats.length > 0 ? (
+                <div className="stack" style={{ gap: 8 }}>
+                  <div className="row row--between">
+                    <div className="label">People</div>
+                    <span className="muted small">star = featured</span>
+                  </div>
+                  <div className="rpeople">
+                    {peopleStats.slice(0, 12).map((p) => {
+                      const on = personFilter === p.id;
+                      const starred = rules.featuredPersonIds.includes(p.id);
+                      return (
+                        <div key={p.id} className={`rperson${on ? ' rperson--on' : ''}`}>
+                          <button type="button" className="rperson__pick" aria-pressed={on} onClick={() => setPersonFilter(on ? undefined : p.id)} title={`Show only photos with ${p.name}`}>
+                            <img src={personThumb(p.id)} alt="" loading="lazy" />
+                            <span className="rperson__name">{p.name}</span>
+                            <span className="rperson__count">
+                              {p.picked}/{p.total}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`rperson__star${starred ? ' rperson__star--on' : ''}`}
+                            aria-pressed={starred}
+                            aria-label={starred ? `Stop featuring ${p.name}` : `Feature ${p.name}`}
+                            title={starred ? 'Featured: always in the book and scored higher' : 'Feature this person'}
+                            onClick={() => updateRules({ ...rules, featuredPersonIds: starred ? rules.featuredPersonIds.filter((id) => id !== p.id) : [...rules.featuredPersonIds, p.id] })}
+                          >
+                            <Icon name="star" size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="muted small" style={{ lineHeight: 1.5 }}>
-                Target: about {formatNumber(summary?.targetPhotos)} photos for {rules.targetPages} pages. Changes re-run the picker; your own keeps and removals stay.
+                Target: about {formatNumber(summary?.targetPhotos)} photos for {rules.targetPages} pages{hasChapters ? ` with ${pluralize(chapters.length, 'chapter')}` : ''}. Changes re-run the picker; your own keeps and removals stay.
               </div>
             </>
           ) : null}
@@ -594,9 +716,71 @@ export function ReviewPage() {
             </div>
           ) : null}
 
+          {(hasChapters || personFilter || chapterFilter) && candidates.length > 0 ? (
+            <div className="row row--between" style={{ flexWrap: 'wrap', gap: 8 }}>
+              {hasChapters ? (
+                <div className="rgroupby" role="group" aria-label="Group photos by">
+                  <button type="button" aria-pressed={grouping === 'chapter'} onClick={() => setGroupBy('chapter')}>
+                    Chapters
+                  </button>
+                  <button type="button" aria-pressed={grouping === 'day'} onClick={() => setGroupBy('day')}>
+                    Days
+                  </button>
+                </div>
+              ) : (
+                <span />
+              )}
+              {personFilter || chapterFilter ? (
+                <div className="row" style={{ gap: 6 }}>
+                  {personFilter ? (
+                    <Chip tone="accent" icon="people">
+                      {peopleStats.find((p) => p.id === personFilter)?.name ?? 'Person'}
+                    </Chip>
+                  ) : null}
+                  {chapterFilter ? (
+                    <Chip tone="accent" icon="chapter">
+                      {chapterById.get(chapterFilter)?.title ?? 'Chapter'}
+                    </Chip>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon="x"
+                    onClick={() => {
+                      setPersonFilter(undefined);
+                      setChapterFilter(undefined);
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {groups.length === 0 && candidates.length > 0 ? <div className="muted" style={{ padding: 24, textAlign: 'center' }}>No photos in this view.</div> : null}
 
-          {groups.map(([day, list]) => {
+          {groups.map(([key, list]) => {
+            if (grouping === 'chapter') {
+              const ch = chapterById.get(key);
+              return (
+                <section key={key} className="rday">
+                  <div className="rday__head">
+                    <div className="rday__title">{ch?.title ?? 'Outside the chapters'}</div>
+                    <div className="muted">
+                      {ch?.subtitle ? `${ch.subtitle} · ` : ''}
+                      {formatNumber(ch?.picked ?? list.filter(isPicked).length)} picked of {formatNumber(ch?.total ?? list.length)}
+                    </div>
+                  </div>
+                  <div className="rgrid">
+                    {list.map((c) => (
+                      <Thumb key={c.assetId} c={c} asset={assetMap.get(c.assetId)} selected={c.assetId === selectedId} onSelect={() => setSelectedId(c.assetId)} />
+                    ))}
+                  </div>
+                </section>
+              );
+            }
+            const day = key;
             const s = dayStats.get(day);
             const place = s ? [...s.places.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] : undefined;
             return (
@@ -623,6 +807,7 @@ export function ReviewPage() {
             <Detail
               c={selected}
               asset={assetMap.get(selected.assetId)}
+              chapter={selected.chapterId ? chapterById.get(selected.chapterId) : undefined}
               cluster={cluster}
               assets={assetMap}
               busy={decide.isPending}
@@ -651,6 +836,8 @@ export function ReviewPage() {
                   <dd>
                     {formatNumber(summary.days)} · {formatNumber(summary.places)}
                   </dd>
+                  <dt>Chapters</dt>
+                  <dd>{summary.chapters > 0 ? chapters.map((c) => c.title).join(' · ') : 'none'}</dd>
                 </dl>
               ) : null}
             </div>

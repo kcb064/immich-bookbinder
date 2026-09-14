@@ -157,6 +157,30 @@ const raw: Template[] = [
       ),
     ],
   },
+  // ---- chapter opener as two facing pages: full-bleed hero on the verso, title on the recto
+  {
+    id: 'chapter-photo',
+    name: 'Chapter opener photo',
+    kind: 'page',
+    photoCount: 1,
+    crossesGutter: false,
+    tags: ['opener', 'chapter'],
+    slots: [hero('p1', FULL_BLEED.x, FULL_BLEED.y, FULL_BLEED.w, FULL_BLEED.h, { aspect: [1, 0.8, 1.5], bleed: true })],
+  },
+  {
+    id: 'chapter-title',
+    name: 'Chapter title',
+    kind: 'page',
+    photoCount: 0,
+    crossesGutter: false,
+    tags: ['opener', 'chapter'],
+    slots: [
+      text('title', 'title', f(56), f(96), C, f(140)),
+      text('rule', 'folio', f(60), f(236), f(48), f(2)),
+      text('subtitle', 'caption', f(60), f(262), C - f(60), f(24)),
+      text('body', 'text', f(60), f(320), f(420), f(160)),
+    ],
+  },
   {
     id: 'text-photo',
     name: 'Text column with portrait photo',
@@ -303,5 +327,5 @@ export function getTemplate(id: string): Template {
 
 /** Page templates (not spreads/covers) that hold exactly `count` photos, most generic first. */
 export function pageTemplatesForCount(count: number): Template[] {
-  return TEMPLATES.filter((t) => t.kind === 'page' && t.photoCount === count && !t.tags.includes('variable-count'));
+  return TEMPLATES.filter((t) => t.kind === 'page' && t.photoCount === count && !t.tags.includes('variable-count') && !t.tags.includes('opener'));
 }

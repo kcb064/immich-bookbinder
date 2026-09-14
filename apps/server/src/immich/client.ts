@@ -15,6 +15,8 @@ export type ImmichAsset = Schemas['AssetResponseDto'];
 export type ImmichPerson = Schemas['PersonResponseDto'];
 export type ImmichPeoplePage = Schemas['PeopleResponseDto'];
 export type ImmichMetadataSearch = Schemas['MetadataSearchDto'];
+export type ImmichSmartSearch = Schemas['SmartSearchDto'];
+export type ImmichPlace = Schemas['PlacesResponseDto'];
 export type ImmichSearchResponse = Schemas['SearchResponseDto'];
 export type ImmichMapMarker = Schemas['MapMarkerResponseDto'];
 export type ImmichTimeBucket = Schemas['TimeBucketsResponseDto'];
@@ -222,6 +224,16 @@ export function createImmichClient(opts: ImmichClientOptions) {
       const out: ImmichAsset[] = [];
       for await (const items of this.searchMetadataPages(body, opts)) out.push(...items);
       return out;
+    },
+
+    /** CLIP text (or image) search; Immich returns the `size` best matches, most similar first. */
+    async searchSmart(body: ImmichSmartSearch): Promise<ImmichSearchResponse> {
+      return unwrap(await api.POST('/search/smart', { body }), '/search/smart');
+    },
+
+    /** Gazetteer lookup for the "type a place" picker. */
+    async getPlaces(name: string): Promise<ImmichPlace[]> {
+      return unwrap(await api.GET('/search/places', { params: { query: { name } } }), '/search/places');
     },
 
     async getMapMarkers(query: MapMarkersQuery = {}): Promise<ImmichMapMarker[]> {

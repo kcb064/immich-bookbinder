@@ -1,12 +1,13 @@
 import { FORMAT_PRESETS } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
-import { coverCrop, effectivePpi, objectPosition } from './crop.js';
+import { applyFaceCrops, coverCrop, effectivePpi, faceFocal, objectPosition } from './crop.js';
 import { getTemplate } from './templates.js';
 import {
   assignPhotos,
   BLANK_TEMPLATE_ID,
   chooseTemplate,
   DEFAULT_BODY_TEMPLATES,
+  isOpenerTemplate,
   paginate,
   photoSlots,
   placedAssetIds,
@@ -193,5 +194,112 @@ describe('crop math', () => {
     // 6000 px wide over 8.75 in => 685 ppi limited by the taller dimension: 4000 px over 8.75 in => 457.
     expect(Math.round(effectivePpi(6000, 4000, 8.75, 8.75))).toBe(457);
     expect(Math.round(effectivePpi(1440, 960, 8.75, 8.75))).toBe(110);
+  });
+});
+
+describe('chapters', () => {
+  const chaptered = (): { photos: PhotoInput[]; chapters: Array<{ id: string; title: string; subtitle: string }> } => {
+    const photos = album(90).map((p, i) => ({ ...p, score: ((i * 37) % 100) / 100, chapterId: i < 40 ? 'ch1' : i < 55 ? 'ch2' : 'ch3' }));
+    return {
+      photos,
+      chapters: [
+        { id: 'ch1', title: 'Lisbon', subtitle: 'May 12 – 13, 2026' },
+        { id: 'ch2', title: 'Sintra', subtitle: 'May 14, 2026' },
+        { id: 'ch3', title: 'Porto', subtitle: 'May 15 – 16, 2026' },
+      ],
+    };
+  };
+
+  it('opens every chapter on a verso photo page facing a recto title page', () => {
+    const { photos, chapters } = chaptered();
+    const result = paginate(photos, { format: square, targetPages: 48, chapters, makeId: ids });
+    expect(result.chapters.map((c) => c.title)).toEqual(['Lisbon', 'Sintra', 'Porto']);
+    for (const ch of result.chapters) {
+      const opener = result.pages[ch.startsAtPage]!;
+      const title = result.pages[ch.startsAtPage + 1]!;
+      expect(opener.templateId).toBe('chapter-photo');
+      expect(opener.index % 2).toBe(1);
+      expect(title.templateId).toBe('chapter-title');
+      expect(opener.chapterId).toBe(ch.id);
+      expect(title.chapterId).toBe(ch.id);
+      expect(opener.slots[0]!.assetId).toBeDefined();
+    }
+    // Every photo placed once; the hero of each chapter is a high scorer from that chapter.
+    const placed = placedAssetIds(result.pages);
+    expect(placed).toHaveLength(photos.length);
+    expect(new Set(placed).size).toBe(photos.length);
+    const byId = new Map(photos.map((p) => [p.id, p]));
+    const heroLisbon = byId.get(result.pages[result.chapters[0]!.startsAtPage]!.slots[0]!.assetId!)!;
+    expect(heroLisbon.chapterId).toBe('ch1');
+    expect(heroLisbon.score).toBeGreaterThan(0.8);
+    // Body pages carry their chapter; the page count still lands near the target.
+    expect(result.pages.filter((p) => p.chapterId === 'ch2' && p.slots.some((s) => s.assetId)).length).toBeGreaterThan(1);
+    expect(Math.abs(result.pages.length - 48)).toBeLessThanOrEqual(6);
+    expect(isOpenerTemplate('chapter-title')).toBe(true);
+    expect(isOpenerTemplate('two-up')).toBe(false);
+  });
+
+  it('ignores chapter ids that are not in the plan and works without chapters as before', () => {
+    const { photos } = chaptered();
+    const plain = paginate(photos, { format: square, targetPages: 48, makeId: ids });
+    expect(plain.chapters).toEqual([]);
+    expect(plain.pages.some((p) => p.templateId === 'chapter-photo')).toBe(false);
+    expect(placedAssetIds(plain.pages)).toHaveLength(photos.length);
+  });
+
+  it('gives a one-photo chapter just its opener', () => {
+    const photos: PhotoInput[] = [
+      { id: 'a', ratio: 1.5, chapterId: 'x' },
+      { id: 'b', ratio: 1, chapterId: 'y' },
+      { id: 'c', ratio: 1, chapterId: 'y' },
+    ];
+    const result = paginate(photos, { format: home, targetPages: 8, chapters: [{ id: 'x', title: 'X' }, { id: 'y', title: 'Y' }], makeId: ids });
+    expect(result.chapters).toHaveLength(2);
+    expect(result.pages.filter((p) => p.templateId === 'chapter-photo')).toHaveLength(2);
+    expect(placedAssetIds(result.pages).sort()).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('face-aware crops', () => {
+  it('centres the visible window on the faces and clamps at the edges', () => {
+    // Landscape 3:2 into a square slot: a third of the width is cut. Face at the far left.
+    const left = faceFocal([{ x: 0.05, y: 0.3, w: 0.1, h: 0.15 }], 1.5, 1);
+    expect(left).toEqual({ focalX: 0, focalY: 0.5, zoom: 1 });
+    const right = faceFocal([{ x: 0.85, y: 0.3, w: 0.1, h: 0.15 }], 1.5, 1);
+    expect(right?.focalX).toBe(1);
+    // A face slightly right of centre pulls the window right without hitting the clamp.
+    const mid = faceFocal([{ x: 0.6, y: 0.3, w: 0.1, h: 0.15 }], 1.5, 1);
+    expect(mid!.focalX).toBeGreaterThan(0.5);
+    expect(mid!.focalX).toBeLessThan(1);
+    expect(mid!.focalY).toBe(0.5);
+    // Portrait into a wide slot: the vertical axis is cut; a face near the top keeps the top.
+    const top = faceFocal([{ x: 0.4, y: 0.05, w: 0.2, h: 0.15 }], 0.667, 1.5);
+    expect(top).toEqual({ focalX: 0.5, focalY: 0, zoom: 1 });
+    // Nothing to do when the ratios match or there are no faces.
+    expect(faceFocal([{ x: 0.1, y: 0.1, w: 0.1, h: 0.1 }], 1.5, 1.5)).toBeUndefined();
+    expect(faceFocal([], 1.5, 1)).toBeUndefined();
+  });
+
+  it('applies crops to placed photos with faces and leaves existing crops alone', () => {
+    const pages = [
+      { id: 'p', index: 1, templateId: 'four-up-grid', slots: [{ slotId: 'p1', assetId: 'a' }, { slotId: 'p2', assetId: 'b', crop: { focalX: 0.1, focalY: 0.1, zoom: 1 } }, { slotId: 'p3', assetId: 'c' }, { slotId: 'p4', assetId: 'd' }] },
+    ];
+    const faces = new Map([
+      ['a', [{ x: 0.85, y: 0.4, w: 0.1, h: 0.1 }]],
+      ['b', [{ x: 0.85, y: 0.4, w: 0.1, h: 0.1 }]],
+      ['c', [{ x: 0.85, y: 0.4, w: 0.1, h: 0.1 }]],
+    ]);
+    const ratios = new Map([
+      ['a', 1.5],
+      ['b', 1.5],
+      ['c', 1],
+      ['d', 1.5],
+    ]);
+    const out = applyFaceCrops(pages, square, faces, ratios);
+    const slot = (id: string) => out[0]!.slots.find((s) => s.slotId === id)!;
+    expect(slot('p1').crop?.focalX).toBe(1);
+    expect(slot('p2').crop).toEqual({ focalX: 0.1, focalY: 0.1, zoom: 1 });
+    expect(slot('p3').crop).toBeUndefined(); // square photo in a square slot: nothing cut
+    expect(slot('p4').crop).toBeUndefined(); // no faces
   });
 });

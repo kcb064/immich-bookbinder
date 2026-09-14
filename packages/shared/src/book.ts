@@ -1,7 +1,16 @@
 import { z } from 'zod';
+import { ChapterMode } from './chapters.js';
 import { LuluProduct } from './format.js';
 
 export const Id = z.string().min(1);
+
+/** WGS84 bounding box: [west, south, east, north] in degrees. */
+export const BBox = z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90), z.number().min(-180).max(180), z.number().min(-90).max(90)]);
+export type BBox = z.infer<typeof BBox>;
+
+/** A named area a trip covers; photos with coordinates inside the box belong to the trip. */
+export const TripPlace = z.object({ name: z.string().min(1), bbox: BBox });
+export type TripPlace = z.infer<typeof TripPlace>;
 
 /** Which photos feed a book. Several sources are unioned, then filters apply. */
 export const SelectionSource = z.discriminatedUnion('kind', [
@@ -10,11 +19,15 @@ export const SelectionSource = z.discriminatedUnion('kind', [
     kind: z.literal('trip'),
     takenAfter: z.iso.datetime(),
     takenBefore: z.iso.datetime(),
-    /** WGS84 boxes [west, south, east, north]; empty = anywhere in the date range. */
-    bboxes: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])).default([]),
+    /** Places the trip visited; empty = anywhere in the date range. */
+    places: z.array(TripPlace).default([]),
+    /** Keep photos in the date range that carry no GPS data (cameras without GPS). */
+    includeUngeotagged: z.boolean().default(true),
   }),
+  /** Every photo showing any of these people (union). */
   z.object({ kind: z.literal('people'), personIds: z.array(Id).min(1) }),
-  z.object({ kind: z.literal('smart'), query: z.string().min(1), queryAssetId: Id.optional() }),
+  /** CLIP smart search: the `limit` best matches for the text (or the example photo). */
+  z.object({ kind: z.literal('smart'), query: z.string().min(1), queryAssetId: Id.optional(), limit: z.number().int().min(10).max(1000).default(200) }),
   z.object({ kind: z.literal('favorites') }),
 ]);
 export type SelectionSource = z.infer<typeof SelectionSource>;
@@ -65,6 +78,8 @@ export const SelectionRules = z.object({
   includeVideoStills: z.boolean().default(false),
   targetPages: z.number().int().positive().default(48),
   weights: ScoringWeights.default(() => ScoringWeights.parse({})),
+  /** How the book splits into chapters (place runs, days, or none). Openers cost two pages each. */
+  chapters: ChapterMode.default('auto'),
 });
 export type SelectionRules = z.infer<typeof SelectionRules>;
 
@@ -134,7 +149,12 @@ export const BookAsset = z.object({
   /** width / height after EXIF orientation; 1.5 when unknown. */
   ratio: z.number().positive(),
   city: z.string().optional(),
+  /** Region / state / province from Immich's reverse geocoding. */
+  state: z.string().optional(),
   country: z.string().optional(),
+  /** GPS position when the photo has one. */
+  lat: z.number().min(-90).max(90).optional(),
+  lon: z.number().min(-180).max(180).optional(),
   description: z.string().optional(),
   isFavorite: z.boolean().default(false),
   /** EXIF star rating 1-5 when set in Immich. */
@@ -200,6 +220,7 @@ export const ReasonKind = z.enum([
   'duplicate',
   'blurry',
   'variety',
+  'chapter',
   'below-cut',
   'no-analysis',
 ]);
@@ -227,6 +248,8 @@ export const Candidate = z.object({
   clusterSize: z.number().int().positive().default(1),
   /** 0 = the group's best photo; the rest are its alternates. */
   clusterRank: z.number().int().nonnegative().default(0),
+  /** Chapter this photo belongs to in the book's chapter plan (see planChapters). */
+  chapterId: Id.optional(),
   blurry: z.boolean().default(false),
   /** What the engine decided; `decision` may override it with a user choice. */
   autoDecision: AutoDecision,
@@ -251,9 +274,21 @@ export const SelectionSummary = z.object({
   clusters: z.number().int().nonnegative(),
   days: z.number().int().nonnegative(),
   places: z.number().int().nonnegative(),
+  /** Planned chapters (0 = the book has none). */
+  chapters: z.number().int().nonnegative().default(0),
   targetPhotos: z.number().int().nonnegative(),
 });
 export type SelectionSummary = z.infer<typeof SelectionSummary>;
+
+/** One planned chapter as the review page sees it. */
+export const ChapterSummary = z.object({
+  id: Id,
+  title: z.string(),
+  subtitle: z.string(),
+  total: z.number().int().nonnegative(),
+  picked: z.number().int().nonnegative(),
+});
+export type ChapterSummary = z.infer<typeof ChapterSummary>;
 
 export const SelectionPhase = z.enum(['queued', 'gather', 'analyze', 'faces', 'pick', 'done']);
 export type SelectionPhase = z.infer<typeof SelectionPhase>;
@@ -279,6 +314,8 @@ export const SelectionView = z.object({
   summary: SelectionSummary.optional(),
   /** Latest run, if any. */
   run: SelectionRun.optional(),
+  /** The chapter plan for the current rules, chronological. */
+  chapters: z.array(ChapterSummary).default([]),
 });
 export type SelectionView = z.infer<typeof SelectionView>;
 
@@ -297,10 +334,15 @@ export const DecisionsInput = z.object({
 });
 export type DecisionsInput = z.infer<typeof DecisionsInput>;
 
-/** Photos the picker aims for: about three per body page (title page and a trailing blank excluded). */
+/**
+ * Photos the picker aims for: about three per body page (title page and a trailing blank excluded).
+ * Each chapter costs an opener spread (two pages) and its hero photo counts as one pick.
+ */
 export const PHOTOS_PER_PAGE = 2.8;
-export function targetPhotosFor(targetPages: number): number {
-  return Math.max(4, Math.round(Math.max(2, targetPages - 2) * PHOTOS_PER_PAGE));
+export function targetPhotosFor(targetPages: number, chapterCount = 0): number {
+  const openers = chapterCount > 0 ? 2 * chapterCount : 0;
+  const body = Math.max(2, targetPages - 2 - openers);
+  return Math.max(4, Math.round(body * PHOTOS_PER_PAGE) + chapterCount);
 }
 
 export const RenderKind = z.enum(['proof', 'print']);

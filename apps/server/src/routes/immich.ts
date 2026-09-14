@@ -5,10 +5,26 @@ import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { z } from 'zod';
 import { ImmichApiError, type BinaryResponse, type ImmichClient } from '../immich/client.js';
 import { testImmichConnection } from '../immich/status.js';
+import { detectTrips, fetchGeoPoints, type TripSuggestion } from '../immich/trips.js';
 
 const IdParams = z.object({ id: z.string().min(1).max(200) });
 const ThumbnailQuery = z.object({ size: z.enum(['thumbnail', 'preview']).default('thumbnail') });
 const THUMB_CACHE = 'private, max-age=86400';
+
+const IsoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+const TripsQuery = z.object({ from: IsoDay.optional(), to: IsoDay.optional() });
+const PlacesQuery = z.object({ name: z.string().trim().min(1).max(120) });
+const SmartQuery = z.object({ q: z.string().trim().min(1).max(500), size: z.coerce.number().int().min(1).max(60).default(24) });
+
+export interface TripsResponse {
+  from: string;
+  to: string;
+  /** Geotagged photos scanned. */
+  geotagged: number;
+  trips: TripSuggestion[];
+}
+
+const TRIPS_CACHE_MS = 10 * 60_000;
 
 export const immichRoutes: FastifyPluginAsync = async (app) => {
   /** Client for the stored connection; replies 409 when Immich is not configured yet. */
@@ -102,6 +118,57 @@ export const immichRoutes: FastifyPluginAsync = async (app) => {
         isHidden: p.isHidden,
         thumbnailUrl: `/api/immich/people/${encodeURIComponent(p.id)}/thumbnail`,
       })),
+    };
+  });
+
+  /** Trip suggestions from geotagged photos in a date range (default: the last two years). Cached per range for ten minutes. */
+  const tripsCache = new Map<string, { at: number; value: TripsResponse }>();
+  app.get('/api/immich/trips', async (request, reply) => {
+    const query = TripsQuery.safeParse(request.query);
+    if (!query.success) return reply.badRequest('from and to must be YYYY-MM-DD');
+    const client = storedClient(reply);
+    if (!client) return;
+    const to = query.data.to ? new Date(`${query.data.to}T23:59:59.999Z`) : new Date();
+    const from = query.data.from ? new Date(`${query.data.from}T00:00:00.000Z`) : new Date(Date.UTC(to.getUTCFullYear() - 2, to.getUTCMonth(), to.getUTCDate()));
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return reply.badRequest('Invalid date range');
+    const key = `${client.baseUrl}|${from.toISOString()}|${to.toISOString()}`;
+    const cached = tripsCache.get(key);
+    if (cached && Date.now() - cached.at < TRIPS_CACHE_MS) return cached.value;
+    try {
+      const points = await fetchGeoPoints(client, from, to);
+      const value: TripsResponse = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), geotagged: points.length, trips: detectTrips(points) };
+      tripsCache.set(key, { at: Date.now(), value });
+      return value;
+    } catch (err) {
+      if (err instanceof ImmichApiError) return reply.code(502).send({ statusCode: 502, error: 'Bad Gateway', message: err.message });
+      throw err;
+    }
+  });
+
+  /** Gazetteer lookup; each hit becomes a trip place with a box of about 25 km around it. */
+  app.get('/api/immich/places', async (request, reply) => {
+    const query = PlacesQuery.safeParse(request.query);
+    if (!query.success) return reply.badRequest('name is required');
+    const client = storedClient(reply);
+    if (!client) return;
+    const places = await client.getPlaces(query.data.name);
+    return places.slice(0, 12).map((p) => ({
+      name: p.name,
+      region: p.admin1name ?? null,
+      latitude: p.latitude,
+      longitude: p.longitude,
+    }));
+  });
+
+  /** A quick look at what a smart-search query returns, for the wizard. */
+  app.get('/api/immich/smart', async (request, reply) => {
+    const query = SmartQuery.safeParse(request.query);
+    if (!query.success) return reply.badRequest('q is required');
+    const client = storedClient(reply);
+    if (!client) return;
+    const res = await client.searchSmart({ query: query.data.q, size: query.data.size, type: 'IMAGE' });
+    return {
+      items: res.assets.items.map((a) => ({ id: a.id, fileName: a.originalFileName, thumbnailUrl: `/api/immich/assets/${encodeURIComponent(a.id)}/thumbnail?size=thumbnail` })),
     };
   });
 

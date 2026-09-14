@@ -84,6 +84,9 @@ describe('selection engine against the fake Immich', () => {
     expect(summary.blurry).toBeGreaterThanOrEqual(3);
     expect(summary.days).toBe(5);
     expect(summary.places).toBeGreaterThanOrEqual(3);
+    // A 12-page book is too small for chapters (one per 8 pages), so the plan is empty here.
+    expect(summary.chapters).toBe(0);
+    expect(view.chapters).toEqual([]);
 
     const byId = new Map(view.candidates.map((c) => [c.assetId, c]));
     // Burst frames share a cluster and only the best is picked automatically.
@@ -178,6 +181,56 @@ describe('selection engine against the fake Immich', () => {
     expect(book.status).toBe('editing');
     expect(book.pages.length).toBeGreaterThanOrEqual(24);
   });
+
+  it('plans chapters for a bigger book, opens each on a spread and frames faces', async () => {
+    const created = await t.app.inject({
+      method: 'POST',
+      url: '/api/books',
+      headers: { cookie },
+      payload: { title: 'Portugal, long form', formatId: 'lulu-square-8.5', themeId: 'warm-editorial', rules: { sources: [{ kind: 'album', albumIds: ['album-trip'] }], targetPages: 32 } },
+    });
+    const id = Book.parse(created.json()).id;
+    const queued = await t.app.inject({ method: 'POST', url: `/api/books/${id}/selection/runs`, headers: { cookie }, payload: {} });
+    expect(queued.statusCode, queued.body).toBe(202);
+    await t.app.selections.idle();
+    const view = SelectionView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${id}/selection`, headers: { cookie } })).json());
+    expect(view.run?.status, view.run?.error).toBe('done');
+    // Five days in four towns (Lisbon twice) capped at four chapters for 32 pages.
+    expect(view.summary!.chapters).toBeGreaterThanOrEqual(3);
+    expect(view.summary!.chapters).toBeLessThanOrEqual(4);
+    expect(view.chapters.map((c) => c.title)).toContain('Porto');
+    expect(view.chapters.reduce((n, c) => n + c.total, 0)).toBe(60);
+    expect(view.chapters.every((c) => c.picked >= 2)).toBe(true);
+    expect(view.candidates.every((c) => c.chapterId !== undefined)).toBe(true);
+    expect(view.summary!.targetPhotos).toBe(targetPhotosFor(32, view.summary!.chapters));
+
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${id}/layout`, headers: { cookie }, payload: {} });
+    expect(res.statusCode, res.body).toBe(200);
+    const { book } = LayoutResponse.parse(res.json());
+    expect(book.chapters.map((c) => c.title)).toEqual(view.chapters.map((c) => c.title));
+    for (const ch of book.chapters) {
+      expect(book.pages[ch.startsAtPage]).toMatchObject({ templateId: 'chapter-photo', chapterId: ch.id });
+      expect(book.pages[ch.startsAtPage]!.index % 2).toBe(1);
+      expect(book.pages[ch.startsAtPage + 1]).toMatchObject({ templateId: 'chapter-title', chapterId: ch.id });
+    }
+    // Photos with face boxes got a focal point wherever the slot cuts the frame.
+    const withFaces = new Set(view.candidates.filter((c) => c.faces && c.faces.length > 0).map((c) => c.assetId));
+    const cropped = book.pages.flatMap((p) => p.slots).filter((s) => s.assetId && withFaces.has(s.assetId) && s.crop);
+    expect(cropped.length).toBeGreaterThan(0);
+    for (const s of cropped) {
+      expect(s.crop!.focalX).toBeGreaterThanOrEqual(0);
+      expect(s.crop!.focalX).toBeLessThanOrEqual(1);
+      expect(s.crop!.zoom).toBe(1);
+    }
+
+    // Turning chapters off re-plans and lays out flat.
+    const off = await t.app.inject({ method: 'POST', url: `/api/books/${id}/selection/runs`, headers: { cookie }, payload: { rules: { ...book.rules!, chapters: 'none' } } });
+    expect(off.statusCode, off.body).toBe(202);
+    await t.app.selections.idle();
+    const flat = LayoutResponse.parse((await t.app.inject({ method: 'POST', url: `/api/books/${id}/layout`, headers: { cookie }, payload: {} })).json());
+    expect(flat.book.chapters).toEqual([]);
+    expect(flat.book.pages.some((p) => p.templateId === 'chapter-photo')).toBe(false);
+  }, 120_000);
 
   it('answers 409 for a run without Immich and 400 for a book without rules', async () => {
     const noRules = await t.app.inject({ method: 'POST', url: '/api/books', headers: { cookie }, payload: { title: 'Bare', formatId: 'lulu-square-8.5', themeId: 'warm-editorial' } });

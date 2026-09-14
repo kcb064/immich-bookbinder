@@ -1,7 +1,7 @@
 import type { BookAsset } from '@bookbinder/shared';
+import { formatIsoRange } from '@bookbinder/shared';
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-const monthFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long' });
 
 function parse(iso: string | undefined): Date | undefined {
   if (!iso) return undefined;
@@ -17,20 +17,14 @@ export function formatTakenDate(iso: string | undefined): string {
 
 /** "May 12 – 21, 2026", "May 2026" when the range spans a month with no exact days, "" when unknown. */
 export function dateRangeLabel(assets: Iterable<Pick<BookAsset, 'takenAt'>>): string {
-  let lo: Date | undefined;
-  let hi: Date | undefined;
+  let lo: string | undefined;
+  let hi: string | undefined;
   for (const a of assets) {
-    const d = parse(a.takenAt);
-    if (!d) continue;
-    if (!lo || d < lo) lo = d;
-    if (!hi || d > hi) hi = d;
+    if (!parse(a.takenAt)) continue;
+    if (!lo || a.takenAt! < lo) lo = a.takenAt;
+    if (!hi || a.takenAt! > hi) hi = a.takenAt;
   }
-  if (!lo || !hi) return '';
-  if (lo.toDateString() === hi.toDateString()) return dateFmt.format(lo);
-  if (lo.getFullYear() === hi.getFullYear() && lo.getMonth() === hi.getMonth()) {
-    return `${monthFmt.format(lo).split(' ')[0]} ${lo.getDate()} – ${hi.getDate()}, ${lo.getFullYear()}`;
-  }
-  return dateFmt.formatRange(lo, hi);
+  return formatIsoRange(lo, hi);
 }
 
 /** Place for a photo: "Lisbon, Portugal" / "Lisbon" / "Portugal" / "". */

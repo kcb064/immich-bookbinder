@@ -96,11 +96,11 @@ export class CandidateStore {
     return changed;
   }
 
-  summary(bookId: string, assets: readonly BookAsset[], targetPhotos: number): SelectionSummary | undefined {
+  summary(bookId: string, assets: readonly BookAsset[], targetPhotos: number, chapters = 0): SelectionSummary | undefined {
     const list = this.list(bookId);
     if (list.length === 0) return undefined;
     const byId = new Map(list.map((c) => [c.assetId, c]));
     const inputs = assets.filter((a) => byId.has(a.id)).map((a) => ({ asset: a, metrics: byId.get(a.id)!.metrics }));
-    return summarize(list, inputs, targetPhotos);
+    return summarize(list, inputs, targetPhotos, chapters);
   }
 }

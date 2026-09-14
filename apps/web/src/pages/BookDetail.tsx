@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router';
-import { FORMAT_PRESETS, THEMES, targetPhotosFor, type Book, type BookAsset } from '@bookbinder/shared';
+import { FORMAT_PRESETS, THEMES, formatIsoRange, targetPhotosFor, type Book, type BookAsset, type SelectionSource } from '@bookbinder/shared';
 import { dateRangeLabel, PageView, bookMetaFor, toSpreads } from '@bookbinder/pages';
 import { PageHeader } from '../components/Shell.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
@@ -10,33 +10,27 @@ import { STATUS_LABELS, STATUS_TONES, bindingName, bookPageCount, formatDateTime
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { editorImageSrc } from './Editor.tsx';
 
-function describeSources(book: { rules?: { sources: Array<{ kind: string } & Record<string, unknown>> } | undefined }): string {
+export function describeSources(book: { rules?: { sources: SelectionSource[] } | undefined }): string {
   const sources = book.rules?.sources ?? [];
   if (sources.length === 0) return 'No sources yet';
   return sources
     .map((s) => {
       switch (s.kind) {
-        case 'album': {
-          const ids = s['albumIds'];
-          const n = Array.isArray(ids) ? ids.length : 0;
-          return `${n} album${n === 1 ? '' : 's'}`;
+        case 'album':
+          return `${s.albumIds.length} album${s.albumIds.length === 1 ? '' : 's'}`;
+        case 'people':
+          return `${s.personIds.length} ${s.personIds.length === 1 ? 'person' : 'people'}`;
+        case 'trip': {
+          const where = s.places.length > 0 ? s.places.map((p) => p.name).join(', ') : 'anywhere';
+          return `Trip ${formatIsoRange(s.takenAfter, s.takenBefore)} (${where})`;
         }
-        case 'people': {
-          const ids = s['personIds'];
-          const n = Array.isArray(ids) ? ids.length : 0;
-          return `${n} ${n === 1 ? 'person' : 'people'}`;
-        }
-        case 'trip':
-          return 'Trip';
         case 'smart':
-          return `Smart search "${String(s['query'] ?? '')}"`;
+          return `Smart search "${s.query}" (top ${s.limit})`;
         case 'favorites':
           return 'Favorites';
-        default:
-          return s.kind;
       }
     })
-    .join(', ');
+    .join('; ');
 }
 
 /** The first few spreads, drawn small with the real page components. */
@@ -206,8 +200,9 @@ export function BookDetailPage() {
               </>
             ) : (
               <>
-                Nothing is selected yet. <strong>Select photos</strong> pulls the album{(b.rules?.sources.length ?? 0) > 1 ? 's' : ''} from Immich, scores every photo for sharpness, exposure,
-                people and composition, collapses bursts and picks about {formatNumber(targetPhotosFor(b.rules?.targetPages ?? 48))} for a {b.rules?.targetPages ?? 48}-page book. Every pick is explained and reversible.
+                Nothing is selected yet. <strong>Select photos</strong> pulls the photos from Immich, scores every one for sharpness, exposure, people and composition, collapses
+                bursts and picks about {formatNumber(targetPhotosFor(b.rules?.targetPages ?? 48))} for a {b.rules?.targetPages ?? 48}-page book (fewer when it gets chapters). Every pick is explained and
+                reversible.
               </>
             )}
           </Note>
@@ -285,6 +280,16 @@ export function BookDetailPage() {
                 </dd>
                 <dt>Sources</dt>
                 <dd>{describeSources(b)}</dd>
+                <dt>Chapters</dt>
+                <dd>
+                  {b.chapters.length > 0 ? (
+                    b.chapters.map((c) => c.title).join(' · ')
+                  ) : hasPages ? (
+                    <span className="muted">none (one place, or chapters turned off)</span>
+                  ) : (
+                    <span className="muted">decided at layout from the photos' places</span>
+                  )}
+                </dd>
                 <dt>Selection</dt>
                 <dd>
                   {summary ? (

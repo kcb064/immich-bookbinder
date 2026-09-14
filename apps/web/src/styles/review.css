@@ -326,3 +326,138 @@
     border-top: 1px solid var(--border);
   }
 }
+
+/* ---------- Chapters and people (M3) ---------- */
+.rchapters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rchapter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.rchapter:hover {
+  background: var(--surface-2);
+}
+.rchapter--on {
+  background: var(--accent-soft);
+}
+.rchapter__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rchapter__count {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.rpeople {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rperson {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.rperson--on {
+  background: var(--accent-soft);
+}
+.rperson__pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+}
+.rperson__pick:hover {
+  background: var(--surface-2);
+}
+.rperson__pick img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface-3);
+  flex: none;
+}
+.rperson__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rperson__count {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.rperson__star {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+.rperson__star:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.rperson__star--on {
+  color: var(--amber);
+}
+.rperson__star--on svg {
+  fill: currentColor;
+}
+.rgroupby {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.rgroupby button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.rgroupby button[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+}

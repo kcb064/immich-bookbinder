@@ -72,7 +72,9 @@ describe('album → layout → render', () => {
   it('rejects a save that places one asset twice', async () => {
     const book = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
     const firstAsset = placedAssetIds(book.pages)[0]!;
-    const pages = book.pages.map((p, i) => (i === 2 ? { ...p, slots: p.slots.map((s) => (s.assetId ? { ...s, assetId: firstAsset } : s)) } : p));
+    // Another page that holds a photo (chapter title pages and blanks hold none).
+    const target = book.pages.findIndex((p) => p.slots.some((s) => s.assetId && s.assetId !== firstAsset));
+    const pages = book.pages.map((p, i) => (i === target ? { ...p, slots: p.slots.map((s) => (s.assetId ? { ...s, assetId: firstAsset } : s)) } : p));
     const res = await t.app.inject({ method: 'PUT', url: `/api/books/${bookId}`, headers: { cookie }, payload: { ...book, pages } });
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toMatch(/placed more than once/);

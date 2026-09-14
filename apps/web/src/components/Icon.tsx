@@ -185,6 +185,19 @@ const PATHS = {
     </>
   ),
   arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  star: <path d="m12 3 2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.4l-5.7 3.1 1.2-6.4L2.8 9.7l6.4-.8z" />,
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </>
+  ),
+  chapter: (
+    <>
+      <path d="M4 4h16v16H4z" />
+      <path d="M12 4v16M7 9h2M7 12h2M15 9h2M15 12h2" />
+    </>
+  ),
   grid: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1" />

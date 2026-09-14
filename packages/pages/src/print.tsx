@@ -2,7 +2,7 @@
 /** @jsxImportSource react */
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { BookAsset, BookFormat, Page, Theme } from '@bookbinder/shared';
-import { pagePx } from '@bookbinder/layout';
+import { NO_FOLIO_TEMPLATE_IDS, pagePx } from '@bookbinder/layout';
 import { GOOGLE_FONTS_HREF } from './meta.js';
 import { PageView, type BookMeta, type ImageSrc } from './PageView.js';
 
@@ -21,8 +21,6 @@ export interface PrintDocumentOptions {
   /** Draw folios on body pages (default true). */
   folios?: boolean;
 }
-
-const NO_FOLIO = new Set(['title-page', 'blank', 'colophon']);
 
 /** Which side page `index` prints on: page 0 is a recto, then verso/recto alternate. */
 export function sideOf(index: number): 'left' | 'right' {
@@ -54,7 +52,7 @@ img { image-rendering: auto; }
     <>
       {opts.pages.map((page, i) => {
         const index = opts.firstPageIndex + i;
-        const folio = opts.folios === false || NO_FOLIO.has(page.templateId) ? undefined : index + 1;
+        const folio = opts.folios === false || NO_FOLIO_TEMPLATE_IDS.has(page.templateId) ? undefined : index + 1;
         return (
           <div className="bb-sheet" key={page.id}>
             <PageView page={page} format={format} theme={theme} assets={opts.assets} imageSrc={opts.imageSrc} meta={opts.meta} side={sideOf(index)} folio={folio} />

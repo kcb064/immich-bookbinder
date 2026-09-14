@@ -1,5 +1,5 @@
 import type { BookAsset, Candidate, Decision, FaceBox, ImageMetrics, Reason, SelectionRules, SelectionSummary } from '@bookbinder/shared';
-import { targetPhotosFor } from '@bookbinder/shared';
+import { chapterIndex, planChapters, targetPhotosFor, type ChapterPlan } from '@bookbinder/shared';
 import { clusterNearDuplicates } from './cluster.js';
 import { dayOf, pickPhotos, type PickItem } from './pick.js';
 import { isBlurry, median, scoreCandidate, sharpnessScore } from './score.js';
@@ -15,13 +15,15 @@ export interface SelectionInput {
 
 export interface SelectionOptions {
   rules: SelectionRules;
-  /** Defaults to targetPhotosFor(rules.targetPages). */
+  /** Defaults to targetPhotosFor(rules.targetPages, chapters). */
   targetPhotos?: number | undefined;
 }
 
 export interface SelectionResult {
   candidates: Candidate[];
   summary: SelectionSummary;
+  /** The chapter plan the picker budgeted against (empty when the book has no chapters). */
+  chapters: ChapterPlan[];
 }
 
 const fmt = (score: number): string => (score * 10).toFixed(1);
@@ -32,7 +34,9 @@ const fmt = (score: number): string => (score * 10).toFixed(1);
  */
 export function buildSelection(inputs: readonly SelectionInput[], opts: SelectionOptions): SelectionResult {
   const rules = opts.rules;
-  const target = Math.max(1, opts.targetPhotos ?? targetPhotosFor(rules.targetPages));
+  const chapters = planChapters(inputs.map((i) => i.asset), { mode: rules.chapters, targetPages: rules.targetPages });
+  const chapterOf = chapterIndex(chapters);
+  const target = Math.max(1, opts.targetPhotos ?? targetPhotosFor(rules.targetPages, chapters.length));
   const featured = new Set(rules.featuredPersonIds);
   const medianVar = median(inputs.filter((i) => i.metrics).map((i) => i.metrics!.laplacianVar));
 
@@ -69,11 +73,13 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
 
   const items: PickItem[] = scored.map((s) => {
     const c = clusterOf.get(s.input.asset.id);
+    const chapter = chapterOf.get(s.input.asset.id);
     return {
       id: s.input.asset.id,
       score: s.scores.composite,
       takenAt: s.input.asset.takenAt,
       place: s.input.asset.city,
+      chapter: chapter ? { id: chapter.id, title: chapter.title } : undefined,
       isFavorite: s.input.asset.isFavorite,
       personIds: s.input.asset.people.map((p) => p.id),
       eligible: (c?.rank ?? 0) === 0 && !(rules.skipBlurry && s.blurry),
@@ -117,6 +123,7 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
       ...(s.input.phash ? { phash: s.input.phash } : {}),
       ...(s.input.faces ? { faces: s.input.faces } : {}),
       ...(c ? { clusterId: c.id, clusterSize: c.size, clusterRank: c.rank } : { clusterSize: 1, clusterRank: 0 }),
+      ...(chapterOf.has(id) ? { chapterId: chapterOf.get(id)!.id } : {}),
       blurry: s.blurry,
       autoDecision: autoIn ? 'auto-in' : 'auto-out',
       decision: userIn ? 'user-in' : userOut ? 'user-out' : autoIn ? 'auto-in' : 'auto-out',
@@ -124,10 +131,10 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
     };
   });
 
-  return { candidates, summary: summarize(candidates, inputs, target) };
+  return { candidates, summary: summarize(candidates, inputs, target, chapters.length), chapters };
 }
 
-export function summarize(candidates: readonly Candidate[], inputs: readonly Pick<SelectionInput, 'asset' | 'metrics'>[], targetPhotos: number): SelectionSummary {
+export function summarize(candidates: readonly Candidate[], inputs: readonly Pick<SelectionInput, 'asset' | 'metrics'>[], targetPhotos: number, chapters = 0): SelectionSummary {
   let picked = 0;
   let alternates = 0;
   let rejected = 0;
@@ -153,6 +160,7 @@ export function summarize(candidates: readonly Candidate[], inputs: readonly Pic
     clusters: clusterIds.size,
     days: days.size,
     places: places.size,
+    chapters,
     targetPhotos,
   };
 }

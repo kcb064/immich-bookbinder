@@ -1,5 +1,5 @@
-import type { BookAsset, SelectionRules, SelectionSource } from '@bookbinder/shared';
-import type { ImmichAsset, ImmichClient } from './client.js';
+import type { BBox, BookAsset, SelectionRules, SelectionSource } from '@bookbinder/shared';
+import type { ImmichAsset, ImmichClient, ImmichMetadataSearch } from './client.js';
 
 export interface GatherResult {
   /** Chronological, de-duplicated, images only. */
@@ -18,6 +18,10 @@ function clean(s: string | null | undefined): string | undefined {
   return t ? t : undefined;
 }
 
+function coord(v: number | null | undefined, limit: number): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= limit && v !== 0 ? v : undefined;
+}
+
 /** Maps an Immich asset to the cached subset a book needs; undefined when the asset should be skipped. */
 export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
   if (a.type !== 'IMAGE') return undefined;
@@ -29,12 +33,18 @@ export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
   const exif = a.exifInfo;
   let width = exif?.exifImageWidth ?? a.width ?? undefined;
   let height = exif?.exifImageHeight ?? a.height ?? undefined;
-  if (width && height && exif?.exifImageWidth && swapsDimensions(exif.orientation)) [width, height] = [height, width];
+  if (width && height && exif?.exifImageWidth && swapsDimensions(exif.orientation))
+    [width, height] = [height, width];
   const ratio = width && height ? width / height : 1.5;
 
   const takenAt = exif?.dateTimeOriginal ?? a.fileCreatedAt;
-  const rating = typeof exif?.rating === 'number' && exif.rating >= 1 && exif.rating <= 5 ? Math.round(exif.rating) : undefined;
+  const rating =
+    typeof exif?.rating === 'number' && exif.rating >= 1 && exif.rating <= 5
+      ? Math.round(exif.rating)
+      : undefined;
   const people = (a.people ?? []).filter((p) => !p.isHidden).map((p) => ({ id: p.id, name: p.name ?? '' }));
+  const lat = coord(exif?.latitude, 90);
+  const lon = coord(exif?.longitude, 180);
   return {
     id: a.id,
     ...(takenAt ? { takenAt } : {}),
@@ -42,7 +52,9 @@ export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
     ...(height ? { height } : {}),
     ratio,
     ...(clean(exif?.city) ? { city: clean(exif?.city)! } : {}),
+    ...(clean(exif?.state) ? { state: clean(exif?.state)! } : {}),
     ...(clean(exif?.country) ? { country: clean(exif?.country)! } : {}),
+    ...(lat !== undefined && lon !== undefined ? { lat, lon } : {}),
     ...(clean(exif?.description) ? { description: clean(exif?.description)! } : {}),
     isFavorite: a.isFavorite,
     ...(rating !== undefined ? { rating } : {}),
@@ -52,18 +64,77 @@ export function toBookAsset(a: ImmichAsset): BookAsset | undefined {
   };
 }
 
-async function fromSource(client: ImmichClient, source: SelectionSource, warnings: string[]): Promise<ImmichAsset[]> {
+/** Whether a point lies in a [west, south, east, north] box; boxes crossing the antimeridian wrap. */
+export function inBBox(lat: number, lon: number, box: BBox): boolean {
+  const [west, south, east, north] = box;
+  if (lat < south || lat > north) return false;
+  return west <= east ? lon >= west && lon <= east : lon >= west || lon <= east;
+}
+
+const BASE_SEARCH: ImmichMetadataSearch = {
+  type: 'IMAGE',
+  withExif: true,
+  withPeople: true,
+  withStacked: true,
+  size: 1000,
+};
+
+async function fromSource(
+  client: ImmichClient,
+  source: SelectionSource,
+  warnings: string[],
+): Promise<ImmichAsset[]> {
   switch (source.kind) {
     case 'album':
       // Immich 3.2 dropped assets[] from GET /albums/:id; album contents come from the metadata search.
-      return client.searchMetadataAll({ albumIds: [...source.albumIds], type: 'IMAGE', withExif: true, withPeople: true, withStacked: true, size: 1000 });
+      return client.searchMetadataAll({ ...BASE_SEARCH, albumIds: [...source.albumIds] });
     case 'favorites':
-      return client.searchMetadataAll({ isFavorite: true, type: 'IMAGE', withExif: true, withPeople: true, withStacked: true, size: 1000 });
-    case 'trip':
-    case 'people':
-    case 'smart':
-      warnings.push(`Source "${source.kind}" is not supported yet (planned for M3); it was skipped.`);
-      return [];
+      return client.searchMetadataAll({ ...BASE_SEARCH, isFavorite: true });
+    case 'trip': {
+      // The date range is filtered server-side; places are checked here against EXIF coordinates.
+      const inRange = await client.searchMetadataAll({
+        ...BASE_SEARCH,
+        takenAfter: source.takenAfter,
+        takenBefore: source.takenBefore,
+      });
+      if (source.places.length === 0) return inRange;
+      let dropped = 0;
+      const kept = inRange.filter((a) => {
+        const lat = coord(a.exifInfo?.latitude, 90);
+        const lon = coord(a.exifInfo?.longitude, 180);
+        if (lat === undefined || lon === undefined) return source.includeUngeotagged;
+        const inside = source.places.some((p) => inBBox(lat, lon, p.bbox));
+        if (!inside) dropped++;
+        return inside;
+      });
+      if (dropped > 0)
+        warnings.push(
+          `${dropped} photo${dropped === 1 ? '' : 's'} in the date range ${dropped === 1 ? 'was' : 'were'} taken outside the trip's places and left out.`,
+        );
+      return kept;
+    }
+    case 'people': {
+      // personIds in Immich means "all of these people"; a person book wants any of them, so query per person.
+      const out: ImmichAsset[] = [];
+      for (const personId of source.personIds)
+        out.push(...(await client.searchMetadataAll({ ...BASE_SEARCH, personIds: [personId] })));
+      return out;
+    }
+    case 'smart': {
+      const res = await client.searchSmart({
+        query: source.query,
+        ...(source.queryAssetId ? { queryAssetId: source.queryAssetId } : {}),
+        size: source.limit,
+        withExif: true,
+        type: 'IMAGE',
+      });
+      const items = res.assets.items;
+      if (items.length >= source.limit)
+        warnings.push(
+          `Smart search "${source.query}" stopped at its limit of ${source.limit} photos; raise the limit to consider more.`,
+        );
+      return items;
+    }
   }
 }
 

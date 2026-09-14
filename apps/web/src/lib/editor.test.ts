@@ -7,13 +7,18 @@ import {
   historyRedo,
   historyUndo,
   insertBlankPage,
+  isFlexiblePage,
+  isOpenerPage,
   movePage,
   pageAssetIds,
   ratiosOf,
   removePage,
   removePhoto,
   setCaption,
+  setCrop,
+  setSlotText,
   setTemplate,
+  slotText,
   swapSlots,
   unplacedAssets,
   userCaption,
@@ -137,5 +142,46 @@ describe('history', () => {
     expect(historyRedo(historyRedo(r))).toEqual(historyRedo(r));
     // A new edit clears the redo stack.
     expect(historyPush(u1, pages).future).toEqual([]);
+  });
+});
+
+describe('chapters and crops', () => {
+  const opener: Page[] = [
+    { id: 't', index: 0, templateId: 'title-page', slots: [] },
+    { id: 'o', index: 1, templateId: 'chapter-photo', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a', crop: { focalX: 0.9, focalY: 0.5, zoom: 1 } }] },
+    { id: 'c', index: 2, templateId: 'chapter-title', chapterId: 'ch1', slots: [] },
+    { id: 'b', index: 3, templateId: 'two-up', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'b' }, { slotId: 'p2', assetId: 'c' }] },
+  ];
+
+  it('never adds photos to opener pages: they land on a new page after the spread', () => {
+    const onPhoto = addPhoto(opener, 1, 'd', ratios, makeId);
+    expect(onPhoto.pageIndex).toBe(3);
+    expect(onPhoto.pages[1]!.templateId).toBe('chapter-photo');
+    expect(onPhoto.pages[2]!.templateId).toBe('chapter-title');
+    expect(pageAssetIds(onPhoto.pages[3]!)).toEqual(['d']);
+    expect(onPhoto.pages[3]!.chapterId).toBe('ch1');
+    const onTitle = addPhoto(opener, 2, 'd', ratios, makeId);
+    expect(onTitle.pageIndex).toBe(3);
+    expect(onTitle.pages[2]!.templateId).toBe('chapter-title');
+    expect(isOpenerPage(opener[1]!)).toBe(true);
+    expect(isFlexiblePage(opener[3]!)).toBe(true);
+    expect(isFlexiblePage(opener[2]!)).toBe(false);
+  });
+
+  it('removing the opener photo empties the slot but keeps the template', () => {
+    const out = removePhoto(opener, { pageIndex: 1, slotId: 'p1' }, ratios);
+    expect(out[1]!.templateId).toBe('chapter-photo');
+    expect(pageAssetIds(out[1]!)).toEqual([]);
+  });
+
+  it('sets and clears chapter title text and crops', () => {
+    const titled = setSlotText(opener, 2, 'title', 'The Alentejo');
+    expect(slotText(titled[2]!, 'title')).toBe('The Alentejo');
+    expect(slotText(setSlotText(titled, 2, 'title', '  ')[2]!, 'title')).toBeUndefined();
+    const centred = setCrop(opener, { pageIndex: 1, slotId: 'p1' }, undefined);
+    expect(centred[1]!.slots[0]).toEqual({ slotId: 'p1', assetId: 'a' });
+    const moved = setCrop(opener, { pageIndex: 1, slotId: 'p1' }, { focalX: 0.1, focalY: 0.2, zoom: 1 });
+    expect(moved[1]!.slots[0]!.crop).toEqual({ focalX: 0.1, focalY: 0.2, zoom: 1 });
+    expect(movePage(opener, 1, 3)[1]!.id).toBe('o');
   });
 });

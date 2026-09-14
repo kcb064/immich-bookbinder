@@ -1,5 +1,5 @@
-import type { BookAsset, Page, SlotContent } from '@bookbinder/shared';
-import { assignPhotos, BLANK_TEMPLATE_ID, getTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
+import type { BookAsset, Crop, Page, SlotContent } from '@bookbinder/shared';
+import { assignPhotos, BLANK_TEMPLATE_ID, getTemplate, isOpenerTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
 
 /** Pure page-list edits behind the editor. Every function returns a new array; nothing is mutated. */
 
@@ -32,6 +32,16 @@ export function isBodyPage(page: Page): boolean {
   return page.templateId !== TITLE_TEMPLATE_ID;
 }
 
+/** Chapter opener halves (hero photo, title page): their template is fixed and photos are not added to them. */
+export function isOpenerPage(page: Page): boolean {
+  return isOpenerTemplate(page.templateId);
+}
+
+/** Pages whose template the editor may switch and whose photo count may change. */
+export function isFlexiblePage(page: Page): boolean {
+  return isBodyPage(page) && !isOpenerPage(page);
+}
+
 function replaceAt(pages: readonly Page[], index: number, page: Page): Page[] {
   return pages.map((p, i) => (i === index ? page : p));
 }
@@ -58,10 +68,11 @@ export function swapSlots(pages: readonly Page[], a: SlotRef, b: SlotRef): Page[
   return out;
 }
 
-/** Removes a photo from its slot; the page refits to a template with one photo fewer. */
+/** Removes a photo from its slot; the page refits to a template with one photo fewer (opener photo pages just empty the slot). */
 export function removePhoto(pages: readonly Page[], ref: SlotRef, ratios: RatioMap): Page[] {
   const page = pages[ref.pageIndex];
   if (!page) return [...pages];
+  if (isOpenerPage(page)) return replaceAt(pages, ref.pageIndex, { ...page, slots: page.slots.filter((s) => s.slotId !== ref.slotId) });
   const remaining = photoSlots(getTemplate(page.templateId))
     .filter((s) => s.id !== ref.slotId)
     .map((s) => contentOf(page, s.id)?.assetId)
@@ -75,9 +86,12 @@ export function removePhoto(pages: readonly Page[], ref: SlotRef, ratios: RatioM
  */
 export function addPhoto(pages: readonly Page[], pageIndex: number, assetId: string, ratios: RatioMap, makeId: () => string = () => globalThis.crypto.randomUUID()): { pages: Page[]; pageIndex: number } {
   const page = pages[pageIndex];
-  if (!page || !isBodyPage(page)) {
-    const fresh = refitPage({ id: makeId(), index: 0, templateId: BLANK_TEMPLATE_ID, slots: [] }, [assetId], ratios);
-    const at = Math.min(pages.length, pageIndex + 1);
+  if (!page || !isFlexiblePage(page)) {
+    // Title and opener pages keep their template: the photo goes on a new page right after (after
+    // the facing title page when this is an opener photo page, so the spread stays intact).
+    const skip = page && page.templateId === 'chapter-photo' ? 2 : 1;
+    const fresh = refitPage({ id: makeId(), index: 0, templateId: BLANK_TEMPLATE_ID, slots: [], ...(page?.chapterId ? { chapterId: page.chapterId } : {}) }, [assetId], ratios);
+    const at = Math.min(pages.length, pageIndex + skip);
     return { pages: reindexPages([...pages.slice(0, at), fresh, ...pages.slice(at)]), pageIndex: at };
   }
   const current = pageAssetIds(page);
@@ -88,11 +102,12 @@ export function addPhoto(pages: readonly Page[], pageIndex: number, assetId: str
   return { pages: reindexPages([...pages.slice(0, pageIndex + 1), fresh, ...pages.slice(pageIndex + 1)]), pageIndex: pageIndex + 1 };
 }
 
-/** Moves a page to another position (the title page stays first). */
+/** Moves a page to another position (the title page stays first; chapter opener halves stay put). */
 export function movePage(pages: readonly Page[], from: number, to: number): Page[] {
   const first = pages[0];
   const min = first && !isBodyPage(first) ? 1 : 0;
   if (from < min || from >= pages.length) return [...pages];
+  if (isOpenerPage(pages[from]!)) return [...pages];
   const target = Math.max(min, Math.min(pages.length - 1, to));
   if (from === target) return [...pages];
   const out = [...pages];
@@ -150,6 +165,35 @@ export function setCaption(pages: readonly Page[], pageIndex: number, text: stri
 export function userCaption(page: Page): string | undefined {
   const slotId = captionSlotId(page.templateId);
   return slotId ? contentOf(page, slotId)?.text : undefined;
+}
+
+/** Sets (or clears with an empty string) the text of any text slot, e.g. a chapter title or subtitle. */
+export function setSlotText(pages: readonly Page[], pageIndex: number, slotId: string, text: string): Page[] {
+  const page = pages[pageIndex];
+  if (!page) return [...pages];
+  const rest = page.slots.filter((s) => s.slotId !== slotId);
+  const existing = contentOf(page, slotId);
+  const trimmed = text.trim();
+  const next: SlotContent | undefined = trimmed ? { slotId, ...(existing?.assetId ? { assetId: existing.assetId } : {}), ...(existing?.crop ? { crop: existing.crop } : {}), text } : undefined;
+  return replaceAt(pages, pageIndex, { ...page, slots: next ? [...rest, next] : rest });
+}
+
+export function slotText(page: Page, slotId: string): string | undefined {
+  return contentOf(page, slotId)?.text;
+}
+
+/** Sets or clears the crop (focal point) of a photo slot; undefined restores the centred cover-fit. */
+export function setCrop(pages: readonly Page[], ref: SlotRef, crop: Crop | undefined): Page[] {
+  const page = pages[ref.pageIndex];
+  if (!page) return [...pages];
+  return replaceAt(pages, ref.pageIndex, {
+    ...page,
+    slots: page.slots.map((s) => {
+      if (s.slotId !== ref.slotId) return s;
+      const restOfSlot: SlotContent = { slotId: s.slotId, ...(s.assetId ? { assetId: s.assetId } : {}), ...(s.text !== undefined ? { text: s.text } : {}) };
+      return crop ? { ...restOfSlot, crop } : restOfSlot;
+    }),
+  });
 }
 
 /** Gathered photos that are not on any page, in chronological order. */

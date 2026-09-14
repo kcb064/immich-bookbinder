@@ -1,4 +1,4 @@
-import { SelectionRules, type BookAsset } from '@bookbinder/shared';
+import { SelectionRules, targetPhotosFor, type BookAsset } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
 import { clusterNearDuplicates } from './cluster.js';
 import { analyzeImage, boxDownsample, colorfulness, laplacianVariance, lumaStats, thirdsEnergy, toGray, type RawImage } from './metrics.js';
@@ -239,6 +239,27 @@ describe('pickPhotos', () => {
     expect(ids).toHaveLength(12);
   });
 
+  it('budgets picks per chapter and keeps at least two per chapter for the opener', () => {
+    // Day 12 is chapter Lisbon (20 strong photos); days 13 and 14 are chapter Porto (10 weaker ones);
+    // one lone weak photo forms chapter Sintra.
+    const withChapters = [
+      ...items.map((i) => ({ ...i, chapter: i.id.startsWith('a') ? { id: 'l', title: 'Lisbon' } : { id: 'p', title: 'Porto' } })),
+      item('s0', 0.3, at(15, 9), { chapter: { id: 's', title: 'Sintra' } }),
+      item('s1', 0.28, at(15, 10), { chapter: { id: 's', title: 'Sintra' } }),
+      item('s2', 0.2, at(15, 11), { chapter: { id: 's', title: 'Sintra' } }),
+    ];
+    const r = pickPhotos(withChapters, { ...base, variety: 0.8, spreadAcrossDays: false });
+    const ids = pickedIds(r);
+    expect(ids).toHaveLength(12);
+    expect(ids.filter((id) => id.startsWith('s'))).toHaveLength(2);
+    expect(ids.filter((id) => id.startsWith('b') || id.startsWith('c')).length).toBeGreaterThanOrEqual(3);
+    expect(r.decisions.get('s0')?.reasons[0]?.kind).toBe('chapter');
+    expect(r.decisions.get('a0')?.reasons[0]?.text).toContain('Lisbon');
+    const overBudget = [...r.decisions.values()].filter((d) => !d.picked && d.reasons[0]?.kind === 'variety' && /already has/.test(d.reasons[0].text));
+    expect(overBudget.length).toBeGreaterThan(0);
+    expect(overBudget[0]!.reasons[0]!.text).toMatch(/Lisbon already has \d+ of about \d+ highlights/);
+  });
+
   it('guarantees a featured person by swapping out the weakest pick', () => {
     const withPerson = items.map((i) => (i.id === 'c4' ? { ...i, personIds: ['grandma'], score: 0.2 } : i));
     const r = pickPhotos(withPerson, { ...base, featuredPersonIds: ['grandma'] });
@@ -298,6 +319,23 @@ describe('buildSelection', () => {
     expect(byId.get('p9')).toMatchObject({ decision: 'user-out' });
     expect(byId.get('p9')!.reasons[0]?.kind).toBe('user-out');
     expect(r.summary.picked).toBe(6);
+  });
+
+  it('plans chapters from places, tags candidates with them and reserves opener pages in the target', () => {
+    const many: SelectionInput[] = Array.from({ length: 40 }, (_, i) => ({
+      asset: asset(`q${i}`, new Date(Date.UTC(2026, 4, 12 + Math.floor(i / 10), 10, i)).toISOString(), { city: i < 20 ? 'Lisbon' : 'Porto', country: 'Portugal' }),
+      metrics: metrics(500 + i),
+      phash: DISTINCT[i % DISTINCT.length]!.replace(/^./, (i % 16).toString(16)),
+    }));
+    const r = buildSelection(many, { rules: { ...rules, collapseNearDuplicates: false } });
+    expect(r.chapters.map((c) => c.title)).toEqual(['Lisbon', 'Porto']);
+    expect(r.summary.chapters).toBe(2);
+    expect(r.summary.targetPhotos).toBe(targetPhotosFor(24, 2));
+    expect(r.candidates.find((c) => c.assetId === 'q5')?.chapterId).toBe('ch1');
+    expect(r.candidates.find((c) => c.assetId === 'q35')?.chapterId).toBe('ch2');
+    const off = buildSelection(many, { rules: { ...rules, collapseNearDuplicates: false, chapters: 'none' } });
+    expect(off.chapters).toEqual([]);
+    expect(off.candidates.every((c) => c.chapterId === undefined)).toBe(true);
   });
 
   it('places everything when near-duplicate collapse and blur skipping are off', () => {

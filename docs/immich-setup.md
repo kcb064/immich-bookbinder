@@ -21,7 +21,7 @@ Exactly the list in `REQUIRED_IMMICH_PERMISSIONS` (`packages/shared/src/api.ts`)
 |---|---|
 | `server.about` | `GET /server/about` for the version and compatibility banner. |
 | `user.read` | `GET /users/me` to show whose key it is and confirm the key works at all. |
-| `asset.read` | Asset metadata and search (`POST /search/metadata`, `POST /search/smart`, `GET /assets/:id`): dates, EXIF, dimensions, people on the asset. |
+| `asset.read` | Asset metadata and search (`POST /search/metadata` for albums, favourites, date ranges and people; `POST /search/smart` for the smart-search source and its preview; `GET /search/places` for the trip wizard's place picker): dates, EXIF including GPS and place names, dimensions, people on the asset. |
 | `asset.view` | Thumbnails and previews (`GET /assets/:id/thumbnail`) for scoring, the editor and the viewer's image proxy. |
 | `asset.download` | Full-resolution originals (`GET /assets/:id/original`), fetched only at render time into a bounded cache. |
 | `asset.statistics` | `GET /assets/statistics` for the photo count on the settings page and dashboard. |
@@ -30,8 +30,8 @@ Exactly the list in `REQUIRED_IMMICH_PERMISSIONS` (`packages/shared/src/api.ts`)
 | `face.read` | Face bounding boxes (`GET /faces?id=`) for face-aware crops and face-quality scores on shortlisted photos. |
 | `duplicate.read` | Immich's duplicate groups (`GET /duplicates`) so bursts collapse before our own perceptual-hash pass. |
 | `tag.read` | Tags as a filter and in the smart-search wizard. |
-| `timeline.read` | `GET /timeline/buckets` and `GET /timeline/bucket` with a bounding box: the efficient server-side query for "this date range in this area". |
-| `map.read` | `GET /map/markers` for trip detection (clustering photo locations within a date range). |
+| `timeline.read` | `GET /timeline/buckets` and `GET /timeline/bucket` with `withCoordinates`: one small request per month gives every geotagged photo's position and day, which is how the New book wizard detects trips. |
+| `map.read` | `GET /map/markers`, probed by the connection test; reserved for map pages (M7). |
 
 Nothing with `write`, `update`, `delete`, `upload` or `share` is needed.
 
