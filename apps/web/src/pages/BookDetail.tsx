@@ -7,6 +7,7 @@ import { RenderButtons, RenderList } from '../components/Renders.tsx';
 import { PreflightCard } from '../components/Preflight.tsx';
 import { ShareCard } from '../components/Share.tsx';
 import { CoverCard } from '../components/CoverCard.tsx';
+import { OrderSummaryCard } from '../components/OrderCard.tsx';
 import { BookCover } from './Dashboard.tsx';
 import { isActiveRun, useBook, useBookAssets, useDeleteBook, useInvalidateOnRenderSettle, useLayoutBook, useRenders, useSelection, useSettings } from '../lib/queries.ts';
 import { STATUS_LABELS, STATUS_TONES, bindingName, bookPageCount, formatDateTime, formatNumber, formatTrim, pluralize, themeFor } from '../lib/format.ts';
@@ -252,6 +253,8 @@ export function BookDetailPage() {
             </section>
 
             <ShareCard book={b} disabled={!hasPages} />
+
+            {luluFormat ? <OrderSummaryCard book={b} disabled={!hasPages} /> : null}
 
             <section className="card card--pad stack">
               <h2 className="h2">Overview</h2>

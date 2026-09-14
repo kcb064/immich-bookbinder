@@ -4,27 +4,69 @@
     {
       "name": "server",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@bookbinder/server", "dev"],
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@bookbinder/server",
+        "dev"
+      ],
       "port": 3080,
       "autoPort": true
     },
     {
       "name": "web",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@bookbinder/web", "dev"],
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@bookbinder/web",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "fake-immich",
       "runtimeExecutable": "corepack",
-      "runtimeArgs": ["pnpm", "--filter", "@bookbinder/server", "exec", "tsx", "src/test/fake-immich.ts", "--photos", "90", "--home", "60"],
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@bookbinder/server",
+        "exec",
+        "tsx",
+        "src/test/fake-immich.ts",
+        "--photos",
+        "90",
+        "--home",
+        "60"
+      ],
       "port": 2283,
       "autoPort": true
     },
     {
+      "name": "fake-lulu",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@bookbinder/server",
+        "exec",
+        "tsx",
+        "src/test/fake-lulu.ts",
+        "--port",
+        "2390"
+      ],
+      "port": 2390
+    },
+    {
       "name": "design-preview",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "C:/Users/Kevin/Claude/Photo book/design"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "C:/Users/Kevin/Claude/Photo book/design"
+      ],
       "port": 8765
     }
   ]

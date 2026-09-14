@@ -1,5 +1,5 @@
-import { FORMAT_PRESETS, RenderData, THEMES, type Book, type BookCover, type BookFormat, type CoverGeometry, type RenderJob, type RenderKind } from '@bookbinder/shared';
-import { coverGeometry } from '@bookbinder/layout';
+import { FORMAT_PRESETS, RenderData, THEMES, luluPodPackageId, type Book, type BookCover, type BookFormat, type CoverGeometry, type RenderJob, type RenderKind } from '@bookbinder/shared';
+import { coverGeometry, type CoverOverride } from '@bookbinder/layout';
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -31,7 +31,15 @@ export interface RenderServiceDeps {
   /** Pages per Chromium document. */
   batchSize?: number;
   webFonts?: boolean;
+  /**
+   * Exact cover sheet size for a Lulu product and page count (M5: Lulu's /cover-dimensions/), or
+   * undefined when Lulu is not connected; a throw is reported as a render warning.
+   */
+  coverDimensions?: (podPackageId: string, pageCount: number) => Promise<CoverOverride | undefined>;
 }
+
+/** Warning on cover and preview renders sized with the caliper estimate instead of Lulu's answer. */
+export const SPINE_ESTIMATED_WARNING = 'Spine width estimated; connect Lulu for exact dimensions';
 
 export function toRenderJob(row: RenderRow): RenderJob {
   return {
@@ -135,10 +143,29 @@ export class RenderService {
     return true;
   }
 
-  /** Cover and its geometry for a book, or undefined when the format has no cover or the book none yet. */
-  coverFor(book: Book, format: BookFormat): { cover: BookCover; geometry: CoverGeometry } | undefined {
+  /** Cover and its (estimated) geometry for a book, or undefined when the format has no cover or the book none yet. */
+  coverFor(book: Book, format: BookFormat, override?: CoverOverride): { cover: BookCover; geometry: CoverGeometry } | undefined {
     if (!formatHasCover(format) || !book.cover) return undefined;
-    return { cover: book.cover, geometry: coverGeometry(format, book.luluProduct, book.pages.length) };
+    return { cover: book.cover, geometry: coverGeometry(format, book.luluProduct, book.pages.length, override) };
+  }
+
+  /**
+   * Asks Lulu for the exact sheet size before a cover is drawn; falls back to the estimate with a
+   * warning when Lulu is not connected or the call fails.
+   */
+  private async coverOverride(book: Book, format: BookFormat, warnings: string[]): Promise<CoverOverride | undefined> {
+    if (!formatHasCover(format) || !format.luluTrim || !this.deps.coverDimensions) {
+      warnings.push(SPINE_ESTIMATED_WARNING);
+      return undefined;
+    }
+    try {
+      const override = await this.deps.coverDimensions(luluPodPackageId(format, book.luluProduct), book.pages.length);
+      if (!override) warnings.push(SPINE_ESTIMATED_WARNING);
+      return override;
+    } catch (err) {
+      warnings.push(`${SPINE_ESTIMATED_WARNING} (Lulu answered: ${err instanceof Error ? err.message : String(err)})`);
+      return undefined;
+    }
   }
 
   /** Queues a render and returns its row immediately; progress is polled via get(). */
@@ -187,10 +214,12 @@ export class RenderService {
       }
       const assets = this.deps.store.assetMap(book.id);
       const kind = row.kind as RenderKind;
-      const cover = this.coverFor(book, format);
       if (kind === 'cover' && !formatHasCover(format)) throw new Error(`${format.name} is a home-print format and has no cover`);
-      if (kind === 'cover' && !cover) throw new Error('The book has no cover yet; lay it out again or set one on the book page');
-      log.info({ pages: book.pages.length }, 'render started');
+      if (kind === 'cover' && !this.coverFor(book, format)) throw new Error('The book has no cover yet; lay it out again or set one on the book page');
+      const extraWarnings: string[] = [];
+      const drawsCover = (kind === 'cover' || kind === 'preview') && Boolean(this.coverFor(book, format));
+      const cover = this.coverFor(book, format, drawsCover ? await this.coverOverride(book, format, extraWarnings) : undefined);
+      log.info({ pages: book.pages.length, ...(cover ? { coverSource: cover.geometry.source } : {}) }, 'render started');
 
       let lastWrite = 0;
       const input = {
@@ -217,14 +246,15 @@ export class RenderService {
       if (kind === 'preview') {
         const filePath = join(dir, id);
         const out = await this.deps.renderer.renderPreviews(input, filePath);
+        const previewData: RenderData = { hasCover: out.hasCover, ...(out.hasCover && cover ? { cover: { geometry: cover.geometry, pageCount: book.pages.length } } : {}) };
         this.update(id, {
           status: 'done',
           pageCount: out.pageCount,
           pagesDone: row.pagesTotal,
           fileSizeBytes: out.bytes,
           filePath,
-          warnings: JSON.stringify(out.warnings),
-          data: JSON.stringify({ hasCover: out.hasCover } satisfies RenderData),
+          warnings: JSON.stringify([...out.warnings, ...(out.hasCover ? extraWarnings : [])]),
+          data: JSON.stringify(previewData),
           finishedAt: new Date().toISOString(),
         });
         log.info({ pageCount: out.pageCount, hasCover: out.hasCover, bytes: out.bytes, warnings: out.warnings.length }, 'preview finished');
@@ -241,7 +271,7 @@ export class RenderService {
         pagesDone: row.pagesTotal,
         fileSizeBytes: out.pdf.byteLength,
         filePath,
-        warnings: JSON.stringify(out.warnings),
+        warnings: JSON.stringify([...out.warnings, ...(kind === 'cover' ? extraWarnings : [])]),
         ...(data ? { data: JSON.stringify(data) } : {}),
         finishedAt: new Date().toISOString(),
       });

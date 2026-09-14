@@ -6,6 +6,7 @@ import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShareRow } from '../db/schema.js';
+import { EXPORT_TOKEN_RE } from '../lulu/exports.js';
 import { SHARE_UNLOCK_TTL_MS, shareStatus } from '../shares/store.js';
 
 /** Per-IP limit on every public route; unlock attempts get a tighter one. */
@@ -51,7 +52,7 @@ function fileSlug(title: string): string {
 /**
  * The unauthenticated surface: the shared viewer at /s/:token (SPA shell, book.json, page PNGs,
  * PDF, unlock). Every answer is built from stored renders and the book document; no asset ids and
- * nothing from Immich ever leave through here. /public/* stays a 404 until M5 adds export URLs.
+ * nothing from Immich ever leave through here. /public/exports/:token.pdf (M5) serves print files to Lulu.
  */
 export const publicRoutes: FastifyPluginAsync = async (app) => {
   const gone = (reply: FastifyReply, reason: 'expired' | 'revoked') => reply.code(410).send({ statusCode: 410, error: 'Gone', reason });
@@ -138,8 +139,8 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     const pdf = share.allowDownload ? (app.renders.latest(book.id, 'print') ?? app.renders.latest(book.id, 'proof')) : undefined;
     const placed = new Set(book.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean)));
     const dates = dateRangeLabel(app.books.assets(book.id).filter((a) => placed.has(a.id)));
-    const cover = preview?.data?.hasCover ? app.renders.coverFor(book, format) : undefined;
-    const g = cover?.geometry;
+    // The geometry the preview's cover.png was drawn with (Lulu's exact sheet when it was connected), else the estimate.
+    const g = preview?.data?.hasCover ? (preview.data.cover?.geometry ?? app.renders.coverFor(book, format)?.geometry) : undefined;
     app.shares.touch(share.id);
     void reply.header('cache-control', 'private, no-store');
     return {
@@ -188,7 +189,22 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
-  // Reserved for M5's public export URLs.
+  /**
+   * Print files for Lulu (M5): no auth, the 64-character token is the secret, 410 once expired.
+   * Lulu downloads with a non-browser client, so nothing here depends on cookies or headers.
+   */
+  app.get('/public/exports/:token.pdf', { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {
+    const token = (request.params as { token?: string }).token ?? '';
+    const row = EXPORT_TOKEN_RE.test(token) ? app.exports.byToken(token) : undefined;
+    if (!row) return reply.notFound('This export does not exist');
+    if (app.exports.isExpired(row)) return gone(reply, 'expired');
+    const path = app.exports.filePath(row, (renderId) => app.renders.filePath(renderId));
+    if (!path) return reply.notFound('The render behind this export is gone');
+    app.exports.countDownload(row.id);
+    return sendFile(reply, path, 'application/pdf', { 'content-disposition': `inline; filename="${row.renderId ?? 'probe'}.pdf"`, 'cache-control': 'private, no-store' });
+  });
+
+  // Everything else under /public is a 404 (never the SPA).
   const notYet = { statusCode: 404, error: 'Not Found', message: 'Not available' };
   app.get('/public', async (_req, reply) => reply.code(404).send(notYet));
   app.get('/public/*', async (_req, reply) => reply.code(404).send(notYet));

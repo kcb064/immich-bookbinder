@@ -11,6 +11,9 @@ import type { Config } from './config.js';
 import { SecretBox } from './crypto.js';
 import { openDb } from './db/index.js';
 import { createImmichClient, type ImmichClient } from './immich/client.js';
+import { createLuluClient, type LuluClient } from './lulu/client.js';
+import { ExportStore } from './lulu/exports.js';
+import { OrderService } from './lulu/orders.js';
 import { ChromiumRenderer } from './render/renderer.js';
 import { RenderService } from './render/service.js';
 import { SelectionService } from './selection/service.js';
@@ -19,6 +22,7 @@ import { authRoutes } from './routes/auth.js';
 import { bookRoutes } from './routes/books.js';
 import { healthRoutes } from './routes/health.js';
 import { immichRoutes } from './routes/immich.js';
+import { configuredPublicBase, luluRoutes } from './routes/lulu.js';
 import { publicRoutes } from './routes/public.js';
 import { selectionRoutes } from './routes/selection.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -36,6 +40,8 @@ export interface BuildAppOptions {
   render?: { batchSize?: number; webFonts?: boolean };
   /** Selection tuning (tests cap the analysis workers). */
   selection?: { concurrency?: number };
+  /** Lulu order tuning (tests poll in milliseconds and turn the ticker off). */
+  lulu?: { pollIntervalMs?: number; pollTimeoutMs?: number; tickerMs?: number };
 }
 
 function loggerFor(config: Config): LoggerOption {
@@ -71,6 +77,18 @@ ${conn.apiKey}`;
     if (cachedClient?.key !== key) cachedClient = { key, client: createImmichClient(conn) };
     return cachedClient.client;
   };
+  // Same idea for Lulu: the token cache lives in the client, so keep one per credential pair.
+  let cachedLulu: { key: string; client: LuluClient } | undefined;
+  const luluClient = (): LuluClient | undefined => {
+    const creds = settings.getLuluCredentials();
+    if (!creds) return undefined;
+    const key = `${creds.env}
+${creds.clientKey}
+${creds.clientSecret}
+${config.LULU_BASE_URL ?? ''}`;
+    if (cachedLulu?.key !== key) cachedLulu = { key, client: createLuluClient({ ...creds, baseUrl: config.LULU_BASE_URL }) };
+    return cachedLulu.client;
+  };
   const renderer = new ChromiumRenderer();
 
   app.decorate('config', config);
@@ -82,6 +100,9 @@ ${conn.apiKey}`;
   app.decorate('candidates', candidates);
   app.decorate('shares', new ShareStore(database.db));
   app.decorate('immichClient', immichClient);
+  app.decorate('luluClient', luluClient);
+  const exportStore = new ExportStore(database.db);
+  app.decorate('exports', exportStore);
   app.decorate(
     'selections',
     new SelectionService({
@@ -106,9 +127,30 @@ ${conn.apiKey}`;
       log: app.log,
       ...(opts.render?.batchSize !== undefined ? { batchSize: opts.render.batchSize } : {}),
       ...(opts.render?.webFonts !== undefined ? { webFonts: opts.render.webFonts } : {}),
+      // Exact cover sheet size from Lulu when connected; undefined -> the estimate plus a warning.
+      coverDimensions: async (podPackageId, pageCount) => {
+        const client = luluClient();
+        if (!client) return undefined;
+        const dims = await client.coverDimensions({ podPackageId, pageCount, unit: 'pt' });
+        const per = dims.unit === 'pt' ? 72 : dims.unit === 'mm' ? 25.4 : 1;
+        return { widthIn: Number(dims.width) / per, heightIn: Number(dims.height) / per };
+      },
     }),
   );
+  const orderService = new OrderService({
+    db: database.db,
+    books,
+    renders: app.renders,
+    exports: exportStore,
+    settings,
+    client: luluClient,
+    publicBase: () => configuredPublicBase(app),
+    log: app.log,
+    ...(opts.lulu ?? {}),
+  });
+  app.decorate('orders', orderService);
   app.addHook('onClose', async () => {
+    orderService.close();
     await renderer.close();
     database.close();
   });
@@ -147,6 +189,7 @@ ${conn.apiKey}`;
   await app.register(bookRoutes);
   await app.register(selectionRoutes);
   await app.register(shareRoutes);
+  await app.register(luluRoutes);
   await app.register(publicRoutes);
   if (config.webDist) {
     await app.register(staticRoutes, { root: config.webDist });

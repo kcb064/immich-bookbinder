@@ -1,5 +1,5 @@
 import { FORMAT_PRESETS, THEMES, DEFAULT_THEME_ID } from '@bookbinder/shared';
-import type { Book, BookStatus, LuluBinding, Theme } from '@bookbinder/shared';
+import type { Book, BookStatus, LuluBinding, OrderStatus, Theme } from '@bookbinder/shared';
 
 const numberFmt = new Intl.NumberFormat(undefined);
 export const formatNumber = (n: number | undefined | null): string =>
@@ -75,6 +75,44 @@ export const STATUS_LABELS: Record<BookStatus, string> = {
   rendered: 'Ready',
   ordered: 'Ordered',
 };
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  draft: 'Draft',
+  validating: 'Validating files',
+  quoted: 'Quoted',
+  submitted: 'Submitted',
+  unpaid: 'Awaiting payment',
+  'in-production': 'In production',
+  shipped: 'Shipped',
+  rejected: 'Rejected',
+  error: 'Error',
+  canceled: 'Canceled',
+};
+
+export const ORDER_STATUS_TONES: Record<OrderStatus, ChipTone> = {
+  draft: 'neutral',
+  validating: 'accent',
+  quoted: 'accent',
+  submitted: 'amber',
+  unpaid: 'amber',
+  'in-production': 'green',
+  shipped: 'green',
+  rejected: 'red',
+  error: 'red',
+  canceled: 'neutral',
+};
+
+/** "12.34 USD" from Lulu's decimal strings; the currency code stays visible because Lulu prices in several. */
+export function formatMoney(amount: string | number | undefined, currency: string | undefined): string {
+  if (amount === undefined || amount === null || amount === '') return '—';
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return String(amount);
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency ?? 'USD', currencyDisplay: 'code' }).format(n);
+  } catch {
+    return `${n.toFixed(2)} ${currency ?? ''}`.trim();
+  }
+}
 
 export const STATUS_TONES: Record<BookStatus, ChipTone> = {
   draft: 'neutral',

@@ -7,7 +7,7 @@
 # Stages:
 #   base    node + the exact pnpm from package.json "packageManager"
 #   deps    pnpm install with only manifests copied (cache survives source edits)
-#   build   generate Immich types, build every workspace package, prune server to prod deps
+#   build   generate Immich and Lulu types, build every workspace package, prune server to prod deps
 #   runtime slim node + Playwright's Chromium headless shell + server dist + web dist
 
 ARG NODE_IMAGE=node:22-bookworm-slim
@@ -50,9 +50,9 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM deps AS build
 # .dockerignore keeps node_modules, dist, docs, design and .env out of the context.
 COPY . .
-# generate:immich writes apps/server/src/immich/generated/immich.d.ts from the
-# vendored spec; it is gitignored, so it must run before typecheck/build.
-RUN pnpm generate:immich && pnpm -r build
+# generate:immich and generate:lulu write the gitignored client types from the
+# vendored specs, so they must run before typecheck/build.
+RUN pnpm generate:immich && pnpm generate:lulu && pnpm -r build
 # `pnpm deploy` writes a self-contained copy of one workspace package with a
 # pruned, production-only node_modules. Workspace dependencies
 # (@bookbinder/shared etc.) are copied in as real directories, so the result

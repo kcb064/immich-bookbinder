@@ -3,7 +3,7 @@ import { FORMAT_PRESETS, type Book, type BookAsset, type BookCover, type SlotCon
 import { coverGeometry, placedAssetIds } from '@bookbinder/layout';
 import { CoverView, bookMetaFor, coverText } from '@bookbinder/pages';
 import { Button, Field, Note, TextInput } from './ui.tsx';
-import { useSaveBook } from '../lib/queries.ts';
+import { useRenders, useSaveBook } from '../lib/queries.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 import { themeFor } from '../lib/format.ts';
 import { editorImageSrc } from '../pages/Editor.tsx';
@@ -29,6 +29,7 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
   const format = FORMAT_PRESETS[book.formatId];
   const theme = themeFor(book.themeId);
   const save = useSaveBook(book.id);
+  const renders = useRenders(book.id);
   const [draft, setDraft] = useState<BookCover | undefined>(book.cover);
   const [picking, setPicking] = useState(false);
   useEffect(() => setDraft(book.cover), [book.cover]);
@@ -55,7 +56,9 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
   }
 
   const cover = draft ?? book.cover;
-  const geometry = coverGeometry(format, book.luluProduct, book.pages.length);
+  // Lulu's exact sheet size once a cover was rendered with Lulu connected (M5); the caliper estimate until then.
+  const luluGeometry = renders.data?.find((r) => r.kind === 'cover' && r.status === 'done' && r.data?.cover?.geometry.source === 'lulu' && r.data.cover.pageCount === book.pages.length)?.data?.cover?.geometry;
+  const geometry = luluGeometry ?? coverGeometry(format, book.luluProduct, book.pages.length);
   const dirty = JSON.stringify(draft ?? null) !== JSON.stringify(book.cover ?? null);
   const heroId = cover?.slots.find((s) => s.slotId === 'p1')?.assetId;
 
@@ -70,8 +73,8 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
     <div className="stack">
       <div className="row row--between">
         <div className="label">Cover</div>
-        <span className="muted small mono" title="Estimated from the paper caliper and page count; Lulu's exact dimensions arrive with ordering">
-          spine {geometry.spineIn.toFixed(2)} in · est.
+        <span className="muted small mono" title={luluGeometry ? 'Sheet size from Lulu /cover-dimensions/ for this product and page count' : 'Estimated from the paper caliper and page count; connect Lulu in Settings and render the cover for exact dimensions'}>
+          spine {geometry.spineIn.toFixed(2)} in · {luluGeometry ? 'Lulu' : 'est.'}
         </span>
       </div>
       {cover ? (

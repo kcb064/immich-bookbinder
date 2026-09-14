@@ -21,28 +21,34 @@ export const HARDCOVER_WRAP_IN = 0.75;
 /** Below this the spine is too thin for text; the renderer leaves it blank. */
 export const MIN_SPINE_TEXT_IN = 0.25;
 
-/** Real dimensions from Lulu, in inches (M5 converts its `pt` answer). */
+/**
+ * Real sheet size from Lulu's /cover-dimensions/, in inches (the client converts its `pt` answer).
+ * Lulu answers only width and height, so the wrap is derived from the height (`(height - trim) / 2`)
+ * and the spine from the width; pass `spineIn` to skip that derivation.
+ */
 export interface CoverOverride {
   widthIn: number;
   heightIn: number;
-  spineIn: number;
+  spineIn?: number;
 }
 
 /**
  * Size of the one-page cover PDF: back cover, spine and front cover side by side, plus the wrap
  * (hardcover) or bleed (softcover) on every outer edge. Without `override` the spine is an
- * ESTIMATE from the paper caliper and page count (verified against Lulu /cover-dimensions/ in M5).
+ * ESTIMATE from the paper caliper and page count; with one (Lulu's /cover-dimensions/ answer, M5)
+ * the sheet is exactly what Lulu expects.
  */
 export function coverGeometry(format: BookFormat, product: LuluProduct, pageCount: number, override?: CoverOverride): CoverGeometry {
   const trimW = format.trimWidthIn;
   if (override) {
-    const wrapIn = Math.max(0, (override.widthIn - 2 * trimW - override.spineIn) / 2);
+    const wrapIn = override.spineIn === undefined ? Math.max(0, (override.heightIn - format.trimHeightIn) / 2) : Math.max(0, (override.widthIn - 2 * trimW - override.spineIn) / 2);
+    const spineIn = override.spineIn ?? Math.max(0, override.widthIn - 2 * trimW - 2 * wrapIn);
     return {
-      widthIn: override.widthIn,
-      heightIn: override.heightIn,
-      spineIn: override.spineIn,
+      widthIn: round4(override.widthIn),
+      heightIn: round4(override.heightIn),
+      spineIn: round4(spineIn),
       wrapIn: round4(wrapIn),
-      frontLeftIn: round4(wrapIn + trimW + override.spineIn),
+      frontLeftIn: round4(wrapIn + trimW + spineIn),
       source: 'lulu',
     };
   }

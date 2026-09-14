@@ -27,6 +27,7 @@ Fastify 5 API for immich-bookbinder: admin auth, encrypted settings, Immich prox
 | `HOST` | | `0.0.0.0` | |
 | `DATA_DIR` | | `./data` | Holds `bookbinder.sqlite` (WAL), `cache/`, `exports/`. Created on start. |
 | `PUBLIC_URL` | | | Absolute external URL for share links and Lulu PDF downloads. The session cookie is `Secure` only on HTTPS requests (`secure: 'auto'`), so plain `http://nas:3080` logins keep working. |
+| `LULU_BASE_URL` | | | Development only: base URL of a fake Lulu (`src/test/fake-lulu.ts`) used instead of `api.sandbox.lulu.com` / `api.lulu.com` for both environments. Never set it in production. |
 | `TRUST_CF_ACCESS` | | `false` | When `true`, a request carrying `Cf-Access-Authenticated-User-Email` counts as the authenticated admin. Only enable behind Cloudflare Access. |
 | `LOG_LEVEL` | | `info` | pino level. |
 | `NODE_ENV` | | `development` | `production` enables the CSP and JSON logs; `test` silences logging. |
@@ -69,6 +70,19 @@ Everything under `/api` except `/api/health` and `/api/auth/*` requires the `bb_
 | GET | `/api/books/:id/renders/:rid/pdf` | | the PDF (`Content-Disposition: inline`) |
 | DELETE | `/api/books/:id/renders/:rid` | | 204; removes the file. 409 while running |
 | DELETE | `/api/books/:id` | | 204 |
+| PUT | `/api/settings/lulu` | `{env: 'sandbox' \| 'production', clientKey, clientSecret}` | `SettingsView` (pair stored encrypted per environment) |
+| DELETE | `/api/settings/lulu` | `?env=` (default: active) | `SettingsView` |
+| PUT | `/api/settings/lulu/sandbox` | `{sandbox: boolean}` | `SettingsView`; picks the active environment |
+| POST | `/api/lulu/test` | optional `{env, clientKey, clientSecret}`; otherwise the stored active pair | `LuluStatus` (token + `GET /print-jobs/?page_size=1`); 409 without stored credentials |
+| POST | `/api/lulu/reachability` | | `ReachabilityReport`: fetches a throwaway export through the public URL; 409 without one |
+| GET | `/api/orders` | | `OrderView[]` across books, newest first |
+| GET | `/api/books/:id/orders` | | `OrderView[]` |
+| POST | `/api/books/:id/orders` | `PrepareOrderInput` `{quantity?, shippingLevel?, shippingAddress, contactEmail?}` | 202 `OrderView` in `validating`; exports, Lulu validations and the quote run in the background (poll GET). 409 with the reason when Lulu, the public URL, preflight or a current print/cover render is missing |
+| GET | `/api/books/:id/orders/:oid` | | `OrderView` |
+| POST | `/api/books/:id/orders/:oid/submit` | | `OrderView`: creates the print job (409 unless `quoted`), book status `ordered` |
+| POST | `/api/books/:id/orders/:oid/refresh` | | `OrderView` after `GET /print-jobs/{id}/status/` |
+| POST | `/api/books/:id/orders/:oid/cancel` | | `OrderView`; through Lulu while unpaid, locally before a job exists, 409 once in production |
+| GET | `/public/exports/:token.pdf` | no auth, rate-limited | the print file for Lulu; 404 unknown token, 410 expired |
 
 The Immich API key never leaves the server: browsers only see proxied bytes. Immich requests use `x-api-key` against `${url}/api` (Immich 3.2.0 spec; `GET /server/version` needs no auth).
 
@@ -84,6 +98,8 @@ src/
   settings.ts      SettingsStore over the settings table
   db/              better-sqlite3 + drizzle, migrations run on startup from ../drizzle
   immich/          openapi-fetch client (client.ts) and connection test (status.ts)
-  routes/          health, auth, settings, immich, books, public placeholder, static SPA
+  lulu/            Lulu client (OAuth token cache, typed calls), exports table, order service, reachability probe
+  routes/          health, auth, settings, immich, books, shares, lulu (settings + orders), public (viewer + exports), static SPA
+  test/            fake-immich.ts and fake-lulu.ts: in-process stand-ins used by the tests and for local development
 drizzle/           generated SQL migrations + meta journal (committed)
 ```

@@ -137,6 +137,14 @@ export type BookCover = z.infer<typeof BookCover>;
 export const BookStatus = z.enum(['draft', 'selecting', 'editing', 'rendering', 'rendered', 'ordered']);
 export type BookStatus = z.infer<typeof BookStatus>;
 
+/**
+ * Lifecycle of a Lulu order (M5): draft -> validating -> quoted -> submitted -> unpaid -> in-production
+ * -> shipped, or rejected (Lulu refused a file or the job), error (a call failed), canceled.
+ * `OrderView.luluStatus` keeps Lulu's raw status next to it.
+ */
+export const OrderStatus = z.enum(['draft', 'validating', 'quoted', 'submitted', 'unpaid', 'in-production', 'shipped', 'rejected', 'error', 'canceled']);
+export type OrderStatus = z.infer<typeof OrderStatus>;
+
 export const Book = z.object({
   id: Id,
   title: z.string().min(1),

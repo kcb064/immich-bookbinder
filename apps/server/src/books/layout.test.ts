@@ -194,9 +194,11 @@ describe('album → layout → render', () => {
     await t.app.renders.idle();
     const job = RenderJob.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders/${RenderJob.parse(queued.json()).id}`, headers: { cookie } })).json());
     expect(job.status, job.error).toBe('done');
-    expect(job.warnings).toEqual([]);
+    // No Lulu credentials in this test: the spine is the caliper estimate, and the render says so (M5).
+    expect(job.warnings).toEqual(['Spine width estimated; connect Lulu for exact dimensions']);
     expect(job.pageCount).toBe(1);
     const g = coverGeometry(FORMAT_PRESETS['lulu-square-8.5']!, book.luluProduct, book.pages.length);
+    expect(g.source).toBe('estimate');
     expect(job.data?.cover).toEqual({ geometry: g, pageCount: 24 });
     expect(g.source).toBe('estimate');
 
@@ -225,7 +227,8 @@ describe('album → layout → render', () => {
     expect(job.status, job.error).toBe('done');
     expect(job.pageCount).toBe(24);
     expect(job.pagesDone).toBe(25);
-    expect(job.data).toEqual({ hasCover: true });
+    // The preview records the geometry its cover.png was drawn with (the viewer crops with it).
+    expect(job.data).toEqual({ hasCover: true, cover: { geometry: coverGeometry(FORMAT_PRESETS['lulu-square-8.5']!, t.app.books.get(bookId)!.luluProduct, 24), pageCount: 24 } });
     expect(job.downloadUrl).toBeUndefined();
     expect(job.fileSizeBytes).toBeGreaterThan(24 * 1000);
     const dir = t.app.renders.filePath(id)!;

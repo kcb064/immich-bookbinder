@@ -4,6 +4,9 @@ import type { Config } from './config.js';
 import type { SecretBox } from './crypto.js';
 import type { Db } from './db/index.js';
 import type { ImmichClient } from './immich/client.js';
+import type { LuluClient } from './lulu/client.js';
+import type { ExportStore } from './lulu/exports.js';
+import type { OrderService } from './lulu/orders.js';
 import type { RenderService } from './render/service.js';
 import type { SelectionService } from './selection/service.js';
 import type { CandidateStore } from './selection/store.js';
@@ -21,8 +24,12 @@ declare module 'fastify' {
     candidates: CandidateStore;
     selections: SelectionService;
     shares: ShareStore;
+    exports: ExportStore;
+    orders: OrderService;
     /** Client for the stored Immich connection, or undefined until Settings has a URL and key. */
     immichClient: () => ImmichClient | undefined;
+    /** Client for the active Lulu environment, or undefined until its key and secret are saved. */
+    luluClient: () => LuluClient | undefined;
   }
   interface FastifyRequest {
     auth: AuthState;

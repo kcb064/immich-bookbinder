@@ -19,7 +19,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "check": "corepack pnpm lint && corepack pnpm -r typecheck && corepack pnpm test && corepack pnpm -r build",
-    "generate:immich": "openapi-typescript specs/immich-openapi.json -o apps/server/src/immich/generated/immich.d.ts"
+    "generate:immich": "openapi-typescript specs/immich-openapi.json -o apps/server/src/immich/generated/immich.d.ts",
+    "generate:lulu": "openapi-typescript specs/lulu-openapi.yml -o apps/server/src/lulu/generated/lulu.d.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

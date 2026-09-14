@@ -976,3 +976,159 @@
   font: inherit;
   text-decoration: underline;
 }
+
+/* ---------- Lulu orders (M5) ---------- */
+.ship {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.ship--on {
+  border-color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+.ship input:focus-visible ~ .ship__name {
+  text-decoration: underline;
+}
+.order {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.order__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.order__head:focus-visible {
+  box-shadow: var(--focus);
+  outline: none;
+}
+.order__body {
+  padding: 4px 14px 14px;
+  gap: 14px;
+  border-top: 1px solid var(--border);
+}
+.timeline {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+}
+.timeline__step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.timeline__step::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border-strong);
+}
+.timeline__step:last-child::before {
+  display: none;
+}
+.timeline__dot {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 2px solid var(--border-strong);
+  color: #fff;
+}
+.timeline__step--done .timeline__dot {
+  background: var(--green);
+  border-color: var(--green);
+}
+.timeline__step--done::before {
+  background: var(--green);
+}
+.timeline__step--current .timeline__dot {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.timeline__step--current .timeline__label {
+  color: var(--text);
+  font-weight: 600;
+}
+.timeline__step--dead .timeline__dot {
+  background: var(--red);
+  border-color: var(--red);
+}
+.timeline__step--dead .timeline__label {
+  color: var(--red);
+  font-weight: 600;
+}
+.cost {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cost td {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cost td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.cost__total td {
+  border-bottom: 0;
+  font-weight: 600;
+  padding-top: 10px;
+}
+.orderlog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.orderlog__item {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  line-height: 1.4;
+}
+.orderlog__item--error {
+  color: var(--red);
+}
+.orderlog__item--warn {
+  color: var(--amber);
+}

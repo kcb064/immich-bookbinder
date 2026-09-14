@@ -126,6 +126,59 @@ export const shares = sqliteTable('shares', {
   views: integer('views').notNull().default(0),
 });
 
+/**
+ * Public, unauthenticated PDF URLs Lulu downloads from (M5): `/public/exports/<token>.pdf` streams
+ * the render's file until `expires_at`. One row per order attempt and file; the same render can have
+ * several. `md5` is the file's hex digest, sent to Lulu as `source_md5_sum`. The reachability probe
+ * makes a throwaway export with no book or render and its own `file_path`.
+ */
+export const exports = sqliteTable('exports', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id').references(() => books.id, { onDelete: 'cascade' }),
+  renderId: text('render_id').references(() => renders.id, { onDelete: 'cascade' }),
+  /** Only for exports without a render (the reachability probe). */
+  filePath: text('file_path'),
+  token: text('token').notNull().unique(),
+  md5: text('md5').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull(),
+  downloads: integer('downloads').notNull().default(0),
+});
+
+/**
+ * Lulu print orders (M5). `status` is the app's `OrderStatus`, `lulu_status` Lulu's raw name. JSON
+ * columns hold the shared schemas: `shipping_address` (ShippingAddress), `cost` (OrderCost),
+ * `shipping_options` (ShippingOption[]), `validation` ({ interior, cover }: FileValidation),
+ * `messages` (OrderMessage[]), `tracking` (OrderTracking[]).
+ */
+export const orders = sqliteTable('orders', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id')
+    .notNull()
+    .references(() => books.id, { onDelete: 'cascade' }),
+  luluJobId: text('lulu_job_id'),
+  env: text('env').notNull(),
+  status: text('status').notNull(),
+  luluStatus: text('lulu_status'),
+  podPackageId: text('pod_package_id').notNull(),
+  pageCount: integer('page_count').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  shippingLevel: text('shipping_level').notNull(),
+  shippingAddress: text('shipping_address').notNull(),
+  contactEmail: text('contact_email').notNull(),
+  cost: text('cost'),
+  shippingOptions: text('shipping_options').notNull().default('[]'),
+  interiorExportId: text('interior_export_id'),
+  coverExportId: text('cover_export_id'),
+  validation: text('validation').notNull().default('{}'),
+  messages: text('messages').notNull().default('[]'),
+  tracking: text('tracking').notNull().default('[]'),
+  externalId: text('external_id').notNull(),
+  error: text('error'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export type SettingRow = typeof settings.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type BookRow = typeof books.$inferSelect;
@@ -134,3 +187,5 @@ export type RenderRow = typeof renders.$inferSelect;
 export type CandidateRow = typeof candidates.$inferSelect;
 export type SelectionRunRow = typeof selectionRuns.$inferSelect;
 export type ShareRow = typeof shares.$inferSelect;
+export type ExportRow = typeof exports.$inferSelect;
+export type OrderRow = typeof orders.$inferSelect;

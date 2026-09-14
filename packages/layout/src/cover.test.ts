@@ -37,4 +37,14 @@ describe('coverGeometry', () => {
     expect(g.wrapIn).toBeCloseTo((18.9 - 17 - 0.4) / 2, 4);
     expect(g.frontLeftIn).toBeCloseTo(g.wrapIn + 8.5 + 0.4, 4);
   });
+
+  it('derives wrap and spine from a width/height-only Lulu answer', () => {
+    // Lulu's /cover-dimensions/ example: 6 x 9 in perfect bound, 210 pages -> 920 x 666 pt.
+    const six = { ...square, trimWidthIn: 6, trimHeightIn: 9 };
+    const g = coverGeometry(six, LuluProduct.parse({ binding: 'PB', paper: '060UW444' }), 210, { widthIn: 920 / 72, heightIn: 666 / 72 });
+    expect(g.source).toBe('lulu');
+    expect(g.wrapIn).toBeCloseTo(0.125, 3);
+    expect(g.spineIn).toBeCloseTo(12.7778 - 12 - 0.25, 3);
+    expect(g.frontLeftIn).toBeCloseTo(0.125 + 6 + g.spineIn, 3);
+  });
 });

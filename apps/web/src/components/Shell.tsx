@@ -19,7 +19,7 @@ const NAV: NavItem[] = [
   { to: '/', label: 'Books', icon: 'book', end: true },
   { to: '/new', label: 'New book', icon: 'plus' },
   { to: '/people', label: 'People & pets', icon: 'people', soon: true },
-  { to: '/orders', label: 'Orders', icon: 'orders', soon: true },
+  { to: '/orders', label: 'Orders', icon: 'orders' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

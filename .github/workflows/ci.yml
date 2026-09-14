@@ -51,8 +51,8 @@ jobs:
           # Browsers are only needed for e2e; unit tests and builds do not launch one.
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      - name: Generate Immich client types
-        run: pnpm generate:immich
+      - name: Generate Immich and Lulu client types
+        run: pnpm generate:immich && pnpm generate:lulu
 
       - name: Lint
         run: pnpm lint

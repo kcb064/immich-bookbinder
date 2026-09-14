@@ -1,15 +1,29 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { REQUIRED_IMMICH_PERMISSIONS, SUPPORTED_IMMICH_VERSION } from '@bookbinder/shared';
-import type { ImmichConnectionInput, ImmichStatus } from '@bookbinder/shared';
+import type { ImmichConnectionInput, ImmichStatus, LuluEnv } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, Dot, Field, Note, PasswordInput, Skeleton, TextInput } from '../components/ui.tsx';
-import { useClearImmich, useImmichStatus, useSaveImmich, useSavePublicUrl, useSettings, useTestImmich } from '../lib/queries.ts';
+import {
+  useClearImmich,
+  useClearLulu,
+  useImmichStatus,
+  useReachability,
+  useSaveImmich,
+  useSaveLulu,
+  useSavePublicUrl,
+  useSetLuluSandbox,
+  useSettings,
+  useTestImmich,
+  useTestLulu,
+} from '../lib/queries.ts';
 import { errorMessage } from '../lib/api.ts';
 import { compactUrl, formatNumber } from '../lib/format.ts';
 
 const IMMICH_SETUP_DOC = 'https://github.com/kcb064/immich-bookbinder/blob/main/docs/immich-setup.md';
+const LULU_SETUP_DOC = 'https://github.com/kcb064/immich-bookbinder/blob/main/docs/lulu-setup.md';
+const DEPLOY_DOC = 'https://github.com/kcb064/immich-bookbinder/blob/main/docs/deploy-dockge.md';
 
 function normalizeUrl(raw: string): string {
   let u = raw.trim().replace(/\/+$/, '');
@@ -350,6 +364,7 @@ function ImmichSection() {
 function PublicUrlSection() {
   const settings = useSettings();
   const save = useSavePublicUrl();
+  const reach = useReachability();
   const [value, setValue] = useState('');
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -381,8 +396,8 @@ function PublicUrlSection() {
             Public URL
           </h2>
           <p className="section__desc">
-            Where people reach Bookbinder from outside your network. Used for the QR code on the colophon page and the web viewer link.
-            Leave empty to skip the QR code.
+            Where people reach Bookbinder from outside your network. Used for the QR code on the colophon page, the web viewer link and the
+            PDF links Lulu downloads print files from. Leave empty to skip the QR code (Lulu ordering then stays off).
           </p>
         </div>
       </div>
@@ -420,8 +435,262 @@ function PublicUrlSection() {
               <Icon name="check" size={14} /> Saved
             </span>
           ) : null}
+          <Button
+            icon="link"
+            onClick={() => reach.mutate()}
+            loading={reach.isPending}
+            disabled={dirty || !settings.data?.publicUrl}
+            title={dirty ? 'Save the URL first' : !settings.data?.publicUrl ? 'Save a public URL first' : 'Fetch a test PDF through the public URL, the way Lulu will'}
+            style={{ marginLeft: 'auto' }}
+          >
+            Check reachability
+          </Button>
         </div>
       </form>
+      {reach.isError ? (
+        <Note tone="error" role="alert">
+          {errorMessage(reach.error)}
+        </Note>
+      ) : null}
+      {reach.data ? (
+        <div className="status" role={reach.data.ok ? 'status' : 'alert'}>
+          <div className="status__head">
+            <Dot tone={reach.data.ok ? 'green' : 'red'} />
+            {reach.data.ok ? 'Reachable: the PDF came back intact' : 'Not reachable the way Lulu needs'}
+            <span className="muted small mono" style={{ fontWeight: 400 }}>
+              {reach.data.status ? `HTTP ${reach.data.status} · ` : ''}
+              {reach.data.latencyMs} ms{reach.data.contentType ? ` · ${reach.data.contentType}` : ''}
+            </span>
+          </div>
+          <div className="mono small muted" style={{ overflowWrap: 'anywhere' }}>
+            {reach.data.url}
+          </div>
+          {reach.data.error ? <div>{reach.data.error}</div> : null}
+          {reach.data.hint ? (
+            <Note tone="amber">
+              {reach.data.hint}{' '}
+              <a href={DEPLOY_DOC} target="_blank" rel="noreferrer">
+                Deployment guide <Icon name="external" size={12} />
+              </a>
+            </Note>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Lulu credentials: the sandbox switch picks the active environment; the form edits that environment's pair. */
+function LuluSection() {
+  const settings = useSettings();
+  const lulu = settings.data?.lulu;
+  const env: LuluEnv = lulu?.sandbox === false ? 'production' : 'sandbox';
+  const keySet = env === 'sandbox' ? Boolean(lulu?.sandboxKeySet) : Boolean(lulu?.productionKeySet);
+  const setSandbox = useSetLuluSandbox();
+  const save = useSaveLulu();
+  const clear = useClearLulu();
+  const test = useTestLulu();
+
+  const [clientKey, setClientKey] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const typed = clientKey.trim().length >= 8 && clientSecret.trim().length >= 8 ? { env, clientKey: clientKey.trim(), clientSecret: clientSecret.trim() } : undefined;
+  const partial = Boolean(clientKey.trim() || clientSecret.trim()) && !typed;
+  const keyError = submitted && !typed && !keySet ? 'Paste both the client key and the client secret from the Lulu developer portal.' : undefined;
+
+  const reset = () => {
+    setClientKey('');
+    setClientSecret('');
+    setSubmitted(false);
+    setJustSaved(false);
+    test.reset();
+  };
+
+  const onSave = (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitted(true);
+    if (!typed) return;
+    save.mutate(typed, {
+      onSuccess: () => {
+        reset();
+        setJustSaved(true);
+        test.mutate(undefined);
+      },
+    });
+  };
+
+  const onTest = () => {
+    setSubmitted(true);
+    setJustSaved(false);
+    if (typed) test.mutate(typed);
+    else if (keySet && !partial) test.mutate(undefined);
+  };
+
+  const onClear = () => {
+    if (!window.confirm(`Remove the saved Lulu ${env} key and secret?`)) return;
+    clear.mutate(env, { onSuccess: reset });
+  };
+
+  const onSwitch = (sandbox: boolean) => {
+    reset();
+    setSandbox.mutate(sandbox);
+  };
+
+  const canTest = !test.isPending && (Boolean(typed) || (keySet && !partial));
+  const status = test.data;
+
+  return (
+    <section className="card section" aria-labelledby="lulu-title">
+      <div className="section__head">
+        <div>
+          <h2 className="section__title" id="lulu-title">
+            <Icon name="printer" />
+            Lulu printing
+            {settings.isSuccess ? (
+              keySet ? (
+                <Chip tone={env === 'production' ? 'amber' : 'green'} icon="check">
+                  {env} configured
+                </Chip>
+              ) : (
+                <Chip tone="neutral">{env}: not configured</Chip>
+              )
+            ) : null}
+          </h2>
+          <p className="section__desc">
+            Order printed books through the Lulu Print API. Keys come from the Lulu developer portal (sandbox and production are separate
+            accounts); the app validates the PDFs, quotes the price and creates the print job, and you pay on lulu.com.{' '}
+            <a href={LULU_SETUP_DOC} target="_blank" rel="noreferrer">
+              Read the setup guide <Icon name="external" size={12} />
+            </a>
+          </p>
+        </div>
+      </div>
+
+      <label className="toggle">
+        <input type="checkbox" className="visually-hidden" checked={env === 'sandbox'} onChange={(e) => onSwitch(e.target.checked)} disabled={setSandbox.isPending || settings.isPending} />
+        <span className={`toggle__track${env === 'sandbox' ? ' toggle__track--on' : ''}`} aria-hidden="true">
+          <span className="toggle__knob" />
+        </span>
+        <span>
+          <strong>Sandbox</strong>{' '}
+          <span className="muted">
+            {env === 'sandbox' ? 'on: orders are validated and priced at api.sandbox.lulu.com, never printed or charged.' : 'off: orders go to api.lulu.com and cost real money once paid.'}
+          </span>
+        </span>
+      </label>
+
+      <form className="stack" style={{ gap: 20 }} onSubmit={onSave} noValidate>
+        <div className="form-grid">
+          <Field label={`Client key (${env})`} hint={keySet ? 'A key is saved. Paste a new pair to replace it.' : 'From your profile, API Keys, in the developer portal.'} error={keyError}>
+            {({ id, describedBy, invalid }) => (
+              <TextInput
+                id={id}
+                autoComplete="off"
+                placeholder={keySet ? '•••••••••••••••• (saved)' : 'Client key'}
+                value={clientKey}
+                onChange={(e) => {
+                  setClientKey(e.target.value);
+                  setJustSaved(false);
+                }}
+                aria-describedby={describedBy}
+                aria-invalid={invalid || undefined}
+                disabled={settings.isPending}
+              />
+            )}
+          </Field>
+          <Field label={`Client secret (${env})`} hint="Stored encrypted on the server; never shown again.">
+            {({ id, describedBy }) => (
+              <PasswordInput
+                id={id}
+                autoComplete="off"
+                placeholder={keySet ? '•••••••••••••••• (saved)' : 'Client secret'}
+                value={clientSecret}
+                onChange={(e) => {
+                  setClientSecret(e.target.value);
+                  setJustSaved(false);
+                }}
+                aria-describedby={describedBy}
+                disabled={settings.isPending}
+              />
+            )}
+          </Field>
+        </div>
+
+        {save.isError ? (
+          <Note tone="error" role="alert">
+            Could not save: {errorMessage(save.error)}
+          </Note>
+        ) : null}
+        {clear.isError ? (
+          <Note tone="error" role="alert">
+            Could not remove the credentials: {errorMessage(clear.error)}
+          </Note>
+        ) : null}
+        {setSandbox.isError ? (
+          <Note tone="error" role="alert">
+            Could not switch environments: {errorMessage(setSandbox.error)}
+          </Note>
+        ) : null}
+        {justSaved ? (
+          <Note tone="accent" icon="check" role="status">
+            Saved. Testing the stored {env} credentials below.
+          </Note>
+        ) : null}
+
+        <div className="actions">
+          <Button type="submit" variant="primary" loading={save.isPending} disabled={!typed && submitted}>
+            Save
+          </Button>
+          <Button icon="refresh" onClick={onTest} loading={test.isPending} disabled={!canTest && submitted}>
+            Test credentials
+          </Button>
+          {keySet ? (
+            <Button variant="danger" icon="x" onClick={onClear} loading={clear.isPending} style={{ marginLeft: 'auto' }}>
+              Remove {env} credentials
+            </Button>
+          ) : null}
+        </div>
+      </form>
+
+      {test.isPending ? (
+        <div className="status" aria-busy="true">
+          <div className="status__head">
+            <Dot tone="neutral" />
+            Requesting a token from Lulu…
+          </div>
+          <Skeleton height={24} />
+        </div>
+      ) : test.isError ? (
+        <div className="status" role="alert">
+          <div className="status__head">
+            <Dot tone="red" />
+            Test failed
+          </div>
+          <div className="muted">{errorMessage(test.error)}</div>
+        </div>
+      ) : status ? (
+        <div className="status" role={status.ok ? 'status' : 'alert'}>
+          <div className="status__head">
+            <Dot tone={status.ok ? 'green' : 'red'} />
+            {status.ok ? `Connected to Lulu ${status.env}` : `Lulu ${status.env} rejected the credentials`}
+            <Chip tone="neutral" className="mono">
+              {compactUrl(status.baseUrl)}
+            </Chip>
+          </div>
+          {status.ok ? (
+            <div className="muted small">
+              Token exchange and an authenticated call succeeded.
+              {status.printJobs !== undefined ? ` ${formatNumber(status.printJobs)} print job${status.printJobs === 1 ? '' : 's'} on this account.` : ''}
+            </div>
+          ) : (
+            <div className="muted" style={{ lineHeight: 1.5 }}>
+              {status.error ?? 'Lulu did not answer.'}
+            </div>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -434,7 +703,7 @@ function PlaceholderSection({
   children,
 }: {
   id: string;
-  icon: 'printer' | 'sparkles';
+  icon: 'sparkles';
   title: string;
   milestone: string;
   children: string;
@@ -452,12 +721,8 @@ function PlaceholderSection({
         </div>
       </div>
       <div className="form-grid">
-        <Field label={id === 'lulu' ? 'Client key' : 'API key'}>
-          {({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}
-        </Field>
-        <Field label={id === 'lulu' ? 'Client secret' : 'Model'}>
-          {({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}
-        </Field>
+        <Field label="API key">{({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}</Field>
+        <Field label="Model">{({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}</Field>
       </div>
     </section>
   );
@@ -471,9 +736,7 @@ export function SettingsPage() {
         <div className="settings">
           <ImmichSection />
           <PublicUrlSection />
-          <PlaceholderSection id="lulu" icon="printer" title="Lulu printing" milestone="coming in M5">
-            Order printed books through Lulu Direct. You will add API credentials here and choose sandbox or production.
-          </PlaceholderSection>
+          <LuluSection />
           <PlaceholderSection id="ai" icon="sparkles" title="AI captions & pet finder" milestone="coming in M7">
             Optional: an LLM writes chapter titles and captions, and a small model learns to find your pets across the library.
           </PlaceholderSection>

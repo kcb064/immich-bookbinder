@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { Book, BookAsset, ImmichStatus, Preflight, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
-import type { CreateShareInput, DecisionChoice, ImmichConnectionInput, RenderKind, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
+import { Book, BookAsset, ImmichStatus, LuluStatus, OrderView, Preflight, ReachabilityReport, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
+import type { CreateShareInput, DecisionChoice, ImmichConnectionInput, LuluConnectionInput, LuluEnv, PrepareOrderInput, RenderKind, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -94,6 +94,9 @@ export const keys = {
   selection: (id: string) => ['books', id, 'selection'] as const,
   preflight: (id: string) => ['books', id, 'preflight'] as const,
   shares: (id: string) => ['books', id, 'shares'] as const,
+  allOrders: ['orders'] as const,
+  orders: (id: string) => ['books', id, 'orders'] as const,
+  order: (id: string, oid: string) => ['books', id, 'orders', oid] as const,
 };
 
 /* ---------- Auth ---------- */
@@ -477,4 +480,108 @@ export function useRevokeShare(id: string) {
       await qc.invalidateQueries({ queryKey: keys.shares(id) });
     },
   });
+}
+
+/* ---------- Lulu (M5) ---------- */
+
+/** Test a typed pair (not saved), or the stored pair of the active environment when called without input. */
+export function useTestLulu() {
+  return useMutation({
+    mutationFn: (input?: LuluConnectionInput) => post('/api/lulu/test', input, LuluStatus),
+  });
+}
+
+export function useSaveLulu() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: LuluConnectionInput) => put('/api/settings/lulu', input, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+export function useClearLulu() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (env: LuluEnv) => del(`/api/settings/lulu?env=${env}`, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+export function useSetLuluSandbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sandbox: boolean) => put('/api/settings/lulu/sandbox', { sandbox }, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+/** Fetches a throwaway export through the public URL, as Lulu would. */
+export function useReachability() {
+  return useMutation({
+    mutationFn: () => post('/api/lulu/reachability', undefined, ReachabilityReport),
+  });
+}
+
+/* ---------- Orders (M5) ---------- */
+
+const MOVING_ORDER = new Set(['draft', 'validating']);
+
+export function useAllOrders() {
+  return useQuery({
+    queryKey: keys.allOrders,
+    queryFn: ({ signal }) => get('/api/orders', z.array(OrderView), signal),
+    refetchInterval: (query) => (query.state.data?.some((o) => MOVING_ORDER.has(o.status)) ? 1500 : false),
+  });
+}
+
+export function useOrders(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.orders(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/orders`, z.array(OrderView), signal),
+    enabled: Boolean(id),
+    refetchInterval: (query) => (query.state.data?.some((o) => MOVING_ORDER.has(o.status)) ? 1500 : false),
+  });
+}
+
+/** One order; polls while Lulu is validating the files. */
+export function useOrder(id: string | undefined, oid: string | undefined) {
+  return useQuery({
+    queryKey: keys.order(id ?? '', oid ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/orders/${encodeURIComponent(oid ?? '')}`, OrderView, signal),
+    enabled: Boolean(id && oid),
+    refetchInterval: (query) => (query.state.data && MOVING_ORDER.has(query.state.data.status) ? 1500 : false),
+  });
+}
+
+function useOrderMutation<TInput>(id: string, run: (input: TInput) => Promise<OrderView>) {
+  const qc = useQueryClient();
+  return useMutation<OrderView, Error, TInput>({
+    mutationFn: run,
+    onSuccess: async (order) => {
+      qc.setQueryData(keys.order(id, order.id), order);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: keys.orders(id), exact: true }),
+        qc.invalidateQueries({ queryKey: keys.allOrders }),
+        qc.invalidateQueries({ queryKey: keys.book(id) }),
+        qc.invalidateQueries({ queryKey: keys.settings }),
+      ]);
+    },
+  });
+}
+
+/** Validates the PDFs with Lulu and quotes the price; the order then polls until `quoted` or `rejected`. */
+export function usePrepareOrder(id: string) {
+  return useOrderMutation(id, (input: PrepareOrderInput) => post(`/api/books/${encodeURIComponent(id)}/orders`, input, OrderView));
+}
+
+export function useSubmitOrder(id: string) {
+  return useOrderMutation(id, (oid: string) => post(`/api/books/${encodeURIComponent(id)}/orders/${encodeURIComponent(oid)}/submit`, undefined, OrderView));
+}
+
+export function useRefreshOrder(id: string) {
+  return useOrderMutation(id, (oid: string) => post(`/api/books/${encodeURIComponent(id)}/orders/${encodeURIComponent(oid)}/refresh`, undefined, OrderView));
+}
+
+export function useCancelOrder(id: string) {
+  return useOrderMutation(id, (oid: string) => post(`/api/books/${encodeURIComponent(id)}/orders/${encodeURIComponent(oid)}/cancel`, undefined, OrderView));
 }

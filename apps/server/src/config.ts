@@ -27,6 +27,8 @@ const EnvSchema = z
       .optional(),
     PUBLIC_URL: z.url({ error: 'PUBLIC_URL must be an absolute URL, e.g. https://books.example.com' }).optional(),
     TRUST_CF_ACCESS: bool.default(false),
+    /** Development only: point the Lulu client at a fake (see src/test/fake-lulu.ts) instead of api.lulu.com. */
+    LULU_BASE_URL: z.url({ error: 'LULU_BASE_URL must be an absolute URL' }).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     WEB_DIST: z.string().min(1).default(defaultWebDist),
   })

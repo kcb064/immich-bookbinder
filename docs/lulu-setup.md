@@ -19,9 +19,10 @@ Sign up for both. Use the sandbox until a whole order flow (quote -> validate ->
 1. Log in to the developer portal (sandbox or production).
 2. Open your profile -> **API Keys** (`/user-profile/api-keys`).
 3. Copy the **client key** and **client secret**. Lulu also shows a ready-made `Authorization: Basic ...` value; the app builds that itself from key and secret.
-4. In immich-bookbinder: **Settings -> Lulu**, paste the pair into the sandbox or production slots, and use the **Sandbox** switch to choose which one is active. Both pairs are stored encrypted with `SECRET_KEY`.
+4. In immich-bookbinder: **Settings -> Lulu printing**. The **Sandbox** switch picks the active environment; the key and secret fields below it edit that environment's pair, so you can keep a sandbox pair and a production pair side by side. Both are stored encrypted with `SECRET_KEY` (`lulu.sandbox.*` and `lulu.production.*` in the settings table).
+5. **Test credentials** requests a token and lists print jobs (`GET /print-jobs/?page_size=1`). A wrong pair shows Lulu's own message (`Invalid client or Invalid client credentials`); a good one shows the environment, the API base and how many print jobs the account has. Every order records which environment it was placed in.
 
-Authentication is OAuth2 client credentials against `/auth/realms/glasstree/protocol/openid-connect/token`; tokens last one hour and the app refreshes them.
+Authentication is OAuth2 client credentials against `/auth/realms/glasstree/protocol/openid-connect/token` (`Authorization: Basic base64(key:secret)`, `grant_type=client_credentials`). The app caches the token until a minute before Lulu's `expires_in` and, if a call still answers 401, fetches a fresh token and retries that call once.
 
 ## Product IDs (`pod_package_id`)
 
@@ -42,16 +43,24 @@ Constraints the app enforces: casewrap needs 24 to 800 interior pages; perfect-b
 
 ## The order flow
 
-1. **Cover dimensions.** `POST /cover-dimensions/` with the `pod_package_id` and interior page count returns the exact spread size; the cover is rendered to it.
-2. **Render** interior and cover PDFs (see [print-specs.md](print-specs.md)).
-3. **Publish** both PDFs at `PUBLIC_URL/public/exports/<token>.pdf` with an expiry; the MD5 of each file is recorded.
-4. **Validate.** `POST /validate-interior/` and `POST /validate-cover/` with the URLs; both are asynchronous and polled until validated, or until Lulu returns an error, which the app shows verbatim.
-5. **Quote.** You enter a shipping address; `POST /shipping-options/` lists carriers and `POST /print-job-cost-calculations/` returns line-item, shipping and tax costs. Nothing is ordered yet.
-6. **Create.** On confirmation, `POST /print-jobs/` with contact email, shipping level, address, and the two PDF URLs plus MD5s. Lulu downloads the files itself.
-7. **Track.** The app polls `GET /print-jobs/{id}/status/` and shows `CREATED -> UNPAID -> PAYMENT_IN_PROGRESS -> PRODUCTION_READY -> IN_PRODUCTION -> SHIPPED` (or `REJECTED`, `ERROR`, `CANCELED`) with tracking URLs once shipped.
+Open a laid-out book and choose **Order printed copies** (the book page's *Order from Lulu* card, `/books/<id>/order`). The page refuses to start until the blockers it lists are cleared: Lulu credentials for the active environment, a public URL, a clean preflight (no errors), and print and cover PDFs newer than the book's last change (the cover also sized for the current page count).
 
-**Payment happens on lulu.com.** A new print job sits in `UNPAID` until you pay it in your Lulu account (or a card on file auto-charges, if you enabled that with Lulu). The app never sees or stores card data; it links you to the job on lulu.com. In the sandbox, jobs are paid with the test balance.
+1. **Product.** Binding, paper, finish and quality build the `pod_package_id` shown next to the heading. Saving a change stales the renders: the spine width and the price depend on it, so render the print and cover PDFs again.
+2. **Cover dimensions.** Every cover render with Lulu connected calls `POST /cover-dimensions/` with the `pod_package_id`, the interior page count and `unit: 'pt'`; the sheet is drawn at exactly that size (`source: 'lulu'` in the render's data, "spine ... · Lulu" on the cover card). Without credentials the caliper estimate is used and the render carries the warning *Spine width estimated; connect Lulu for exact dimensions*.
+3. **Validate and quote.** You enter the address (the last one is remembered), copies and a shipping level. The app publishes the two PDFs at `PUBLIC_URL/public/exports/<token>.pdf` (a fresh 64-character token per file and order, valid 7 days, MD5 recorded), then runs `POST /validate-interior/` and `POST /validate-cover/`, polling every 3 s for up to 5 minutes. Lulu downloads the files itself. Errors are shown verbatim and the order ends as **Rejected**. When both pass, `POST /shipping-options/` prices the carriers for that country and `POST /print-job-cost-calculations/` returns the cost table (per copy, shipping, tax, total in Lulu's currency) -> **Quoted**. Nothing is ordered yet; a quote you do not want can be canceled or simply left.
+4. **Place order.** `POST /print-jobs/` with the contact email, shipping level, address, `external_id = <bookId>:<orderId>` and one line item (`printable_normalization` with both source URLs and MD5s, the book title, the quantity). The book's status becomes **Ordered** and the print job id is shown.
+5. **Track.** **Refresh status** (and a background check every 10 minutes while the server runs) reads `GET /print-jobs/{id}/status/` and maps Lulu's status: `CREATED` -> Submitted, `UNPAID` / `PAYMENT_IN_PROGRESS` -> Awaiting payment, `PRODUCTION_DELAYED` / `PRODUCTION_READY` / `IN_PRODUCTION` -> In production, `SHIPPED` -> Shipped (with the carrier's tracking links), plus `REJECTED`, `ERROR` and `CANCELED`. The timeline on the order card and the message log record every step; **Orders** in the sidebar lists every order across books.
+
+**Payment happens on lulu.com.** A new print job sits in `UNPAID` until you pay it in your Lulu account (or a card on file auto-charges, if you enabled that with Lulu). The app never sees or stores card data; **Pay on lulu.com** opens the developer portal's print-jobs page (`developers.lulu.com/print-jobs`, or the sandbox portal), where the job id from the order card identifies it. In the sandbox, jobs are paid with the test balance.
+
+**Cancelling.** A quote that never became a print job is canceled locally. An unpaid print job is canceled through Lulu (`PUT /print-jobs/{id}/status/` with `CANCELED`); if Lulu refuses, the order is marked canceled in the app and the message tells you to cancel it on lulu.com as well. Once a job is in production it can no longer be canceled from here.
+
+**What the app never does:** handle card or bank details, order more than one line item per job (gift copies to several addresses are separate orders), or receive Lulu webhooks (polling is enough for a personal server; `PRINT_JOB_STATUS_CHANGED` webhooks can come later).
 
 ## Public URL requirement
 
-Lulu fetches the PDFs from the URLs in the print job, so the app must be reachable from the internet over HTTPS with `PUBLIC_URL` set (see [deploy-dockge.md](deploy-dockge.md) for the Cloudflare Tunnel, excluding `/public/*` from Cloudflare Access, and the WAF skip rule). The order dialog has a **Check reachability** button that fetches the export URL from outside through `PUBLIC_URL` before you submit. If your setup cannot expose the app, export the PDFs and upload them in Lulu's own publishing flow instead; the product code above tells Lulu's wizard which book you built.
+Lulu fetches the PDFs from the URLs in the print job, so the app must be reachable from the internet over HTTPS with `PUBLIC_URL` set (see [deploy-dockge.md](deploy-dockge.md) for the Cloudflare Tunnel, excluding `/public/*` from Cloudflare Access, and the WAF skip rule). **Settings -> Public URL -> Check reachability** publishes a one-page throwaway PDF and fetches it from the server itself through the public URL, exactly as Lulu will: it reports the HTTP status, latency and content type, and says plainly when an HTML page (a Cloudflare Access login, a WAF challenge) or a redirect came back instead of the PDF. If your setup cannot expose the app, export the PDFs and upload them in Lulu's own publishing flow instead; the product code above tells Lulu's wizard which book you built.
+
+## Developing without a Lulu account
+
+`apps/server/src/test/fake-lulu.ts` is a stand-in for every endpoint the app calls (token, cover dimensions, validations that really download the export URLs and check MD5s, shipping options, cost calculation, print jobs whose status advances one step per poll up to `SHIPPED` with a tracking link, cancellation). Run it with `corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-lulu.ts --port 2390`, start the server with `LULU_BASE_URL=http://127.0.0.1:2390` (development only: it points both environments at the fake) and enter `fake-key` / `fake-secret` in Settings. The server tests in `apps/server/src/lulu/lulu.test.ts` run the whole flow against it.

@@ -64,7 +64,7 @@ describe('auth flow', () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({
       immich: { apiKeySet: false },
-      lulu: { sandbox: true, clientKeySet: false },
+      lulu: { sandbox: true, clientKeySet: false, sandboxKeySet: false, productionKeySet: false },
       ai: { enabled: false, apiKeySet: false },
     });
   });

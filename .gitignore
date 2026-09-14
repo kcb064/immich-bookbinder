@@ -14,9 +14,11 @@ Thumbs.db
 playwright-report/
 test-results/
 apps/server/src/immich/generated/*.ts
+apps/server/src/lulu/generated/*.ts
 
 # TypeScript incremental build state
 *.tsbuildinfo
 
 # Local dev data (SQLite, caches, renders) used by apps/server/.env
 .devdata/
+.devdata-*/

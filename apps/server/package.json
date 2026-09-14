@@ -7,11 +7,12 @@
   "main": "./dist/main.js",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "generate": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts",
-    "prebuild": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts",
+    "generate": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts && openapi-typescript ../../specs/lulu-openapi.yml -o src/lulu/generated/lulu.d.ts",
+    "generate:lulu": "openapi-typescript ../../specs/lulu-openapi.yml -o src/lulu/generated/lulu.d.ts",
+    "prebuild": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts && openapi-typescript ../../specs/lulu-openapi.yml -o src/lulu/generated/lulu.d.ts",
     "build": "tsup",
     "start": "node dist/main.js",
-    "pretypecheck": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts",
+    "pretypecheck": "openapi-typescript ../../specs/immich-openapi.json -o src/immich/generated/immich.d.ts && openapi-typescript ../../specs/lulu-openapi.yml -o src/lulu/generated/lulu.d.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate"

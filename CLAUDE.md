@@ -27,6 +27,7 @@ corepack pnpm --filter @bookbinder/server exec vitest run src/books/layout.test.
 corepack pnpm --filter @bookbinder/server db:generate --name <topic>                # drizzle migration
 corepack pnpm --filter @bookbinder/server exec playwright install chromium-headless-shell
 corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2290 --photos 90 --home 60
+corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-lulu.ts --port 2390            # then LULU_BASE_URL=http://127.0.0.1:2390, keys fake-key/fake-secret
 ```
 
 Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
@@ -43,6 +44,10 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
   fake Immich as a background Bash task on a spare port instead.
 - No real Immich is reachable from a session. The fake (`apps/server/src/test/fake-immich.ts`)
   serves everything the app calls; when you add an Immich endpoint to the client, add it to the fake too.
+- Same for Lulu: `fake-lulu.ts` + `LULU_BASE_URL` in `apps/server/.env` (dev only). Ordering needs
+  the public URL set to the server's own origin (`http://127.0.0.1:<port>`; loopback is the one
+  http exception) because the fake really downloads the exports. `DATA_DIR` from the environment
+  wins over `.env`, so a second session can use `.devdata-<name>` when `.devdata` is held elsewhere.
 - Cache gotcha: `DATA_DIR/cache/immich/preview` is keyed by asset id and a fresh fake reuses ids.
   After changing the fake's images, delete that folder and re-run selection with `refetch: true`.
 - `book.updatedAt` means "content changed": preflight and the Share card compare render times to it.
@@ -99,6 +104,7 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 | Render | `apps/server/src/render/` | `RenderService` (queue, `renders` table + `data` JSON, kinds proof/print/cover/preview), `ChromiumRenderer` (`render` = PDF, `renderPreviews` = PNG dir), `ImageStore` (sharp, cache) |
 | Cover, preflight | `packages/layout/src/cover.ts`, `preflight.ts`; `packages/pages/src/CoverView.tsx` | `coverGeometry` (spine ESTIMATE until M5 passes Lulu's override), `preflightBook` (pure; route in `routes/books.ts`), `CoverView` shared by the book page and the cover PDF; default cover made in `books/layout.ts` |
 | Shares | `apps/server/src/shares/store.ts`, `drizzle/0003_*` | `ShareStore` (token, argon2 password, expiry, revoke, views); `ShareView.url` built by `publicBase()` in `routes/shares.ts` |
+| Lulu (M5) | `apps/server/src/lulu/`, `routes/lulu.ts`, `drizzle/0004_*` | `client.ts` (OAuth token cache, zod-narrowed responses, types generated from `specs/lulu-openapi.yml` into `lulu/generated/`), `exports.ts` (`/public/exports/:token.pdf`, MD5), `orders.ts` (`OrderService`: prepare in background -> quoted, submit, refresh, cancel, 10-min ticker), `reachability.ts`; cover renders call `/cover-dimensions/` through `RenderService.coverDimensions`; web: `pages/Order.tsx`, `components/OrderCard.tsx` |
 | Pages | `packages/pages/src/` | `PageView`, `print.tsx`, `meta.ts` (`bookMetaFor`), `spreads.ts` |
 | Templates | `packages/layout/src/templates.ts` | page templates + unused spread/cover templates (`cover-editorial`, `map`, `panorama-spread`) |
 | Formats | `packages/shared/src/format.ts` | `FORMAT_PRESETS`, `LuluProduct`, `luluPodPackageId` |
@@ -115,5 +121,9 @@ Prefer a new file next to them over growing them; when editing, anchor on a uniq
   `/timeline/buckets` + `/timeline/bucket?bbox=`, `/map/markers`, `/search/places`; face boxes only from `GET /faces?id=`.
 - Lulu: dotted `pod_package_id` (`0850X0850.FC.PRE.CW.080CW444.MXX`), casewrap 24 to 800 pages,
   interior = single pages with 0.125 in bleed and no marks, cover = one spread sized by
-  `POST /cover-dimensions/`, PDFs fetched by public URL, payment on lulu.com, sandbox needs its own account.
+  `POST /cover-dimensions/` (answers width + height only, in pt/mm/inch; no spine), PDFs fetched by
+  public URL, payment on lulu.com (developer portal), sandbox needs its own account. The vendored
+  spec's `POST /print-jobs/` create body marks read-only `id` as required (cast in `client.ts`) and
+  has a second `/print-jobs/<hair space>` path for reprints; the status endpoint's
+  `line_item_statuses` is undocumented in the schema but present in Lulu's own example.
 - Chromium PDFs are sRGB PDF 1.4 with subsetted fonts; no CMYK, no PDF/X.
