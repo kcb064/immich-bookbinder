@@ -92,6 +92,7 @@ Server environment variables (all read at startup):
 | `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` | Admin login; plain text or argon2 PHC string |
 | `PUBLIC_URL` | External HTTPS base URL for share links, the colophon QR code, notification links, Lulu PDF downloads and Lulu's webhook |
 | `TRUST_CF_ACCESS` | `true` to accept Cloudflare Access identity headers as admin login |
+| `TRUST_PROXY` | Whose `X-Forwarded-For` to believe for per-IP rate limits: `true` (default), `false`, or proxy IPs/CIDRs |
 | `LOG_LEVEL` | pino level, default `info` |
 | `WEB_DIST` | Built web UI directory (image default `/app/web`) |
 | `LULU_BASE_URL`, `AI_BASE_URL` | Development only: point the Lulu client / the Anthropic SDK at the fakes in `apps/server/src/test/` |

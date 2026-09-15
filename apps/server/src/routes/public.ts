@@ -1,4 +1,4 @@
-import { FORMAT_PRESETS, UnlockShareInput, type Book, type ViewerBook } from '@bookbinder/shared';
+import { FORMAT_PRESETS, UnlockShareInput, type Book, type RenderJob, type ViewerBook } from '@bookbinder/shared';
 import { dateRangeLabel } from '@bookbinder/pages';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
@@ -10,9 +10,10 @@ import { LuluPrintJob } from '../lulu/client.js';
 import { EXPORT_TOKEN_RE } from '../lulu/exports.js';
 import { SHARE_UNLOCK_TTL_MS, shareStatus } from '../shares/store.js';
 
-/** Per-IP limit on every public route; unlock attempts get a tighter one. */
+/** Per-IP limit on every public route; unlock attempts get a tighter one, page images a looser one (a reader flips fast, two images per opening). */
 const PUBLIC_RATE = { max: 60, timeWindow: '1 minute' };
 const UNLOCK_RATE = { max: 10, timeWindow: '1 minute' };
+const IMAGE_RATE = { max: 300, timeWindow: '1 minute' };
 
 /** Where Lulu POSTs PRINT_JOB_STATUS_CHANGED submissions (M7); signed with the API secret. */
 export const LULU_WEBHOOK_PATH = '/public/lulu/webhook';
@@ -115,9 +116,23 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(createReadStream(path));
   };
 
-  // The SPA shell; the viewer route inside it fetches book.json.
+  /**
+   * The preview render page images come from: the one the viewer names (`?v=`, so a reader keeps
+   * one consistent render while a newer one lands, and the response can be cached for good) when
+   * it is a done preview of this book, else the newest done preview.
+   */
+  const previewFor = (bookId: string, v: unknown): { job: RenderJob | undefined; pinned: boolean } => {
+    const named = typeof v === 'string' && v ? app.renders.get(v) : undefined;
+    if (named && named.bookId === bookId && named.kind === 'preview' && named.status === 'done') return { job: named, pinned: true };
+    return { job: app.renders.latest(bookId, 'preview'), pinned: false };
+  };
+  const imageCache = (pinned: boolean): string => (pinned ? 'private, max-age=31536000, immutable' : 'private, max-age=3600');
+
+  // The SPA shell for every well-formed token: the page decides between the book, the password
+  // form, "expired", "revoked" and "no book here" from book.json, so those screens open from the link itself.
   app.get('/s/:token', { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {
-    if (!resolve(request, reply)) return;
+    const token = (request.params as { token?: string }).token ?? '';
+    if (!TOKEN_RE.test(token)) return reply.notFound('This link does not exist');
     const dist = app.config.webDist;
     if (!dist) return reply.notFound('The web app is not built on this server');
     const html = await readFile(join(dist, 'index.html'), 'utf8');
@@ -156,7 +171,8 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     const dates = dateRangeLabel(app.books.assets(book.id).filter((a) => placed.has(a.id)));
     // The geometry the preview's cover.png was drawn with (Lulu's exact sheet when it was connected), else the estimate.
     const g = preview?.data?.hasCover ? (preview.data.cover?.geometry ?? app.renders.coverFor(book, format)?.geometry) : undefined;
-    app.shares.touch(share.id);
+    // A view is an opened book; the viewer's polls while the pages are prepared say `?poll=1` and do not count.
+    if (!(request.query as { poll?: unknown }).poll) app.shares.touch(share.id);
     void reply.header('cache-control', 'private, no-store');
     return {
       title: book.title,
@@ -173,23 +189,23 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.get('/s/:token/pages/:n.png', { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {
+  app.get('/s/:token/pages/:n.png', { config: { rateLimit: IMAGE_RATE } }, async (request, reply) => {
     const r = resolveUnlocked(request, reply);
     if (!r) return;
     const n = Number((request.params as { n: string }).n);
-    const preview = app.renders.latest(r.book.id, 'preview');
+    const { job: preview, pinned } = previewFor(r.book.id, (request.query as { v?: unknown }).v);
     const path = preview && Number.isInteger(n) ? app.renders.previewPagePath(preview.id, n) : undefined;
     if (!path) return reply.notFound('No such page');
-    return sendFile(reply, path, 'image/png', { 'cache-control': 'private, max-age=3600' });
+    return sendFile(reply, path, 'image/png', { 'cache-control': imageCache(pinned) });
   });
 
-  app.get('/s/:token/cover.png', { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {
+  app.get('/s/:token/cover.png', { config: { rateLimit: IMAGE_RATE } }, async (request, reply) => {
     const r = resolveUnlocked(request, reply);
     if (!r) return;
-    const preview = app.renders.latest(r.book.id, 'preview');
+    const { job: preview, pinned } = previewFor(r.book.id, (request.query as { v?: unknown }).v);
     const path = preview ? app.renders.previewCoverPath(preview.id) : undefined;
     if (!path) return reply.notFound('This book has no cover image');
-    return sendFile(reply, path, 'image/png', { 'cache-control': 'private, max-age=3600' });
+    return sendFile(reply, path, 'image/png', { 'cache-control': imageCache(pinned) });
   });
 
   app.get('/s/:token/pdf', { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {

@@ -133,6 +133,16 @@ describe('notification settings and test route', () => {
     expect(typed.json().ok).toBe(true);
     expect(sink.hits[0]!.path).toBe('/typed');
     expect(sink.hits[0]!.headers.authorization).toBeUndefined();
+    // Leaving the token field alone lends the stored token only to the target it was saved for, never to another URL.
+    sink.hits.length = 0;
+    const elsewhere = await t.app.inject({ method: 'POST', url: '/api/notifications/test', headers: { cookie }, payload: { kind: 'ntfy', url: `${sink.url}/elsewhere/` } });
+    expect(elsewhere.json().ok).toBe(true);
+    expect(sink.hits[0]!.path).toBe('/elsewhere/');
+    expect(sink.hits[0]!.headers.authorization).toBeUndefined();
+    sink.hits.length = 0;
+    const same = await t.app.inject({ method: 'POST', url: '/api/notifications/test', headers: { cookie }, payload: { kind: 'ntfy', url: `${sink.url}/bookbinder/` } });
+    expect(same.json().ok).toBe(true);
+    expect(sink.hits[0]!.headers.authorization).toBe('Bearer secret-token');
 
     // A selection run against an unreachable Immich fails and notifies.
     await t.app.inject({ method: 'PUT', url: '/api/settings/immich', headers: { cookie }, payload: { url: 'http://127.0.0.1:1', apiKey: 'test-api-key-1234' } });

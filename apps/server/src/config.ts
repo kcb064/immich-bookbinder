@@ -27,6 +27,13 @@ const EnvSchema = z
       .optional(),
     PUBLIC_URL: z.url({ error: 'PUBLIC_URL must be an absolute URL, e.g. https://books.example.com' }).optional(),
     TRUST_CF_ACCESS: bool.default(false),
+    /**
+     * Whose X-Forwarded-* headers to believe (Fastify `trustProxy`): `true` for every upstream (the
+     * default: the container sits behind a tunnel or reverse proxy), `false` for none, or a
+     * comma-separated list of proxy IPs/CIDRs. Per-IP rate limits key on the resulting client address,
+     * so `true` on a container reachable directly lets a client pick its own address.
+     */
+    TRUST_PROXY: z.string().min(1).default('true'),
     /** Development only: point the Lulu client at a fake (see src/test/fake-lulu.ts) instead of api.lulu.com. */
     LULU_BASE_URL: z.url({ error: 'LULU_BASE_URL must be an absolute URL' }).optional(),
     /** Development only: point the Anthropic SDK at a fake (see src/test/fake-claude.ts). */
@@ -49,6 +56,8 @@ export interface Config extends Env {
   exportsDir: string;
   /** Absolute WEB_DIST, or undefined when the folder does not exist (API-only mode). */
   webDist: string | undefined;
+  /** Fastify's `trustProxy` value from TRUST_PROXY. */
+  trustProxy: boolean | string[];
   isProduction: boolean;
   isTest: boolean;
 }
@@ -58,6 +67,16 @@ export class ConfigError extends Error {
     super(message);
     this.name = 'ConfigError';
   }
+}
+
+function parseTrustProxy(raw: string): boolean | string[] {
+  const v = raw.trim().toLowerCase();
+  if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
+  if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** Empty strings from .env files count as unset. */
@@ -83,6 +102,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     cacheDir: resolve(dataDir, 'cache'),
     exportsDir: resolve(dataDir, 'exports'),
     webDist: existsSync(resolve(webDistAbs, 'index.html')) ? webDistAbs : undefined,
+    trustProxy: parseTrustProxy(e.TRUST_PROXY),
     isProduction: e.NODE_ENV === 'production',
     isTest: e.NODE_ENV === 'test',
   };

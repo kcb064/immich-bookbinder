@@ -69,7 +69,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}): Prom
 
   const app = Fastify({
     logger: opts.logger ?? loggerFor(config),
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     bodyLimit: 5 * 1024 * 1024,
   });
 

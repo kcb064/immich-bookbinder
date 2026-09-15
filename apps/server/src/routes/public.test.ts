@@ -1,5 +1,8 @@
 import { Book, RenderJob, ShareView, ViewerBook } from '@bookbinder/shared';
 import { z } from 'zod';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromiumAvailable } from '../render/renderer.js';
 import { createTestApp, loginCookie, type TestApp } from '../test/helpers.js';
@@ -121,6 +124,9 @@ describe('shares and the public viewer', () => {
 
     const after = z.array(ShareView).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/shares`, headers: { cookie } })).json());
     expect(after.find((s) => s.id === share.id)?.views).toBe(1);
+    // The viewer's polls while the pages are prepared do not count.
+    await t.app.inject({ method: 'GET', url: `/s/${token}/book.json?poll=1`, remoteAddress: client() });
+    expect(z.array(ShareView).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/shares`, headers: { cookie } })).json()).find((s) => s.id === share.id)?.views).toBe(1);
     expect(after.find((s) => s.id === share.id)?.lastViewedAt).toBeTruthy();
 
     // Pages exist only once a preview render finished (the share queued one; Chromium decides whether it succeeded).
@@ -171,6 +177,24 @@ describe('shares and the public viewer', () => {
     // Removing the password opens the link.
     await t.app.inject({ method: 'PUT', url: `/api/books/${bookId}/shares/${share.id}`, headers: { cookie }, payload: { password: null } });
     expect((await t.app.inject({ method: 'GET', url: `/s/${token}/book.json`, remoteAddress: client() })).statusCode).toBe(200);
+  });
+
+  it('serves the SPA shell for every well-formed token, so expired, revoked and unknown links open the viewer\'s own screens', async () => {
+    const dist = mkdtempSync(join(tmpdir(), 'bookbinder-dist-'));
+    writeFileSync(join(dist, 'index.html'), '<!doctype html><title>shell</title>');
+    const t2 = await createTestApp({ WEB_DIST: dist });
+    try {
+      const unknown = await t2.app.inject({ method: 'GET', url: `/s/${'x'.repeat(43)}` });
+      expect(unknown.statusCode).toBe(200);
+      expect(unknown.headers['content-type']).toMatch(/text\/html/);
+      expect(unknown.body).toContain('shell');
+      expect((await t2.app.inject({ method: 'GET', url: '/s/short' })).statusCode).toBe(404);
+      // The data behind it still says what is wrong.
+      expect((await t2.app.inject({ method: 'GET', url: `/s/${'x'.repeat(43)}/book.json` })).statusCode).toBe(404);
+    } finally {
+      await t2.cleanup();
+      rmSync(dist, { recursive: true, force: true });
+    }
   });
 
   it('answers 410 for expired and revoked links', async () => {
@@ -225,6 +249,12 @@ describe('shares and the public viewer', () => {
     const page = await t.app.inject({ method: 'GET', url: `/s/${token}/pages/0.png?v=${vb.version}`, remoteAddress: client() });
     expect(page.statusCode).toBe(200);
     expect(page.headers['content-type']).toBe('image/png');
+    // A named render is immutable by id; an unknown or foreign `v` falls back to the newest preview with a short cache.
+    expect(page.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    const fallback = await t.app.inject({ method: 'GET', url: `/s/${token}/pages/0.png?v=not-a-render`, remoteAddress: client() });
+    expect(fallback.statusCode).toBe(200);
+    expect(fallback.headers['cache-control']).toBe('private, max-age=3600');
+    expect((await t.app.inject({ method: 'GET', url: `/s/${token}/cover.png?v=${vb.version}`, remoteAddress: client() })).headers['cache-control']).toBe('private, max-age=31536000, immutable');
     expect(page.rawPayload.subarray(1, 4).toString()).toBe('PNG');
     expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/23.png`, remoteAddress: client() })).statusCode).toBe(200);
     expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/24.png`, remoteAddress: client() })).statusCode).toBe(404);

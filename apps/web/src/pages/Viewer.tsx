@@ -40,10 +40,11 @@ export function viewIndexOfPage(views: readonly View[], pageIndex: number): numb
   return i < 0 ? 0 : i;
 }
 
-async function fetchBook(token: string): Promise<State> {
+/** `poll` marks a repeat request while the pages are being prepared, which the server does not count as a view. */
+async function fetchBook(token: string, poll = false): Promise<State> {
   let res: Response;
   try {
-    res = await fetch(`/s/${encodeURIComponent(token)}/book.json`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+    res = await fetch(`/s/${encodeURIComponent(token)}/book.json${poll ? '?poll=1' : ''}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
   } catch {
     return { kind: 'error', message: 'Could not reach the server.' };
   }
@@ -125,7 +126,7 @@ function PasswordForm({ token, error, onUnlocked }: { token: string; error?: str
 }
 
 /** One page image, cropped to the trim (the PNG carries the bleed). */
-function PageImage({ token, version, index, format, width, height, side }: { token: string; version: string; index: number; format: ViewerBook['format']; width: number; height: number; side: 'left' | 'right' }) {
+function PageImage({ token, version, index, format, width, height, side, onError }: { token: string; version: string; index: number; format: ViewerBook['format']; width: number; height: number; side: 'left' | 'right'; onError: () => void }) {
   const bx = (format.bleedIn / format.trimWidthIn) * 100;
   const by = (format.bleedIn / format.trimHeightIn) * 100;
   return (
@@ -134,33 +135,62 @@ function PageImage({ token, version, index, format, width, height, side }: { tok
         src={`/s/${encodeURIComponent(token)}/pages/${index}.png?v=${encodeURIComponent(version)}`}
         alt={`Page ${index + 1}`}
         draggable={false}
+        onError={onError}
         style={{ position: 'absolute', left: `${-bx}%`, top: `${-by}%`, width: `${100 + 2 * bx}%`, height: `${100 + 2 * by}%`, maxWidth: 'none' }}
       />
     </div>
   );
 }
 
-function CoverImage({ token, version, book, width, height }: { token: string; version: string; book: ViewerBook; width: number; height: number }) {
+function CoverImage({ token, version, book, width, height, onError }: { token: string; version: string; book: ViewerBook; width: number; height: number; onError: () => void }) {
   const f = book.coverFront;
   const style = f
     ? { position: 'absolute' as const, left: `${(-f.x / f.w) * 100}%`, top: `${(-f.y / f.h) * 100}%`, width: `${(1 / f.w) * 100}%`, height: `${(1 / f.h) * 100}%`, maxWidth: 'none' }
     : { position: 'absolute' as const, inset: 0, width: '100%', height: '100%', objectFit: 'contain' as const };
   return (
     <div className="vpage vpage--cover" style={{ width, height }}>
-      <img src={`/s/${encodeURIComponent(token)}/cover.png?v=${encodeURIComponent(version)}`} alt="Cover" draggable={false} style={style} />
+      <img src={`/s/${encodeURIComponent(token)}/cover.png?v=${encodeURIComponent(version)}`} alt="Cover" draggable={false} onError={onError} style={style} />
     </div>
   );
 }
 
-function Reader({ token, book }: { token: string; book: ViewerBook }) {
+/** The page an opening shows first (its left page, else its right), for keeping the place across layout changes. */
+export function firstPageOfView(view: View | undefined): number | undefined {
+  if (!view || view.kind === 'cover') return undefined;
+  return view.left ?? view.right;
+}
+
+function Reader({ token, book, onImageError }: { token: string; book: ViewerBook; onImageError: () => void }) {
   const single = useMediaQuery(SINGLE_PAGE_QUERY);
   const views = useMemo(() => viewsFor(book.pageCount, book.cover, single), [book.pageCount, book.cover, single]);
   const [current, setCurrent] = useState(0);
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
+  const chaptersButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
   const [stage, setStage] = useState({ w: 1000, h: 700 });
   const index = Math.min(current, Math.max(0, views.length - 1));
   const view = views[index];
+
+  // Switching between openings and single pages (a phone rotating) keeps the same page in view.
+  const prevSingle = useRef(single);
+  useEffect(() => {
+    if (prevSingle.current === single) return;
+    const before = viewsFor(book.pageCount, book.cover, prevSingle.current);
+    prevSingle.current = single;
+    setCurrent((cur) => {
+      const page = firstPageOfView(before[Math.min(cur, Math.max(0, before.length - 1))]);
+      return page === undefined ? 0 : viewIndexOfPage(views, page);
+    });
+  }, [single, views, book.pageCount, book.cover]);
+
+  // The chapter drawer takes focus when it opens and hands it back to its button when it closes.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (chaptersOpen) closeButton.current?.focus();
+    else if (wasOpen.current) chaptersButton.current?.focus();
+    wasOpen.current = chaptersOpen;
+  }, [chaptersOpen]);
 
   useEffect(() => {
     document.title = book.title;
@@ -180,6 +210,10 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      // Space activates a focused button or link; only a bare Space turns the page. Typing is never hijacked.
+      if (target?.closest('input, select, textarea')) return;
+      if (e.key === ' ' && target?.closest('button, a')) return;
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(index - 1);
       else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') go(index + 1);
       else if (e.key === 'Home') go(0);
@@ -207,20 +241,20 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
   };
 
   // Lazy-load: only the current view is in the DOM; the next two are fetched ahead into the cache.
+  // The Image objects are kept until the next step so an in-flight fetch is never aborted just as
+  // the reader turns to it (clearing `src` would restart the request from the <img>).
+  const preloaded = useRef<HTMLImageElement[]>([]);
   useEffect(() => {
     const urls: string[] = [];
     for (const v of views.slice(index + 1, index + 3)) {
       if (v.kind === 'cover') urls.push(`/s/${encodeURIComponent(token)}/cover.png?v=${encodeURIComponent(book.version)}`);
       else for (const n of [v.left, v.right]) if (n !== undefined) urls.push(`/s/${encodeURIComponent(token)}/pages/${n}.png?v=${encodeURIComponent(book.version)}`);
     }
-    const imgs = urls.map((u) => {
+    preloaded.current = urls.map((u) => {
       const img = new Image();
       img.src = u;
       return img;
     });
-    return () => {
-      for (const img of imgs) img.src = '';
-    };
   }, [index, views, token, book.version]);
 
   // Fit one or two trim-sized pages into the stage with some air around them.
@@ -253,7 +287,7 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
         </div>
         <div className="viewer__actions">
           {book.chapters.length > 0 ? (
-            <button type="button" className={`viewer__btn${chaptersOpen ? ' viewer__btn--on' : ''}`} onClick={() => setChaptersOpen((o) => !o)} aria-expanded={chaptersOpen} aria-controls="viewer-chapters">
+            <button type="button" ref={chaptersButton} className={`viewer__btn${chaptersOpen ? ' viewer__btn--on' : ''}`} onClick={() => setChaptersOpen((o) => !o)} aria-expanded={chaptersOpen} aria-controls="viewer-chapters">
               <Icon name="chapter" size={16} />
               <span className="viewer__btn-label">Chapters</span>
             </button>
@@ -278,12 +312,12 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
             </div>
           ) : view?.kind === 'cover' ? (
             <div className="vspread">
-              <CoverImage token={token} version={book.version} book={book} width={pageW} height={pageH} />
+              <CoverImage token={token} version={book.version} book={book} width={pageW} height={pageH} onError={onImageError} />
             </div>
           ) : view ? (
             <div className="vspread">
-              {view.left !== undefined ? <PageImage token={token} version={book.version} index={view.left} format={book.format} width={pageW} height={pageH} side="left" /> : null}
-              {view.right !== undefined ? <PageImage token={token} version={book.version} index={view.right} format={book.format} width={pageW} height={pageH} side="right" /> : null}
+              {view.left !== undefined ? <PageImage token={token} version={book.version} index={view.left} format={book.format} width={pageW} height={pageH} side="left" onError={onImageError} /> : null}
+              {view.right !== undefined ? <PageImage token={token} version={book.version} index={view.right} format={book.format} width={pageW} height={pageH} side="right" onError={onImageError} /> : null}
             </div>
           ) : null}
           {views.length > 1 ? (
@@ -301,21 +335,21 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
           <aside className="viewer__drawer" id="viewer-chapters" aria-label="Chapters">
             <div className="viewer__drawer-head">
               <span className="label">Chapters</span>
-              <button type="button" className="viewer__btn viewer__btn--icon" onClick={() => setChaptersOpen(false)} aria-label="Close chapters">
+              <button type="button" ref={closeButton} className="viewer__btn viewer__btn--icon" onClick={() => setChaptersOpen(false)} aria-label="Close chapters">
                 <Icon name="x" size={16} />
               </button>
             </div>
             <ol className="viewer__chapters">
               {book.cover ? (
                 <li>
-                  <button type="button" className={`viewer__chapter-btn${view?.kind === 'cover' ? ' viewer__chapter-btn--on' : ''}`} onClick={() => go(0)}>
+                  <button type="button" className={`viewer__chapter-btn${view?.kind === 'cover' ? ' viewer__chapter-btn--on' : ''}`} aria-current={view?.kind === 'cover' ? 'true' : undefined} onClick={() => go(0)}>
                     <span className="viewer__chapter-title">Cover</span>
                   </button>
                 </li>
               ) : null}
               {chapterViews.map((c) => (
                 <li key={`${c.startsAtPage}-${c.title}`}>
-                  <button type="button" className={`viewer__chapter-btn${currentChapter === c && view?.kind !== 'cover' ? ' viewer__chapter-btn--on' : ''}`} onClick={() => go(c.view)}>
+                  <button type="button" className={`viewer__chapter-btn${currentChapter === c && view?.kind !== 'cover' ? ' viewer__chapter-btn--on' : ''}`} aria-current={currentChapter === c && view?.kind !== 'cover' ? 'true' : undefined} onClick={() => go(c.view)}>
                     <span className="viewer__chapter-title">{c.title}</span>
                     {c.subtitle ? <span className="viewer__chapter-sub">{c.subtitle}</span> : null}
                     <span className="viewer__chapter-page">p. {c.startsAtPage + 1}</span>
@@ -344,10 +378,18 @@ export function ViewerPage() {
     void fetchBook(token).then(setState);
   }, [token]);
   useEffect(load, [load]);
+  // A page image that fails to load usually means the unlock cookie lapsed (24 h): ask book.json
+  // again once per render version, and show the password form when it says so.
+  const recheckedFor = useRef<string | undefined>(undefined);
+  const onImageError = useCallback(() => {
+    if (state.kind !== 'ready' || recheckedFor.current === state.book.version) return;
+    recheckedFor.current = state.book.version;
+    void fetchBook(token, true).then((next) => setState((cur) => (cur.kind === 'ready' && next.kind === 'ready' ? cur : next)));
+  }, [state, token]);
   // While the preview render runs, ask again every few seconds (without the loading flash).
   useEffect(() => {
     if (state.kind !== 'ready' || !state.book.preparing) return;
-    const t = window.setTimeout(() => void fetchBook(token).then((next) => setState((cur) => (cur.kind === 'ready' ? next : cur))), 3000);
+    const t = window.setTimeout(() => void fetchBook(token, true).then((next) => setState((cur) => (cur.kind === 'ready' ? next : cur))), 3000);
     return () => window.clearTimeout(t);
   }, [state, token]);
   useEffect(() => {
@@ -392,6 +434,6 @@ export function ViewerPage() {
         </Centered>
       );
     case 'ready':
-      return <Reader token={token} book={state.book} />;
+      return <Reader token={token} book={state.book} onImageError={onImageError} />;
   }
 }

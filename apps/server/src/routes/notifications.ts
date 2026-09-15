@@ -26,8 +26,12 @@ export const notificationRoutes: FastifyPluginAsync = async (app) => {
     if (request.body && typeof request.body === 'object' && Object.keys(request.body).length > 0) {
       const parsed = NotificationSettingsInput.safeParse(request.body);
       if (!parsed.success) return reply.badRequest(zodMessage(parsed.error));
+      // The stored token is only lent to the target it was saved for; a test against a freshly typed
+      // URL must never carry the bearer of another server.
       const stored = app.settings.getNotifications();
-      const token = parsed.data.token === undefined ? stored?.token : parsed.data.token || undefined;
+      const trim = (u: string) => u.replace(/\/+$/, '');
+      const sameTarget = stored?.kind === parsed.data.kind && stored.url !== undefined && trim(stored.url) === trim(parsed.data.url);
+      const token = parsed.data.token === undefined ? (sameTarget ? stored?.token : undefined) : parsed.data.token || undefined;
       target = { kind: parsed.data.kind, url: parsed.data.url, token, events: parsed.data.events };
     }
     if (!target) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: 'Notifications are not configured. Save a URL first.' });
