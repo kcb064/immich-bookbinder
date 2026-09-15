@@ -175,8 +175,34 @@ export const orders = sqliteTable('orders', {
   tracking: text('tracking').notNull().default('[]'),
   externalId: text('external_id').notNull(),
   error: text('error'),
+  /** JSON `ExtraLineItem[]` (M7): further books in the same job, with their own export ids. */
+  lineItems: text('line_items').notNull().default('[]'),
+  /** Created from Lulu's job list (M7): no exports, quote or validation of its own. */
+  imported: integer('imported', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Claude jobs (M7): captions, best-of-burst, foreword. One row per run; `usage` and `result` are
+ * the shared `AiUsage` / `AiJobResult` JSON. At most one queued/running job per book.
+ */
+export const aiJobs = sqliteTable('ai_jobs', {
+  id: text('id').primaryKey(),
+  bookId: text('book_id')
+    .notNull()
+    .references(() => books.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  status: text('status').notNull(),
+  model: text('model').notNull(),
+  total: integer('total').notNull().default(0),
+  done: integer('done').notNull().default(0),
+  usage: text('usage'),
+  result: text('result'),
+  error: text('error'),
+  createdAt: text('created_at').notNull(),
+  startedAt: text('started_at'),
+  finishedAt: text('finished_at'),
 });
 
 export type SettingRow = typeof settings.$inferSelect;
@@ -189,3 +215,4 @@ export type SelectionRunRow = typeof selectionRuns.$inferSelect;
 export type ShareRow = typeof shares.$inferSelect;
 export type ExportRow = typeof exports.$inferSelect;
 export type OrderRow = typeof orders.$inferSelect;
+export type AiJobRow = typeof aiJobs.$inferSelect;

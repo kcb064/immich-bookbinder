@@ -110,11 +110,15 @@ describe('mergeCustomPages', () => {
     expect(merged.pages[0]!.templateId).toBe(TITLE_TEMPLATE_ID);
   });
 
-  it('appends custom pages whose index is past the end', () => {
+  it('appends custom pages whose index is past the end, keeping the colophon last', () => {
     const custom: Page = { id: 'custom', index: 99, templateId: 'blank', custom: true, slots: [] };
     const fresh = paginate(photos(4), { format: FORMAT_PRESETS['home-letter']!, targetPages: 4 }).pages;
     const { pages } = mergeCustomPages(fresh, [custom], FORMAT_PRESETS['home-letter']!);
-    expect(pages[pages.length - 1]).toMatchObject({ id: 'custom', custom: true, index: pages.length - 1 });
+    expect(pages[pages.length - 1]!.templateId).toBe('colophon');
+    expect(pages[pages.length - 2]).toMatchObject({ id: 'custom', custom: true, index: pages.length - 2 });
+    const plain = paginate(photos(4), { format: FORMAT_PRESETS['home-letter']!, targetPages: 4, colophon: false }).pages;
+    const merged = mergeCustomPages(plain, [custom], FORMAT_PRESETS['home-letter']!).pages;
+    expect(merged[merged.length - 1]).toMatchObject({ id: 'custom', custom: true, index: merged.length - 1 });
   });
 });
 

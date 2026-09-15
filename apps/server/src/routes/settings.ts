@@ -1,4 +1,4 @@
-import { ImmichConnectionInput, type SettingsView } from '@bookbinder/shared';
+import { ImmichConnectionInput, PetsInput, type SettingsView } from '@bookbinder/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { SettingKeys } from '../settings.js';
@@ -23,6 +23,16 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/api/settings/immich', async () => {
     app.settings.delete(SettingKeys.immichUrl, SettingKeys.immichApiKey);
+    return app.settings.view();
+  });
+
+  /** Replaces the saved pets (M7). */
+  app.put('/api/settings/pets', async (request, reply) => {
+    const parsed = PetsInput.safeParse(request.body);
+    if (!parsed.success) return reply.badRequest(zodMessage(parsed.error));
+    const ids = new Set(parsed.data.pets.map((p) => p.id));
+    if (ids.size !== parsed.data.pets.length) return reply.badRequest('pets: ids must be unique');
+    app.settings.setPets(parsed.data.pets);
     return app.settings.view();
   });
 

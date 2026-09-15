@@ -18,6 +18,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "@bookbinder/layout": "workspace:*",
     "@bookbinder/pages": "workspace:*",
     "@bookbinder/scoring": "workspace:*",

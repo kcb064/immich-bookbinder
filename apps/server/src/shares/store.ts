@@ -95,12 +95,22 @@ export class ShareStore {
     }
   }
 
+  /** The newest active share of a book, or undefined. */
+  active(bookId: string, now = Date.now()): ShareRow | undefined {
+    return this.list(bookId).find((r) => shareStatus(r, now) === 'active');
+  }
+
+  /** Viewer URL of a share on the given public origin. */
+  static url(row: Pick<ShareRow, 'token'>, base: string): string {
+    return `${base.replace(/\/+$/, '')}/s/${row.token}`;
+  }
+
   /** The admin view of a row; `base` is the public origin the link is built on. */
   view(row: ShareRow, base: string, warning?: string): ShareView {
     return {
       id: row.id,
       bookId: row.bookId,
-      url: `${base.replace(/\/+$/, '')}/s/${row.token}`,
+      url: ShareStore.url(row, base),
       status: shareStatus(row),
       hasPassword: row.passwordHash !== null,
       allowDownload: row.allowDownload,

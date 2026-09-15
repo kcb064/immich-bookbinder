@@ -6,6 +6,7 @@ import {
   assignPhotos,
   BLANK_TEMPLATE_ID,
   chooseTemplate,
+  COLOPHON_TEMPLATE_ID,
   DEFAULT_BODY_TEMPLATES,
   isOpenerTemplate,
   paginate,
@@ -90,6 +91,15 @@ describe('paginate', () => {
     for (const p of pages) expect(p.index).toBe(pages.indexOf(p));
   });
 
+  it('closes the book with a colophon page after the body and before nothing else', () => {
+    const { pages } = paginate(album(30), { format: square, targetPages: 24, makeId: ids });
+    expect(pages[pages.length - 1]!.templateId).toBe(COLOPHON_TEMPLATE_ID);
+    expect(pages.filter((p) => p.templateId === COLOPHON_TEMPLATE_ID)).toHaveLength(1);
+    expect(pages.length % 2).toBe(0);
+    const without = paginate(album(30), { format: square, targetPages: 24, colophon: false, makeId: ids });
+    expect(without.pages.some((p) => p.templateId === COLOPHON_TEMPLATE_ID)).toBe(false);
+  });
+
   it('pads a small album with blank pages up to the minimum', () => {
     const { pages } = paginate(album(6), { format: square, targetPages: 24, makeId: ids });
     expect(pages.length).toBe(24);
@@ -108,7 +118,7 @@ describe('paginate', () => {
   });
 
   it('respects a restricted template set and no title page', () => {
-    const { pages } = paginate(album(10), { format: home, targetPages: 10, templateIds: ['two-up'], titlePage: false, makeId: ids });
+    const { pages } = paginate(album(10), { format: home, targetPages: 10, templateIds: ['two-up'], titlePage: false, colophon: false, makeId: ids });
     expect(pages.every((p) => p.templateId === 'two-up' || p.templateId === BLANK_TEMPLATE_ID)).toBe(true);
     expect(pages[0]!.templateId).toBe('two-up');
   });

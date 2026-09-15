@@ -7,5 +7,6 @@
   "types": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "build": "tsc --noEmit", "test": "vitest run" },
-  "dependencies": { "@bookbinder/shared": "workspace:*" }
+  "dependencies": { "@bookbinder/shared": "workspace:*" },
+  "devDependencies": { "jsqr": "^1.4.0" }
 }

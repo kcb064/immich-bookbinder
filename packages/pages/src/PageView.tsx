@@ -3,7 +3,7 @@
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
 import { PT_PER_IN, PX_PER_IN } from '@bookbinder/shared';
-import { DEFAULT_TEXT_STYLE, getTemplate, objectPosition, pagePx, pageSlots, slotToPx } from '@bookbinder/layout';
+import { COLOPHON_TEMPLATE_ID, DEFAULT_TEXT_STYLE, QR_QUIET_ZONE, encodeQr, getTemplate, objectPosition, pagePx, pageSlots, planMap, qrPath, slotToPx, type MapPoint } from '@bookbinder/layout';
 import { autoCaption, photographsLabel } from './captions.js';
 
 /** A chapter as the opener pages need it. */
@@ -12,6 +12,8 @@ export interface ChapterMeta {
   subtitle?: string | undefined;
   /** Photos placed in the chapter (opener included). */
   photoCount: number;
+  /** Where the chapter's photos were taken (M7 maps); only photos with coordinates. */
+  points?: MapPoint[] | undefined;
 }
 
 /** Book-level text the templates can draw (title page, chapter openers, running captions). */
@@ -23,6 +25,50 @@ export interface BookMeta {
   dateRange: string;
   /** By chapter id; pages carry `chapterId`. */
   chapters?: ReadonlyMap<string, ChapterMeta> | undefined;
+  /** Public viewer link of the book's active share (M7): the colophon prints it as a QR code. Absent = no QR. */
+  shareUrl?: string | undefined;
+  /** Draw the chapter map on chapter title pages (M7, `rules.chapterMaps`). */
+  chapterMaps?: boolean | undefined;
+}
+
+/** A chapter's photo locations as an SVG: graticule, route, dots. Null when nothing has coordinates. */
+export function ChapterMap({ points, w, h, theme }: { points: readonly MapPoint[]; w: number; h: number; theme: Theme }) {
+  const m = planMap(points, w, h);
+  if (!m) return null;
+  return (
+    <svg className="bb-map" viewBox={`0 0 ${w} ${h}`} width={w} height={h} role="img" aria-label="Map of where the photos were taken">
+      <rect width={w} height={h} fill="none" stroke={theme.caption} strokeOpacity={0.35} strokeWidth={1} />
+      {m.graticule.map((g, i) => (
+        <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={theme.caption} strokeOpacity={0.25} strokeWidth={0.75} />
+      ))}
+      {m.route ? <path d={m.route} fill="none" stroke={theme.accent} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" strokeOpacity={0.85} /> : null}
+      {m.dots.map((d, i) => (
+        <circle key={i} cx={d.x} cy={d.y} r={3} fill={theme.ink} stroke={theme.paper} strokeWidth={1} />
+      ))}
+    </svg>
+  );
+}
+
+/** The share URL as the colophon prints it next to the QR code: no scheme, no trailing slash. */
+export function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+}
+
+/** The QR code of a share URL as an SVG, quiet zone included, filling its box. Undefined when there is no URL. */
+export function QrSvg({ url, ink, paper }: { url: string; ink: string; paper: string }) {
+  let code: ReturnType<typeof encodeQr>;
+  try {
+    code = encodeQr(url, 'M');
+  } catch {
+    return null;
+  }
+  const side = code.size + 2 * QR_QUIET_ZONE;
+  return (
+    <svg className="bb-qr" viewBox={`0 0 ${side} ${side}`} width="100%" height="100%" shapeRendering="crispEdges" role="img" aria-label={`QR code for ${url}`}>
+      <rect width={side} height={side} fill={paper} />
+      <path transform={`translate(${QR_QUIET_ZONE} ${QR_QUIET_ZONE})`} d={qrPath(code)} fill={ink} />
+    </svg>
+  );
 }
 
 /** What a photo slot needs from the image provider: the asset and the printed slot size in inches. */
@@ -60,6 +106,8 @@ export interface PageViewProps {
   guides?: boolean | undefined;
   /** Editor hooks. Text slots take part too when `onSlotPointerDown` is given (the designer). */
   selectedSlotId?: string | undefined;
+  /** Further selected slots (multi-selection, M7); drawn like the selected one. */
+  selectedSlotIds?: ReadonlySet<string> | undefined;
   onSlotClick?: ((slot: SlotSpec, content: SlotContent | undefined) => void) | undefined;
   /** Starts a drag on any slot (designer); called before `onSlotClick`. */
   onSlotPointerDown?: ((slot: SlotSpec, content: SlotContent | undefined, event: PointerEvent<HTMLElement>) => void) | undefined;
@@ -103,6 +151,25 @@ export function textBoxStyle(theme: Theme, style: TextStyle | undefined, ink = t
   };
 }
 
+/**
+ * The theme's photo frame (M7) as CSS on a photo slot: nothing on slots that run into the bleed
+ * (a frame at the trim would be cut off), else a hairline, a drop shadow, or a paper mat.
+ */
+export function photoFrameStyle(theme: Theme, slot: Pick<SlotSpec, 'bleed'>, filled: boolean): CSSProperties {
+  if (!filled || slot.bleed || theme.frameStyle === 'none') return {};
+  const hairline = `1px solid ${theme.caption}`;
+  switch (theme.frameStyle) {
+    case 'hairline':
+      return { border: hairline };
+    case 'shadow':
+      return { boxShadow: '0 2px 6px rgba(0,0,0,0.28), 0 0 1px rgba(0,0,0,0.2)' };
+    case 'mat':
+      return { border: hairline, padding: 10, background: theme.paper };
+    default:
+      return {};
+  }
+}
+
 /** Rotation and stacking of a slot box (shared by pages and the cover). */
 export function frameTransform(frame: SlotFrame, z: number): CSSProperties {
   return {
@@ -134,6 +201,13 @@ function textFor(template: Template, slot: SlotSpec, content: SlotContent | unde
     if (slot.id === 'title') return chapter?.title ?? '';
     if (slot.id === 'subtitle') return chapter?.subtitle ?? '';
     if (slot.id === 'body') return chapter ? photographsLabel(chapter.photoCount) : '';
+    return '';
+  }
+  if (template.id === COLOPHON_TEMPLATE_ID) {
+    if (slot.id === 'qr-label') return meta.shareUrl ? 'See this book online' : '';
+    if (slot.id === 'qr-url') return meta.shareUrl ? displayUrl(meta.shareUrl) : '';
+    if (slot.id === 'credits') return [meta.title, photographsLabel(meta.photoCount), 'made with immich-bookbinder'].filter(Boolean).join(' · ');
+    if (slot.id === 'date') return meta.dateRange;
     return '';
   }
   if (slot.role === 'caption') return autoCaption(pagePhotos(page, assets));
@@ -200,6 +274,7 @@ export function PageView({
   scale = 1,
   guides = false,
   selectedSlotId,
+  selectedSlotIds,
   onSlotClick,
   onSlotPointerDown,
   onBackgroundClick,
@@ -247,7 +322,7 @@ export function PageView({
           const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, ...frameTransform(frame, z) };
           const wIn = slot.w * format.trimWidthIn;
           const hIn = slot.h * format.trimHeightIn;
-          const selected = selectedSlotId === slot.id;
+          const selected = selectedSlotId === slot.id || Boolean(selectedSlotIds?.has(slot.id));
           const activate = () => onSlotClick?.(slot, content);
           const hooks = interactive
             ? {
@@ -272,7 +347,9 @@ export function PageView({
                 style={{
                   ...base,
                   overflow: 'hidden',
+                  boxSizing: 'border-box',
                   background: asset ? undefined : 'rgba(0,0,0,0.05)',
+                  ...photoFrameStyle(theme, slot, Boolean(asset)),
                   cursor: interactive ? (designing ? 'move' : 'pointer') : undefined,
                   outline: selected ? '3px solid #7c8cff' : undefined,
                   outlineOffset: selected ? -3 : undefined,
@@ -293,7 +370,23 @@ export function PageView({
             );
           }
 
-          if (slot.role === 'map' || slot.role === 'qr') return null;
+          if (slot.role === 'qr') {
+            if (!meta.shareUrl) return null;
+            return (
+              <div key={slot.id} className="bb-qr-box" data-slot-id={slot.id} style={{ ...base, lineHeight: 0 }}>
+                <QrSvg url={meta.shareUrl} ink={theme.ink} paper={theme.paper} />
+              </div>
+            );
+          }
+          if (slot.role === 'map') {
+            const chapter = meta.chapterMaps && page.chapterId ? meta.chapters?.get(page.chapterId) : undefined;
+            if (!chapter?.points?.length) return null;
+            return (
+              <div key={slot.id} className="bb-map-box" data-slot-id={slot.id} style={{ ...base, lineHeight: 0 }}>
+                <ChapterMap points={chapter.points} w={r.w} h={r.h} theme={theme} />
+              </div>
+            );
+          }
 
           const text = adHoc ? (content?.text ?? '') : textFor(template, slot, content, page, assets, meta);
           const textHooks: Record<string, unknown> = designing ? { ...hooks, 'aria-label': `Text ${slot.id}` } : {};

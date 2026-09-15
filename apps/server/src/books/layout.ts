@@ -1,6 +1,6 @@
 import type { Book, BookAsset, BookCover, BookFormat, Candidate, FaceBox } from '@bookbinder/shared';
 import { FORMAT_PRESETS, chapterIndex, isPicked, planChapters } from '@bookbinder/shared';
-import { TITLE_TEMPLATE_ID, applyFaceCrops, coverGeometry, faceFocal, getTemplate, mergeCustomPages, paginate, placedAssetIds } from '@bookbinder/layout';
+import { COLOPHON_TEMPLATE_ID, TITLE_TEMPLATE_ID, applyFaceCrops, coverGeometry, faceFocal, getTemplate, mergeCustomPages, paginate, placedAssetIds } from '@bookbinder/layout';
 import { formatHasCover } from '../render/service.js';
 import type { ImmichClient } from '../immich/client.js';
 import { gatherAssets } from '../immich/gather.js';
@@ -85,6 +85,7 @@ export async function layoutBook(
   const custom = book.pages.filter((p) => p.custom);
   const onCustom = new Set(placedAssetIds(custom));
   const customTitle = custom.some((p) => p.templateId === TITLE_TEMPLATE_ID);
+  const customColophon = custom.some((p) => p.templateId === COLOPHON_TEMPLATE_ID);
 
   // Chapters are planned over every gathered photo (as the picker did), then only picked photos keep them.
   const plan = planChapters(assets, { mode: book.rules.chapters, targetPages: book.rules.targetPages });
@@ -104,6 +105,7 @@ export async function layoutBook(
       targetPages: Math.max(1, book.rules.targetPages - custom.length),
       chapters: plan.map((c) => ({ id: c.id, title: c.title, subtitle: c.subtitle })),
       titlePage: !customTitle,
+      colophon: !customColophon,
     },
   );
   warnings.push(...result.warnings);

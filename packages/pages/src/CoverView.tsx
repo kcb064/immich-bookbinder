@@ -3,8 +3,8 @@
 import type { CSSProperties, PointerEvent } from 'react';
 import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
-import { MIN_SPINE_TEXT_IN, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
-import { activateOnKey, frameTransform, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
+import { MIN_SPINE_TEXT_IN, coverSlotIn, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
+import { activateOnKey, frameTransform, photoFrameStyle, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
 
 export interface CoverViewProps {
   cover: BookCover;
@@ -20,6 +20,7 @@ export interface CoverViewProps {
   guides?: boolean | undefined;
   /** Designer hooks (M6), as on PageView. */
   selectedSlotId?: string | undefined;
+  selectedSlotIds?: ReadonlySet<string> | undefined;
   onSlotClick?: ((slot: SlotSpec, content: SlotContent | undefined) => void) | undefined;
   onSlotPointerDown?: ((slot: SlotSpec, content: SlotContent | undefined, event: PointerEvent<HTMLElement>) => void) | undefined;
   onBackgroundClick?: (() => void) | undefined;
@@ -57,25 +58,13 @@ export function coverPxToUnits(px: number, py: number, format: BookFormat, g: Co
 
 /** Pixel box of a cover slot on the sheet: back cover left, spine, then front; bleed slots run to the sheet edge. */
 export function coverSlotPx(slot: Pick<SlotSpec, 'id' | 'x' | 'y' | 'w' | 'h'>, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN): { x: number; y: number; w: number; h: number } {
-  const trimW = format.trimWidthIn * ppi;
-  const trimH = format.trimHeightIn * ppi;
-  const wrap = g.wrapIn * ppi;
-  const spine = g.spineIn * ppi;
-  const sheetW = g.widthIn * ppi;
-  const sheetH = g.heightIn * ppi;
-  const eps = 1e-6;
-  // Template x is in trim widths: back [-1, 0], front [0, 1]; the spine is inserted at 0.
-  const mapX = (u: number): number => {
-    if (u <= -1 - eps) return 0;
-    if (u >= 1 + eps) return sheetW;
-    return u <= 0 ? wrap + (u + 1) * trimW : wrap + trimW + spine + u * trimW;
-  };
-  const mapY = (v: number): number => (v <= -eps ? 0 : v >= 1 + eps ? sheetH : wrap + v * trimH);
-  if (slot.id === 'spine') return { x: Math.round(wrap + trimW), y: Math.round(wrap), w: Math.round(spine), h: Math.round(trimH) };
-  const x0 = mapX(slot.x);
-  const x1 = mapX(slot.x + slot.w);
-  const y0 = mapY(slot.y);
-  const y1 = mapY(slot.y + slot.h);
+  // Template x is in trim widths: back [-1, 0], front [0, 1]; the spine is inserted at 0 (see coverSlotIn).
+  const r = coverSlotIn(slot, format, g);
+  const x0 = r.x * ppi;
+  const y0 = r.y * ppi;
+  const x1 = (r.x + r.w) * ppi;
+  const y1 = (r.y + r.h) * ppi;
+  if (slot.id === 'spine') return { x: Math.round(x0), y: Math.round(y0), w: Math.round(r.w * ppi), h: Math.round(r.h * ppi) };
   return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
 }
 
@@ -92,7 +81,7 @@ function fitTitle(text: string, w: number, h: number): number {
  * the spine text reads bottom-to-top once the spine is wide enough. Same markup for the admin
  * preview and the PDF.
  */
-export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
+export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, selectedSlotIds, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
   const template = getTemplate(cover.templateId);
   const slots = effectiveSlots(cover.templateId, cover.slots);
   const photoSlots = slots.filter((s) => s.spec.role === 'hero' || s.spec.role === 'photo');
@@ -156,7 +145,7 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
         {photoSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
           const r = coverSlotPx(slot, format, g, ppi);
           const asset = content?.assetId ? assets.get(content.assetId) : undefined;
-          const selected = selectedSlotId === slot.id;
+          const selected = selectedSlotId === slot.id || Boolean(selectedSlotIds?.has(slot.id));
           return (
             <div
               key={slot.id}
@@ -170,6 +159,8 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
                 width: r.w,
                 height: r.h,
                 overflow: 'hidden',
+                boxSizing: 'border-box',
+                ...photoFrameStyle(theme, slot, Boolean(asset)),
                 ...frameTransform(frame, z),
                 cursor: interactive ? (designing ? 'move' : 'pointer') : undefined,
                 outline: selected ? '3px solid #7c8cff' : undefined,
@@ -196,7 +187,7 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
         ) : null}
         {textSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
           const r = coverSlotPx(slot, format, g, ppi);
-          const selected = selectedSlotId === slot.id;
+          const selected = selectedSlotId === slot.id || Boolean(selectedSlotIds?.has(slot.id));
           const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, ...frameTransform(frame, z) };
           const textHooks = designing && slot.id !== 'spine' ? hooksFor(slot, content, `Text ${slot.id}`) : {};
           const textOutline: CSSProperties = designing && slot.id !== 'spine' ? { cursor: 'move', outline: selected ? '2px solid #7c8cff' : undefined, outlineOffset: 2 } : {};

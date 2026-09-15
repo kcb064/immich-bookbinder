@@ -74,6 +74,14 @@ export class BookStore {
     return next;
   }
 
+  /** Marks the printed content as changed without touching the document (the colophon's share link came or went). */
+  touch(id: string): void {
+    const updatedAt = new Date().toISOString();
+    const book = this.get(id);
+    if (!book) return;
+    this.db.update(books).set({ data: JSON.stringify({ ...book, updatedAt }), updatedAt }).where(eq(books.id, id)).run();
+  }
+
   /** Changes only the status (column and document); updatedAt stays because no content changed. */
   setStatus(id: string, status: Book['status']): Book | undefined {
     const book = this.get(id);

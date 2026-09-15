@@ -1,17 +1,31 @@
 import { FORMAT_PRESETS, UnlockShareInput, type Book, type ViewerBook } from '@bookbinder/shared';
 import { dateRangeLabel } from '@bookbinder/pages';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShareRow } from '../db/schema.js';
+import { LuluPrintJob } from '../lulu/client.js';
 import { EXPORT_TOKEN_RE } from '../lulu/exports.js';
 import { SHARE_UNLOCK_TTL_MS, shareStatus } from '../shares/store.js';
 
 /** Per-IP limit on every public route; unlock attempts get a tighter one. */
 const PUBLIC_RATE = { max: 60, timeWindow: '1 minute' };
 const UNLOCK_RATE = { max: 10, timeWindow: '1 minute' };
+
+/** Where Lulu POSTs PRINT_JOB_STATUS_CHANGED submissions (M7); signed with the API secret. */
+export const LULU_WEBHOOK_PATH = '/public/lulu/webhook';
+
+/** Whether `signature` (hex or base64 of an HMAC-SHA256 over `raw`) was made with `secret`. */
+export function luluSignatureMatches(raw: string, signature: string, secret: string): boolean {
+  const mac = createHmac('sha256', secret).update(raw, 'utf8').digest();
+  for (const enc of ['hex', 'base64'] as const) {
+    const expected = mac.toString(enc);
+    if (expected.length === signature.length && timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return true;
+  }
+  return false;
+}
 
 /** base64url of 32 bytes is 43 characters; anything else is not a token we issued. */
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -136,6 +150,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     const { share, book } = r;
     const format = FORMAT_PRESETS[book.formatId] ?? FORMAT_PRESETS['lulu-square-8.5']!;
     const preview = app.renders.latest(book.id, 'preview');
+    const preparing = app.renders.list(book.id).some((r) => r.kind === 'preview' && (r.status === 'queued' || r.status === 'running'));
     const pdf = share.allowDownload ? (app.renders.latest(book.id, 'print') ?? app.renders.latest(book.id, 'proof')) : undefined;
     const placed = new Set(book.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean)));
     const dates = dateRangeLabel(app.books.assets(book.id).filter((a) => placed.has(a.id)));
@@ -154,6 +169,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       download: Boolean(pdf),
       format: { trimWidthIn: format.trimWidthIn, trimHeightIn: format.trimHeightIn, bleedIn: format.bleedIn },
       version: preview?.id ?? '',
+      preparing,
     };
   });
 
@@ -205,6 +221,37 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // Everything else under /public is a 404 (never the SPA).
+  // Lulu webhook (M7): raw body kept for the HMAC check, so it gets its own scope and parser.
+  await app.register(async (scoped) => {
+    scoped.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => done(null, body));
+    scoped.post(LULU_WEBHOOK_PATH, { config: { rateLimit: PUBLIC_RATE } }, async (request, reply) => {
+      const raw = typeof request.body === 'string' ? request.body : '';
+      const header = request.headers['lulu-hmac-sha256'];
+      const signature = (Array.isArray(header) ? header[0] : header)?.trim() ?? '';
+      // Either environment's secret may have signed it; the matching one names the environment.
+      const env = (['sandbox', 'production'] as const).find((e) => {
+        const creds = app.settings.getLuluCredentials(e);
+        return creds && signature && luluSignatureMatches(raw, signature, creds.clientSecret);
+      });
+      if (!env) {
+        request.log.warn('lulu webhook rejected: bad or missing signature');
+        return reply.code(401).send({ statusCode: 401, error: 'Unauthorized', message: 'Bad signature' });
+      }
+      let payload: { topic?: unknown; data?: unknown };
+      try {
+        payload = JSON.parse(raw) as { topic?: unknown; data?: unknown };
+      } catch {
+        return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'Not JSON' });
+      }
+      if (payload.topic !== 'PRINT_JOB_STATUS_CHANGED') return { ok: true, ignored: true };
+      const job = LuluPrintJob.safeParse(payload.data);
+      if (!job.success) return { ok: true, ignored: true };
+      const order = app.orders.applyWebhook(env, job.data);
+      request.log.info({ env, luluJobId: job.data.id, status: job.data.status?.name, orderId: order?.id }, order ? 'lulu webhook applied' : 'lulu webhook for an unknown job');
+      return { ok: true, ...(order ? { orderId: order.id } : { ignored: true }) };
+    });
+  });
+
   const notYet = { statusCode: 404, error: 'Not Found', message: 'Not available' };
   app.get('/public', async (_req, reply) => reply.code(404).send(notYet));
   app.get('/public/*', async (_req, reply) => reply.code(404).send(notYet));

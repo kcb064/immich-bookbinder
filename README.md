@@ -2,16 +2,17 @@
 
 Turn an [Immich](https://immich.app) library into printed photo books. immich-bookbinder runs next to your Immich server, picks the photos worth printing, lays them out on real page templates, renders print-ready PDFs with Chromium, publishes a web viewer you can share, and orders hardcover copies through the Lulu Print API. One container, one language (TypeScript), no cloud services except the printer you choose.
 
-> **Status: early development (M6).** You can connect Immich; start a book from an album, a detected trip (dates plus places), chosen people or a smart search; have every photo scored and de-duplicated; review why each one is in or out (and overrule it), with chapters by place and a per-person filter; get a chronological automatic layout with chapter opener spreads, face-aware crops and a wrap-around cover; tweak it in the editor (swap, remove, reorder, captions, chapter titles, templates) or design any page and the cover by hand (drag, resize and rotate photos, add text boxes, snap to trim, safety and other slots, nudge with the keyboard, undo/redo) while the automatic layout keeps its hands off those pages; check print readiness (page count, resolution, safety, cover, spine); download proof, 300 ppi print and cover PDFs (the cover sized by Lulu's own dimensions when connected); share the book through a public link (optional expiry, password and PDF download) that shows it as spreads without exposing Immich; and order hardcover copies from Lulu: the app publishes the PDFs for Lulu to fetch, runs Lulu's file validation, quotes the live price with shipping options, creates the print job (sandbox or production) and follows it to shipped with tracking links, while payment stays on lulu.com. Optional AI captions, map pages and polish are next (see the roadmap).
+> **Status: usable (M7 done).** You can connect Immich; start a book from an album, a detected trip (dates plus places), chosen people, a saved pet or a smart search; have every photo scored and de-duplicated; review why each one is in or out (and overrule it), with chapters by place and a per-person filter; get a chronological automatic layout with chapter opener spreads, face-aware crops and a wrap-around cover; tweak it in the editor (swap, remove, reorder, captions, chapter titles, templates) or design any page and the cover by hand (drag, resize and rotate photos, add text boxes, snap to trim, safety and other slots, nudge with the keyboard, undo/redo) while the automatic layout keeps its hands off those pages; check print readiness (page count, resolution, safety, cover, spine); download proof, 300 ppi print and cover PDFs (the cover sized by Lulu's own dimensions when connected); share the book through a public link (optional expiry, password and PDF download) that shows it as spreads without exposing Immich; and order hardcover copies from Lulu (several books in one parcel if you like): the app publishes the PDFs for Lulu to fetch, runs Lulu's file validation, quotes the live price with shipping options, creates the print job (sandbox or production) and follows it to shipped with tracking links, by polling or through Lulu's webhook, while payment stays on lulu.com. Every book ends on a colophon page with a QR code to its share link; chapter openers can carry an offline map of the chapter's photos; three themes with per-book paper, caption and frame tweaks; ntfy, Gotify or webhook notifications when renders finish, orders move or a selection fails; and, if you bring an Anthropic API key, Claude writes captions, chapter titles and a foreword and picks the best frame of each burst from thumbnails only (see [docs/ai.md](docs/ai.md)).
 
 ## What it does
 
-- **Sources.** Start a book from an album; from a trip (the wizard scans your geotagged timeline for runs of days away from home and suggests them, or you set the dates and places yourself); from people (every photo showing any of the chosen named faces); or from a free-text CLIP smart search. Pets as a saved query come with M7.
+- **Sources.** Start a book from an album; from a trip (the wizard scans your geotagged timeline for runs of days away from home and suggests them, or you set the dates and places yourself); from people (every photo showing any of the chosen named faces); from a pet (a smart search plus example photos saved under People & pets); or from a free-text CLIP smart search.
 - **Scoring and de-duplication.** Every candidate is scored for sharpness, exposure, people and a simple aesthetic proxy; bursts and near-duplicates collapse to the best frame using Immich's duplicate groups and a perceptual hash; the picker spreads the book across days and gives every chapter a highlight budget, so a 3,600-photo trip still fits the page target. Every in/out decision is explained on the review page and reversible with one click. Details in [docs/selection.md](docs/selection.md).
 - **Chapters and layout.** Places from Immich's reverse geocoding (city, then region, then a GPS cluster, then country) become chapters; each opens on a spread with a full-bleed hero and a title page carrying the place and dates. Chronological pagination fills the rest from a template library in the warm editorial style: off-white paper, serif titles, big place-and-date typography, magazine grids. Face boxes from Immich set each photo's focal point so nobody is cropped out. Swap, caption, retitle and reorder afterwards.
 - **Print-ready PDFs.** Chromium's print engine produces interior and cover PDFs with bleed, gutter safety, embedded fonts and 300 ppi images, using Lulu format presets (8.5 in square by default, plus letter, A4, 9x7 and 7.5 in square) or a borderless home-print preset.
 - **Shareable web viewer.** A tokenised public link shows the finished book as spreads, with optional expiry, password and PDF download. Immich itself is never exposed.
-- **Ordering.** Quote, validate and place a hardcover order with Lulu from inside the app; payment stays on lulu.com.
+- **Ordering.** Quote, validate and place a hardcover order with Lulu from inside the app, one or several books per parcel; payment stays on lulu.com. Lulu's status webhook keeps orders current, and print jobs placed elsewhere can be imported.
+- **Optional extras.** A colophon with a QR code to the share link, offline chapter maps, a third theme with per-book paper/caption/frame overrides, ntfy/Gotify/webhook notifications, and Claude-written captions, chapter titles, forewords and best-of-burst picks with your own API key (thumbnails only, every job priced; [docs/ai.md](docs/ai.md)).
 
 ## Quick start (Dockge)
 
@@ -38,7 +39,7 @@ Full instructions, Cloudflare Tunnel and Access notes, backups and updates: [doc
 | M4 print-ready + viewer | Vendor presets, bleed/trim/spine, cover PDF, 300 ppi checks, public token viewer ([spec](docs/milestones/M4.md)) | done |
 | M5 Lulu ordering | Sandbox flow end to end, cost quote, public PDF URLs, order tracking ([spec](docs/milestones/M5.md)) | done |
 | M6 designer | Free-form slots, text boxes, snapping, undo/redo, keyboard navigation, cover designer ([spec](docs/milestones/M6.md)) | done |
-| M7 optional AI + polish | Claude captions/titles/best-of-burst (opt-in, bring your own key, thumbnails only), pet as smart query, themes, map pages, notifications ([spec](docs/milestones/M7.md)) | planned |
+| M7 optional AI + polish | Claude captions/titles/best-of-burst (opt-in, bring your own key, thumbnails only), pet as smart query, themes, map pages, QR colophon, notifications, plus the items earlier milestones deferred: tray drag-and-drop, multi-selection, rotation snapping, cover safety check, Lulu webhooks, order import, several books per order, auto preview on share ([spec](docs/milestones/M7.md)) | done |
 
 ## Design
 
@@ -77,6 +78,8 @@ No Immich at hand? A small stand-in with generated photos serves everything the 
 corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2283 --photos 80 --home 40
 ```
 
+The same goes for Lulu (`src/test/fake-lulu.ts`, then `LULU_BASE_URL`) and Claude (`src/test/fake-claude.ts`, then `AI_BASE_URL`).
+
 Then point Settings at `http://127.0.0.1:2283` with any API key of ten or more characters. The stand-in holds a May 2026 trip through four Portuguese towns (in albums, most photos geotagged) plus `--home` photos at home and a weekend away, so trip detection, chapters and people all have something to find.
 
 Server environment variables (all read at startup):
@@ -87,10 +90,11 @@ Server environment variables (all read at startup):
 | `DATA_DIR` | SQLite, caches, renders, exports (image default `/data`) |
 | `SECRET_KEY` | Encrypts stored credentials and signs sessions; `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` | Admin login; plain text or argon2 PHC string |
-| `PUBLIC_URL` | External HTTPS base URL for share links and Lulu PDF downloads |
+| `PUBLIC_URL` | External HTTPS base URL for share links, the colophon QR code, notification links, Lulu PDF downloads and Lulu's webhook |
 | `TRUST_CF_ACCESS` | `true` to accept Cloudflare Access identity headers as admin login |
 | `LOG_LEVEL` | pino level, default `info` |
 | `WEB_DIST` | Built web UI directory (image default `/app/web`) |
+| `LULU_BASE_URL`, `AI_BASE_URL` | Development only: point the Lulu client / the Anthropic SDK at the fakes in `apps/server/src/test/` |
 
 Build the image locally with `docker build -f docker/Dockerfile -t immich-bookbinder .`.
 

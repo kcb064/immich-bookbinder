@@ -58,6 +58,21 @@
       "port": 2390
     },
     {
+      "name": "fake-claude",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": [
+        "pnpm",
+        "--filter",
+        "@bookbinder/server",
+        "exec",
+        "tsx",
+        "src/test/fake-claude.ts",
+        "--port",
+        "2490"
+      ],
+      "port": 2490
+    },
+    {
       "name": "design-preview",
       "runtimeExecutable": "python",
       "runtimeArgs": [

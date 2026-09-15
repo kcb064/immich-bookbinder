@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router';
-import { FORMAT_PRESETS, THEMES, formatIsoRange, targetPhotosFor, type Book, type BookAsset, type SelectionSource } from '@bookbinder/shared';
+import { FORMAT_PRESETS, formatIsoRange, targetPhotosFor, type Book, type BookAsset, type SelectionSource } from '@bookbinder/shared';
 import { dateRangeLabel, PageView, bookMetaFor, toSpreads } from '@bookbinder/pages';
 import { PageHeader } from '../components/Shell.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
@@ -7,6 +7,8 @@ import { RenderButtons, RenderList } from '../components/Renders.tsx';
 import { PreflightCard } from '../components/Preflight.tsx';
 import { ShareCard } from '../components/Share.tsx';
 import { CoverCard } from '../components/CoverCard.tsx';
+import { LookCard } from '../components/LookCard.tsx';
+import { AiCard } from '../components/AiCard.tsx';
 import { OrderSummaryCard } from '../components/OrderCard.tsx';
 import { BookCover } from './Dashboard.tsx';
 import { isActiveRun, useBook, useBookAssets, useDeleteBook, useInvalidateOnRenderSettle, useLayoutBook, useRenders, useSelection, useSettings } from '../lib/queries.ts';
@@ -32,6 +34,8 @@ export function describeSources(book: { rules?: { sources: SelectionSource[] } |
           return `Smart search "${s.query}" (top ${s.limit})`;
         case 'favorites':
           return 'Favorites';
+        case 'pet':
+          return `Pet ${s.name} ("${s.query}"${s.exampleAssetIds.length > 0 ? `, ${s.exampleAssetIds.length} example${s.exampleAssetIds.length === 1 ? '' : 's'}` : ''})`;
       }
     })
     .join('; ');
@@ -40,7 +44,7 @@ export function describeSources(book: { rules?: { sources: SelectionSource[] } |
 /** The first few spreads, drawn small with the real page components. */
 function SpreadPreview({ book, assets }: { book: Book; assets: BookAsset[] }) {
   const format = FORMAT_PRESETS[book.formatId];
-  const theme = THEMES[book.themeId] ?? themeFor(book.themeId);
+  const theme = themeFor(book);
   if (!format || book.pages.length === 0) return null;
   const map = new Map(assets.map((a) => [a.id, a]));
   const placed = new Set(book.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean)));
@@ -105,7 +109,7 @@ export function BookDetailPage() {
   }
 
   const b = book.data;
-  const theme = themeFor(b.themeId);
+  const theme = themeFor(b);
   const format = FORMAT_PRESETS[b.formatId];
   const hasPages = b.pages.length > 0;
   const luluFormat = format?.vendor === 'lulu';
@@ -251,6 +255,10 @@ export function BookDetailPage() {
               </div>
               <RenderList bookId={b.id} />
             </section>
+
+            <LookCard book={b} />
+
+            <AiCard book={b} disabled={!hasPages} />
 
             <ShareCard book={b} disabled={!hasPages} />
 

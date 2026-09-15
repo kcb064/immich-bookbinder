@@ -225,6 +225,36 @@ export function snapAngle(deg: number, step = SNAP_ANGLE_STEP, within = SNAP_ANG
   return Math.round(a * 10) / 10 || 0;
 }
 
+/**
+ * Snaps an angle to the rotation of another box on the page when within `within` degrees (a
+ * tilted photo lines up with its neighbour), else to the 15° grid. Returns the angle and, when it
+ * snapped to a box, that box's rotation so the overlay can say so.
+ */
+export function snapAngleToBoxes(deg: number, others: readonly number[], within = SNAP_ANGLE_WITHIN, step = SNAP_ANGLE_STEP): { angle: number; matched: number | undefined } {
+  const norm = (v: number): number => {
+    let a = ((((v + 180) % 360) + 360) % 360) - 180;
+    if (a <= -180) a += 360;
+    return a;
+  };
+  const a = norm(deg);
+  let best: number | undefined;
+  let bestD = within + 1e-9;
+  for (const o of others) {
+    const target = norm(o);
+    if (target === 0) continue; // upright boxes are the grid's business
+    const d = Math.abs(norm(a - target));
+    if (d < bestD) {
+      bestD = d;
+      best = target;
+    }
+  }
+  if (best !== undefined) {
+    const angle = Math.round(best * 10) / 10 || 0;
+    return { angle, matched: angle };
+  }
+  return { angle: snapAngle(a, step, within), matched: undefined };
+}
+
 /** Angle in degrees of the vector from `centre` to `point`, measured from "up" and clockwise (a rotation handle above the box reads 0). */
 export function angleFromCentre(centre: { x: number; y: number }, point: { x: number; y: number }): number {
   return (Math.atan2(point.x - centre.x, -(point.y - centre.y)) * 180) / Math.PI;

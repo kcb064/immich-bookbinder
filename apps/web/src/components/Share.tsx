@@ -3,7 +3,8 @@ import type { Book, RenderJob, ShareView } from '@bookbinder/shared';
 import { Button, Chip, Field, Note, PasswordInput, Select, Skeleton } from './ui.tsx';
 import { Icon } from './Icon.tsx';
 import { isActiveRender } from './Renders.tsx';
-import { useCreateRender, useCreateShare, useRenders, useRevokeShare, useShares, useUpdateShare } from '../lib/queries.ts';
+import { useQueryClient } from '@tanstack/react-query';
+import { keys, useCreateRender, useCreateShare, useRenders, useRevokeShare, useShares, useUpdateShare } from '../lib/queries.ts';
 import { errorMessage } from '../lib/api.ts';
 import { formatDate, formatDateTime, formatNumber } from '../lib/format.ts';
 
@@ -113,6 +114,7 @@ export function ShareCard({ book, disabled }: { book: Book; disabled?: boolean |
   const shares = useShares(book.id);
   const renders = useRenders(book.id);
   const create = useCreateShare(book.id);
+  const qc = useQueryClient();
   const render = useCreateRender(book.id);
   const [open, setOpen] = useState(false);
   const [expiry, setExpiry] = useState('');
@@ -126,11 +128,11 @@ export function ShareCard({ book, disabled }: { book: Book; disabled?: boolean |
     create.mutate(
       { ...(days ? { expiresInDays: days } : {}), ...(password.trim() ? { password: password.trim() } : {}), allowDownload: download },
       {
-        onSuccess: () => {
+        onSuccess: (share) => {
           setOpen(false);
           setPassword('');
-          // A link needs page images; queue the web preview when none reflects the book.
-          if (!preview.current && !preview.running && !busy) render.mutate('preview');
+          // The server queues the web preview when none reflects the book; show it in the render list.
+          if (share.previewQueued) void qc.invalidateQueries({ queryKey: keys.renders(book.id) });
         },
       },
     );

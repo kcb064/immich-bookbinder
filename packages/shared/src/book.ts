@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ChapterMode } from './chapters.js';
 import { LuluProduct } from './format.js';
+import { ThemeOverrides } from './theme.js';
 
 export const Id = z.string().min(1);
 
@@ -29,6 +30,17 @@ export const SelectionSource = z.discriminatedUnion('kind', [
   /** CLIP smart search: the `limit` best matches for the text (or the example photo). */
   z.object({ kind: z.literal('smart'), query: z.string().min(1), queryAssetId: Id.optional(), limit: z.number().int().min(10).max(1000).default(200) }),
   z.object({ kind: z.literal('favorites') }),
+  /**
+   * A pet (M7): a saved smart query plus example photos. The union of the text search and, per
+   * example, an image-similarity search (`queryAssetId`), each limited to `limit` matches.
+   */
+  z.object({
+    kind: z.literal('pet'),
+    name: z.string().min(1),
+    query: z.string().min(1),
+    exampleAssetIds: z.array(Id).max(10).default([]),
+    limit: z.number().int().min(10).max(1000).default(200),
+  }),
 ]);
 export type SelectionSource = z.infer<typeof SelectionSource>;
 
@@ -80,6 +92,8 @@ export const SelectionRules = z.object({
   weights: ScoringWeights.default(() => ScoringWeights.parse({})),
   /** How the book splits into chapters (place runs, days, or none). Openers cost two pages each. */
   chapters: ChapterMode.default('auto'),
+  /** Draw an offline map of the chapter's photo locations on each chapter title page (M7). */
+  chapterMaps: z.boolean().default(false),
 });
 export type SelectionRules = z.infer<typeof SelectionRules>;
 
@@ -191,6 +205,8 @@ export const Book = z.object({
   subtitle: z.string().optional(),
   formatId: Id,
   themeId: Id,
+  /** Per-book theme adjustments (M7): paper colour, caption size, photo frames. */
+  themeOverrides: ThemeOverrides.optional(),
   luluProduct: LuluProduct.default(() => LuluProduct.parse({})),
   status: BookStatus.default('draft'),
   rules: SelectionRules.optional(),
@@ -287,6 +303,8 @@ export const ReasonKind = z.enum([
   'chapter',
   'below-cut',
   'no-analysis',
+  /** Claude picked (or was overruled on) the best frame of a burst (M7). */
+  'ai',
 ]);
 export type ReasonKind = z.infer<typeof ReasonKind>;
 

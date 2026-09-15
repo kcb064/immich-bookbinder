@@ -60,6 +60,44 @@ describe('shares and the public viewer', () => {
     expect(list[0]!.warning).toBeUndefined();
   });
 
+  it('queues the web preview when a share is created without a current one, and the viewer says so (M7)', async () => {
+    // The share made above already queued one; clear the slate.
+    await t.app.renders.idle();
+    const before = z.array(RenderJob).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders`, headers: { cookie } })).json());
+    for (const r of before) await t.app.inject({ method: 'DELETE', url: `/api/books/${bookId}/renders/${r.id}`, headers: { cookie } });
+    const made = ShareView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/shares`, headers: { cookie }, payload: {} })).json());
+    expect(made.previewQueued).toBe(true);
+    const renders = z.array(RenderJob).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/renders`, headers: { cookie } })).json());
+    expect(renders.filter((r) => r.kind === 'preview')).toHaveLength(1);
+    const json = ViewerBook.parse((await t.app.inject({ method: 'GET', url: `/s/${tokenOf(made)}/book.json`, remoteAddress: client() })).json());
+    expect(typeof json.preparing).toBe('boolean');
+    // A second share while that render is queued or done does not queue another.
+    const again = ShareView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/shares`, headers: { cookie }, payload: {} })).json());
+    expect(again.previewQueued).toBeUndefined();
+    await t.app.renders.idle();
+    for (const s of [made, again]) await t.app.inject({ method: 'DELETE', url: `/api/books/${bookId}/shares/${s.id}`, headers: { cookie } });
+  });
+
+  it('marks the book changed when its first share appears (the colophon gains a QR code, M7)', async () => {
+    const before = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
+    // A second share while one is active changes nothing on the page.
+    await new Promise((r) => setTimeout(r, 5));
+    const second = ShareView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/shares`, headers: { cookie }, payload: {} })).json());
+    const same = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
+    expect(same.updatedAt).toBe(before.updatedAt);
+    // Revoking every share removes the code: changed again.
+    const shares = z.array(ShareView).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/shares`, headers: { cookie } })).json());
+    for (const s of shares) await t.app.inject({ method: 'DELETE', url: `/api/books/${bookId}/shares/${s.id}`, headers: { cookie } });
+    const gone = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
+    expect(gone.updatedAt > before.updatedAt).toBe(true);
+    expect(gone.pages).toEqual(before.pages);
+    await new Promise((r) => setTimeout(r, 5));
+    const again = ShareView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/shares`, headers: { cookie }, payload: { allowDownload: second.allowDownload } })).json());
+    expect(again.status).toBe('active');
+    const back = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());
+    expect(back.updatedAt > gone.updatedAt).toBe(true);
+  });
+
   it('serves book.json without asset ids or Immich data, and counts views', async () => {
     const share = ShareView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/shares`, headers: { cookie }, payload: { allowDownload: true } })).json());
     const token = tokenOf(share);
@@ -76,17 +114,19 @@ describe('shares and the public viewer', () => {
       expect(body).not.toContain(a.fileName);
     }
     expect(body).not.toContain(immich.url);
-    expect(Object.keys(vb).sort()).toEqual(['chapters', 'cover', 'dates', 'download', 'format', 'pageCount', 'title', 'version'].filter((k) => k !== 'dates' || vb.dates !== undefined).sort());
-    expect(vb.coverFront).toBeUndefined();
+    // Only viewer geometry and text: every key is one the schema names (coverFront appears once a preview with a cover exists).
+    const allowed = ['chapters', 'cover', 'coverFront', 'dates', 'download', 'format', 'pageCount', 'preparing', 'subtitle', 'title', 'version'];
+    for (const k of Object.keys(vb)) expect(allowed).toContain(k);
 
     const after = z.array(ShareView).parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/shares`, headers: { cookie } })).json());
     expect(after.find((s) => s.id === share.id)?.views).toBe(1);
     expect(after.find((s) => s.id === share.id)?.lastViewedAt).toBeTruthy();
 
-    // No preview render yet: no pages, and the pages route says so.
-    expect(vb.pageCount).toBe(0);
-    expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/0.png`, remoteAddress: client() })).statusCode).toBe(404);
-    // Download is allowed but nothing is rendered: 404, not 403.
+    // Pages exist only once a preview render finished (the share queued one; Chromium decides whether it succeeded).
+    if (vb.pageCount === 0) expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/0.png`, remoteAddress: client() })).statusCode).toBe(404);
+    else expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/0.png`, remoteAddress: client() })).statusCode).toBe(200);
+    expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pages/${vb.pageCount + 5}.png`, remoteAddress: client() })).statusCode).toBe(404);
+    // Download is allowed but no PDF is rendered: 404, not 403.
     expect((await t.app.inject({ method: 'GET', url: `/s/${token}/pdf`, remoteAddress: client() })).statusCode).toBe(404);
   });
 

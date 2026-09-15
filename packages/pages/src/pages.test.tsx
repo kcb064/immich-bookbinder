@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { FORMAT_PRESETS, LuluProduct, THEMES, type BookAsset, type BookCover, type Page } from '@bookbinder/shared';
+import { FORMAT_PRESETS, LuluProduct, THEMES, resolveTheme, type BookAsset, type BookCover, type Page } from '@bookbinder/shared';
 import { TEMPLATES, coverGeometry, paginate } from '@bookbinder/layout';
 import { describe, expect, it } from 'vitest';
 import { autoCaption, dateRangeLabel, formatTakenDate } from './captions.js';
@@ -141,6 +141,31 @@ describe('designer overrides (M6)', () => {
   });
 });
 
+describe('themes and overrides (M7)', () => {
+  it('resolves a book theme with its overrides and falls back to the default theme', () => {
+    expect(resolveTheme('nope')).toEqual(THEMES['warm-editorial']);
+    const t = resolveTheme('night-gallery', { paper: '#101010', captionSizePx: 16, frameStyle: 'mat' });
+    expect(t).toMatchObject({ id: 'night-gallery', paper: '#101010', captionSizePx: 16, frameStyle: 'mat', ink: THEMES['night-gallery']!.ink });
+    expect(resolveTheme('night-gallery', {})).toEqual(THEMES['night-gallery']);
+  });
+
+  it('frames filled photo slots but never bleed slots, with the paper colour and caption size applied', () => {
+    const { assets } = fixtures(12);
+    const matted: Page = { id: 'm', index: 2, templateId: 'two-up', slots: [{ slotId: 'p1', assetId: 'a0' }, { slotId: 'p2', assetId: 'a1' }] };
+    const bleed: Page = { id: 'b', index: 3, templateId: 'one-up-full-bleed', slots: [{ slotId: 'p1', assetId: 'a2' }] };
+    const t = resolveTheme('warm-editorial', { paper: '#123456', captionSizePx: 20, frameStyle: 'hairline' });
+    const html = renderToStaticMarkup(<PageView page={matted} format={format} theme={t} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html).toContain('background:#123456');
+    expect(html).toContain(`border:1px solid ${t.caption}`);
+    const hero = renderToStaticMarkup(<PageView page={bleed} format={format} theme={t} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(hero).not.toContain('border:1px solid');
+    const plain = renderToStaticMarkup(<PageView page={matted} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(plain).not.toContain('border:1px solid');
+    const shadow = renderToStaticMarkup(<PageView page={matted} format={format} theme={resolveTheme('warm-editorial', { frameStyle: 'shadow' })} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(shadow).toContain('box-shadow:0 2px 6px');
+  });
+});
+
 describe('print document', () => {
   it('emits one sheet per page with the @page size of trim plus bleed', () => {
     const { assets, pages } = fixtures(12);
@@ -152,6 +177,25 @@ describe('print document', () => {
     // Title page carries no folio; page index 1 (printed 2) does.
     expect(html).toContain('>2<');
     expect(html).not.toContain('>1<');
+  });
+
+  it('prints the colophon with the share QR code and link, and nothing without a share (M7)', () => {
+    const { assets, pages } = fixtures(12);
+    const colophon = pages[pages.length - 1]!;
+    expect(colophon.templateId).toBe('colophon');
+    const withShare = bookMetaFor({ title: 'Portugal', pages }, assets.values(), 12, { shareUrl: 'https://books.example.com/s/abc123' });
+    const html = renderToStaticMarkup(<PageView page={colophon} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={withShare} />);
+    expect(html).toContain('class="bb-qr"');
+    expect(html).toContain('books.example.com/s/abc123');
+    expect(html).toContain('See this book online');
+    expect(html).toContain('12 photographs');
+    expect(html).toContain('immich-bookbinder');
+    const plain = renderToStaticMarkup(<PageView page={colophon} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(plain).not.toContain('bb-qr');
+    expect(plain).not.toContain('See this book online');
+    // The same page prints identically through the print document.
+    const doc = renderPrintDocument({ pages: [colophon], firstPageIndex: colophon.index, format, theme, assets, imageSrc, meta: withShare, webFonts: false });
+    expect(doc).toContain(html);
   });
 
   it('alternates sides starting with a recto', () => {
@@ -204,11 +248,36 @@ describe('chapter openers', () => {
       { id: 'b', index: 3, templateId: 'two-up', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a1' }, { slotId: 'p2', assetId: 'a2' }] },
     ];
     const m = bookMetaFor({ title: 'T', chapters: [{ id: 'ch1', title: 'Lisbon', startsAtPage: 1 }], pages }, assets.values(), 3);
-    expect(m.chapters?.get('ch1')).toEqual({ title: 'Lisbon', subtitle: undefined, photoCount: 3 });
+    expect(m.chapters?.get('ch1')).toEqual({ title: 'Lisbon', subtitle: undefined, photoCount: 3, points: [] });
     const html = renderPrintDocument({ pages, firstPageIndex: 0, format, theme, assets, imageSrc, meta: m, webFonts: false });
     expect(html).toContain('>4<');
     expect(html).not.toContain('>2<');
     expect(html).not.toContain('>3<');
+  });
+
+  it('draws an offline map of the chapter on its title page when the rules ask for one (M7)', () => {
+    const { assets } = fixtures(4);
+    const located = new Map([...assets].map(([id, a], i) => [id, { ...a, lat: 38.7 + i * 0.01, lon: -9.14 + i * 0.02 }]));
+    const pages: Page[] = [
+      { id: 'o', index: 1, templateId: 'chapter-photo', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a0' }] },
+      { id: 'c', index: 2, templateId: 'chapter-title', chapterId: 'ch1', slots: [] },
+      { id: 'b', index: 3, templateId: 'two-up', chapterId: 'ch1', slots: [{ slotId: 'p1', assetId: 'a1' }, { slotId: 'p2', assetId: 'a2' }] },
+    ];
+    const book = { title: 'T', chapters: [{ id: 'ch1', title: 'Lisbon', startsAtPage: 1 }], pages };
+    const off = bookMetaFor(book, located.values(), 3);
+    expect(off.chapters?.get('ch1')?.points).toHaveLength(3);
+    expect(off.chapterMaps).toBeUndefined();
+    const on = bookMetaFor({ ...book, rules: { chapterMaps: true } as never }, located.values(), 3);
+    expect(on.chapterMaps).toBe(true);
+    const drawn = renderToStaticMarkup(<PageView page={pages[1]!} format={format} theme={theme} assets={located} imageSrc={imageSrc} meta={on} />);
+    expect(drawn).toContain('class="bb-map"');
+    expect(drawn.match(/<circle/g)).toHaveLength(3);
+    expect(drawn).toContain('<path d="M');
+    const hidden = renderToStaticMarkup(<PageView page={pages[1]!} format={format} theme={theme} assets={located} imageSrc={imageSrc} meta={off} />);
+    expect(hidden).not.toContain('bb-map');
+    // No coordinates: the rule is on but there is nothing to draw.
+    const nowhere = renderToStaticMarkup(<PageView page={pages[1]!} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={bookMetaFor({ ...book, rules: { chapterMaps: true } as never }, assets.values(), 3)} />);
+    expect(nowhere).not.toContain('bb-map');
   });
 });
 

@@ -4,3 +4,4 @@ export * from './template.js';
 export * from './chapters.js';
 export * from './book.js';
 export * from './api.js';
+export * from './ai.js';

@@ -53,6 +53,8 @@ const raw: Template[] = [
     slots: [
       text('title', 'title', S, f(300), C, f(120)),
       text('subtitle', 'text', S, f(430), C, f(40)),
+      // Optional foreword paragraph (typed, or written by Claude in M7); empty = nothing drawn.
+      text('foreword', 'text', S, f(500), f(560), f(200)),
       text('author', 'caption', S, 1 - S - f(20), C, f(20)),
     ],
   },
@@ -179,6 +181,8 @@ const raw: Template[] = [
       text('rule', 'folio', f(60), f(236), f(48), f(2)),
       text('subtitle', 'caption', f(60), f(262), C - f(60), f(24)),
       text('body', 'text', f(60), f(320), f(420), f(160)),
+      // Offline map of the chapter's photos (M7); drawn only when the book asks for maps.
+      { id: 'map', role: 'map', x: f(60), y: f(500), w: f(352), h: f(220), aspect: [1.6], importance: 1, bleed: false },
     ],
   },
   {
@@ -306,9 +310,10 @@ const raw: Template[] = [
     tags: ['cover'],
     slots: [
       hero('p1', -1 - B, -B, 2 + 2 * B, 1 + 2 * B, { aspect: [2.2, 1.78], bleed: true }),
-      text('title', 'title', f(56), 1 - f(120) - f(130), C, f(130)),
+      // Ends at the safety line (816 - 48 px) so preflight's cover check passes on the template itself.
+      text('title', 'title', f(56), 1 - f(120) - f(130), C - f(8), f(130)),
       text('rule', 'folio', f(60), 1 - f(96), f(56), f(2)),
-      text('subtitle', 'caption', f(60), 1 - f(60) - f(24), C, f(24)),
+      text('subtitle', 'caption', f(60), 1 - f(60) - f(24), C - f(60), f(24)),
       text('back-blurb', 'text', -1 + f(56), 1 - f(56) - f(70), f(380), f(70)),
       text('spine', 'title', 0, 0, 0.05, 1),
     ],

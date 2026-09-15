@@ -1,6 +1,6 @@
 import { FORMAT_PRESETS, type CoverGeometry } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
-import { angleFromCentre, clampToBounds, coverSnapLines, pageSnapLines, resizeBy, slotSnapLines, snapAngle, snapMove, snapResize } from './snap.js';
+import { angleFromCentre, clampToBounds, coverSnapLines, pageSnapLines, resizeBy, slotSnapLines, snapAngle, snapAngleToBoxes, snapMove, snapResize } from './snap.js';
 
 const square = FORMAT_PRESETS['lulu-square-8.5']!;
 const home = FORMAT_PRESETS['home-letter']!;
@@ -89,6 +89,11 @@ describe('snapping', () => {
   });
 
   it('snaps angles to 15 degree steps within 3 degrees and normalises the range', () => {
+    expect(snapAngleToBoxes(13.5, [])).toEqual({ angle: 15, matched: undefined });
+    // A neighbour tilted 7.4° wins over the grid when the drag is close to it; far away the grid applies.
+    expect(snapAngleToBoxes(9, [7.4, 0])).toEqual({ angle: 7.4, matched: 7.4 });
+    expect(snapAngleToBoxes(-179.5, [178])).toEqual({ angle: 178, matched: 178 });
+    expect(snapAngleToBoxes(44, [7.4])).toEqual({ angle: 45, matched: undefined });
     expect(snapAngle(13.5)).toBe(15);
     expect(snapAngle(11)).toBe(11);
     expect(snapAngle(-1.4)).toBe(0);

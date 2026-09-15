@@ -1,4 +1,7 @@
 import type { Book, BookAsset, BookFormat, Preflight, PreflightItem, RenderData, RenderKind } from '@bookbinder/shared';
+import { LuluProduct } from '@bookbinder/shared';
+import { coverGeometry, coverSlotIn } from './cover.js';
+import { effectiveSlots } from './design.js';
 import { effectivePpi } from './crop.js';
 import { pageSlots } from './design.js';
 
@@ -16,7 +19,7 @@ export interface PreflightRender {
 }
 
 export interface PreflightInput {
-  book: Pick<Book, 'pages' | 'cover' | 'updatedAt'>;
+  book: Pick<Book, 'pages' | 'cover' | 'updatedAt'> & Partial<Pick<Book, 'luluProduct'>>;
   format: BookFormat;
   assets: ReadonlyMap<string, Pick<BookAsset, 'width' | 'height' | 'fileName'>>;
   renders: readonly PreflightRender[];
@@ -82,6 +85,22 @@ export function preflightBook(input: PreflightInput): Preflight {
   }
 
   const done = (kind: RenderKind) => renders.filter((r) => r.kind === kind && r.status === 'done').sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
+  if (format.vendor === 'lulu' && book.cover) {
+    // Cover safety (M7): text and hand-placed photo boxes must sit inside one cover's safe area, clear of the spine and the wrap.
+    const g = done('cover')[0]?.data?.cover?.geometry ?? coverGeometry(format, book.luluProduct ?? LuluProduct.parse({}), n);
+    for (const { spec, content, adHoc } of effectiveSlots(book.cover.templateId, book.cover.slots)) {
+      if (spec.id === 'spine' || spec.role === 'map' || spec.role === 'qr') continue;
+      const isPhoto = spec.role === 'hero' || spec.role === 'photo';
+      if (isPhoto && (!adHoc || !content?.assetId)) continue;
+      // Text slots with nothing to print are ignored: an ad-hoc box needs text, the back blurb needs a blurb, an emptied slot is hidden.
+      if (!isPhoto && ((adHoc && !content?.text) || (spec.id === 'back-blurb' && !content?.text && !book.cover.blurb) || content?.text === '')) continue;
+      const r = coverSlotIn(spec, format, g);
+      if (!insideCoverSafety(r, format, g)) {
+        const what = isPhoto ? 'A photo box' : spec.id === 'title' ? 'The title' : spec.id === 'subtitle' ? 'The subtitle' : spec.id === 'back-blurb' ? 'The back-cover text' : 'A text box';
+        items.push({ level: 'warn', code: 'cover-safety', message: `${what} on the cover reaches the ${format.safetyIn} in safety band, the spine or the wrap and may be trimmed or folded.`, slotId: spec.id });
+      }
+    }
+  }
   if (format.vendor === 'lulu') {
     if (!book.cover) {
       items.push({ level: 'error', code: 'cover-missing', message: 'The book has no cover yet. Lay the book out again or set one on the book page.' });
@@ -108,6 +127,23 @@ export function preflightBook(input: PreflightInput): Preflight {
   }
 
   return { ok: !items.some((i) => i.level === 'error'), items };
+}
+
+/** Whether a box (inches on the cover sheet) lies inside the back or the front cover's safe area. */
+function insideCoverSafety(r: { x: number; y: number; w: number; h: number }, format: BookFormat, g: { wrapIn: number; spineIn: number; frontLeftIn: number }): boolean {
+  const t = SAFETY_TOLERANCE_IN;
+  const outer = format.safetyIn;
+  const inner = Math.max(format.safetyIn, format.gutterSafetyIn);
+  const top = g.wrapIn + outer - t;
+  const bottom = g.wrapIn + format.trimHeightIn - outer + t;
+  const back = { x0: g.wrapIn + outer - t, x1: g.wrapIn + format.trimWidthIn - inner + t };
+  const front = { x0: g.frontLeftIn + inner - t, x1: g.frontLeftIn + format.trimWidthIn - outer + t };
+  const x0 = r.x;
+  const x1 = r.x + r.w;
+  const y0 = r.y;
+  const y1 = r.y + r.h;
+  if (y0 < top || y1 > bottom) return false;
+  return (x0 >= back.x0 && x1 <= back.x1) || (x0 >= front.x0 && x1 <= front.x1);
 }
 
 /**

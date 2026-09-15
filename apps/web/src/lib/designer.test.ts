@@ -7,6 +7,7 @@ import {
   coverFrame,
   currentFrame,
   deleteSlot,
+  dropPhoto,
   duplicateSlot,
   emptyPhotoSlotIds,
   nudgeSlot,
@@ -145,6 +146,25 @@ describe('boxes', () => {
     expect(reset[1]!.custom).toBeUndefined();
     expect(reset[1]!.slots).toEqual(pages[1]!.slots);
     expect(resetPage(pages, 7)).toEqual(pages);
+  });
+
+  it('drops a tray photo onto a slot (replacing, page stays automatic) or onto the page (new box, page turns custom)', () => {
+    // Onto the occupied template slot p2: b goes back to the tray, the crop is dropped, no custom flag.
+    const onSlot = dropPhoto(pages, 1, 'z', 1, square, { slotId: 'p2' }, makeId);
+    expect(onSlot.slotId).toBe('p2');
+    expect(onSlot.pages[1]!.custom).toBeUndefined();
+    expect(onSlot.pages[1]!.slots.find((s) => s.slotId === 'p2')).toEqual({ slotId: 'p2', assetId: 'z' });
+    expect(placedAssetIds(onSlot.pages)).not.toContain('b');
+    // Onto a text slot or the background: a photo box centred on the point, page custom.
+    const onPage = dropPhoto(pages, 2, 'z', 1, square, { at: { x: 0.3, y: 0.6 } }, makeId);
+    expect(onPage.pages[2]!.custom).toBe(true);
+    const box = onPage.pages[2]!.slots.find((s) => s.slotId === onPage.slotId)!;
+    expect(box.role).toBe('photo');
+    expect(box.frame!.x + box.frame!.w / 2).toBeCloseTo(0.3, 3);
+    expect(box.frame!.y + box.frame!.h / 2).toBeCloseTo(0.6, 3);
+    const onText = dropPhoto(pages, 2, 'z', 1, square, { slotId: 'cap', at: { x: 0.5, y: 0.5 } }, makeId);
+    expect(onText.slotId).not.toBe('cap');
+    expect(dropPhoto(pages, 9, 'z', 1, square, {}).slotId).toBeUndefined();
   });
 });
 

@@ -1,4 +1,5 @@
-import { ImmichConnectionInput, ShippingAddress, type LuluEnv, type SettingsView } from '@bookbinder/shared';
+import { DEFAULT_AI_MODEL, ImmichConnectionInput, NotificationEvents, NotifyKind, SavedPet, ShippingAddress, type AiSettingsInput, type LuluEnv, type NotificationSettingsInput, type NotificationSettingsView, type SettingsView } from '@bookbinder/shared';
+import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import type { SecretBox } from './crypto.js';
 import type { Db } from './db/index.js';
@@ -14,10 +15,23 @@ export const SettingKeys = {
   luluProductionClientKey: 'lulu.production.clientKey',
   luluProductionClientSecret: 'lulu.production.clientSecret',
   luluLastAddress: 'lulu.lastAddress',
+  luluSandboxWebhook: 'lulu.sandbox.webhook',
+  luluProductionWebhook: 'lulu.production.webhook',
   aiEnabled: 'ai.enabled',
   aiApiKey: 'ai.apiKey',
+  aiModel: 'ai.model',
+  pets: 'pets',
+  notifyKind: 'notify.kind',
+  notifyUrl: 'notify.url',
+  notifyToken: 'notify.token',
+  notifyEvents: 'notify.events',
 } as const;
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
+
+function notificationsView(n: (NotificationSettingsView & { token?: string }) | undefined): NotificationSettingsView {
+  if (!n) return { configured: false, tokenSet: false, events: NotificationEvents.parse({}) };
+  return { configured: n.configured, kind: n.kind, url: n.url, tokenSet: n.tokenSet, events: n.events };
+}
 
 /** Typed access to the key/value `settings` table; secret values are encrypted at rest. */
 export class SettingsStore {
@@ -98,6 +112,24 @@ export class SettingsStore {
     this.delete(keys.key, keys.secret);
   }
 
+  /** The webhook subscription this app made on an environment (id + url), if any (M7). */
+  getLuluWebhook(env: LuluEnv): { id: string; url: string } | undefined {
+    const raw = this.get(env === 'sandbox' ? SettingKeys.luluSandboxWebhook : SettingKeys.luluProductionWebhook);
+    if (!raw) return undefined;
+    try {
+      const v = JSON.parse(raw) as { id?: unknown; url?: unknown };
+      return typeof v.id === 'string' && typeof v.url === 'string' ? { id: v.id, url: v.url } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  setLuluWebhook(env: LuluEnv, hook: { id: string; url: string } | undefined): void {
+    const key = env === 'sandbox' ? SettingKeys.luluSandboxWebhook : SettingKeys.luluProductionWebhook;
+    if (hook) this.set(key, JSON.stringify(hook));
+    else this.delete(key);
+  }
+
   getLastAddress(): ShippingAddress | undefined {
     const raw = this.get(SettingKeys.luluLastAddress);
     if (!raw) return undefined;
@@ -111,6 +143,75 @@ export class SettingsStore {
 
   setLastAddress(address: ShippingAddress): void {
     this.set(SettingKeys.luluLastAddress, JSON.stringify(address));
+  }
+
+  /* ---------- Claude (M7) ---------- */
+
+  /** The AI configuration; `apiKey` is present only when stored. */
+  getAi(): { enabled: boolean; apiKey?: string; model: string } {
+    const apiKey = this.get(SettingKeys.aiApiKey);
+    return {
+      enabled: this.get(SettingKeys.aiEnabled) === 'true',
+      ...(apiKey !== undefined ? { apiKey } : {}),
+      model: this.get(SettingKeys.aiModel) ?? DEFAULT_AI_MODEL,
+    };
+  }
+
+  setAi(input: AiSettingsInput): void {
+    this.set(SettingKeys.aiEnabled, input.enabled ? 'true' : 'false');
+    if (input.model !== undefined) this.set(SettingKeys.aiModel, input.model);
+    if (input.apiKey === '') this.delete(SettingKeys.aiApiKey);
+    else if (input.apiKey !== undefined) this.set(SettingKeys.aiApiKey, input.apiKey, { secret: true });
+  }
+
+  clearAi(): void {
+    this.delete(SettingKeys.aiEnabled, SettingKeys.aiApiKey, SettingKeys.aiModel);
+  }
+
+  /* ---------- Pets (M7) ---------- */
+
+  getPets(): SavedPet[] {
+    const raw = this.get(SettingKeys.pets);
+    if (!raw) return [];
+    try {
+      const parsed = z.array(SavedPet).safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  setPets(pets: readonly SavedPet[]): void {
+    this.set(SettingKeys.pets, JSON.stringify(pets));
+  }
+
+  /* ---------- Notifications (M7) ---------- */
+
+  getNotifications(): (NotificationSettingsView & { token?: string }) | undefined {
+    const kind = NotifyKind.safeParse(this.get(SettingKeys.notifyKind));
+    const url = this.get(SettingKeys.notifyUrl);
+    if (!kind.success || !url) return undefined;
+    const token = this.get(SettingKeys.notifyToken);
+    let events = NotificationEvents.parse({});
+    try {
+      const parsed = NotificationEvents.safeParse(JSON.parse(this.get(SettingKeys.notifyEvents) ?? '{}'));
+      if (parsed.success) events = parsed.data;
+    } catch {
+      /* defaults */
+    }
+    return { configured: true, kind: kind.data, url, tokenSet: token !== undefined, events, ...(token !== undefined ? { token } : {}) };
+  }
+
+  setNotifications(input: NotificationSettingsInput): void {
+    this.set(SettingKeys.notifyKind, input.kind);
+    this.set(SettingKeys.notifyUrl, input.url.replace(/\/+$/, ''));
+    this.set(SettingKeys.notifyEvents, JSON.stringify(input.events));
+    if (input.token === '') this.delete(SettingKeys.notifyToken);
+    else if (input.token !== undefined) this.set(SettingKeys.notifyToken, input.token, { secret: true });
+  }
+
+  clearNotifications(): void {
+    this.delete(SettingKeys.notifyKind, SettingKeys.notifyUrl, SettingKeys.notifyToken, SettingKeys.notifyEvents);
   }
 
   /** Public view: never includes secret values, only whether they are set. */
@@ -136,7 +237,10 @@ export class SettingsStore {
       ai: {
         enabled: this.get(SettingKeys.aiEnabled) === 'true',
         apiKeySet: this.get(SettingKeys.aiApiKey) !== undefined,
+        model: this.get(SettingKeys.aiModel) ?? DEFAULT_AI_MODEL,
       },
+      pets: this.getPets(),
+      notifications: notificationsView(this.getNotifications()),
       ...(publicUrl !== undefined ? { publicUrl } : {}),
     };
   }

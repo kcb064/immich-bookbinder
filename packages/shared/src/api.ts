@@ -69,6 +69,58 @@ export const ShippingAddress = z.object({
 });
 export type ShippingAddress = z.infer<typeof ShippingAddress>;
 
+/** A pet saved in Settings (M7): the smart query that finds it and up to ten example photos. */
+export const SavedPet = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(60),
+  query: z.string().trim().min(1).max(300),
+  exampleAssetIds: z.array(z.string().min(1)).max(10).default([]),
+});
+export type SavedPet = z.infer<typeof SavedPet>;
+
+export const PetsInput = z.object({ pets: z.array(SavedPet).max(50) });
+export type PetsInput = z.infer<typeof PetsInput>;
+
+/* ---------- Notifications (M7) ---------- */
+
+export const NotifyKind = z.enum(['ntfy', 'gotify', 'webhook']);
+export type NotifyKind = z.infer<typeof NotifyKind>;
+
+export const NotifyEventKind = z.enum(['render-done', 'render-failed', 'order-status', 'selection-failed', 'test']);
+export type NotifyEventKind = z.infer<typeof NotifyEventKind>;
+
+/** Which events fire a notification. */
+export const NotificationEvents = z.object({
+  renderDone: z.boolean().default(true),
+  orderStatus: z.boolean().default(true),
+  selectionFailed: z.boolean().default(true),
+});
+export type NotificationEvents = z.infer<typeof NotificationEvents>;
+
+/** `PUT /api/settings/notifications`. The token is optional and never shown again. */
+export const NotificationSettingsInput = z.object({
+  kind: NotifyKind,
+  /** ntfy: the topic URL; Gotify: the server URL; webhook: where to POST JSON. */
+  url: z.url({ error: 'url must be an absolute URL' }),
+  /** Absent keeps a stored token; empty string removes it. */
+  token: z.string().max(500).optional(),
+  events: NotificationEvents.default(() => NotificationEvents.parse({})),
+});
+export type NotificationSettingsInput = z.infer<typeof NotificationSettingsInput>;
+
+export const NotificationSettingsView = z.object({
+  configured: z.boolean(),
+  kind: NotifyKind.optional(),
+  url: z.string().optional(),
+  tokenSet: z.boolean().default(false),
+  events: NotificationEvents.default(() => NotificationEvents.parse({})),
+});
+export type NotificationSettingsView = z.infer<typeof NotificationSettingsView>;
+
+/** What `POST /api/notifications/test` reports. */
+export const NotificationTest = z.object({ ok: z.boolean(), status: z.number().int().optional(), error: z.string().optional() });
+export type NotificationTest = z.infer<typeof NotificationTest>;
+
 export const SettingsView = z.object({
   immich: z.object({ url: z.string().optional(), apiKeySet: z.boolean() }),
   lulu: z.object({
@@ -81,7 +133,9 @@ export const SettingsView = z.object({
     /** The address of the last order, pre-filled on the next one. */
     lastAddress: ShippingAddress.optional(),
   }),
-  ai: z.object({ enabled: z.boolean(), apiKeySet: z.boolean() }),
+  ai: z.object({ enabled: z.boolean(), apiKeySet: z.boolean(), model: z.string().default('claude-opus-5') }),
+  pets: z.array(SavedPet).default([]),
+  notifications: NotificationSettingsView.default(() => NotificationSettingsView.parse({ configured: false })),
   publicUrl: z.string().optional(),
 });
 export type SettingsView = z.infer<typeof SettingsView>;
@@ -123,6 +177,8 @@ export const PreflightCode = z.enum([
   'caption-safety',
   'cover-missing',
   'cover-stale',
+  /** Cover text or a photo box reaches the safety band, the spine or the wrap (M7). */
+  'cover-safety',
   'render-missing',
 ]);
 export type PreflightCode = z.infer<typeof PreflightCode>;
@@ -161,6 +217,8 @@ export const ShareView = z.object({
   views: z.number().int().nonnegative(),
   /** Set when the URL had to be built from the request origin because no public URL is configured. */
   warning: z.string().optional(),
+  /** Creating the share queued a web preview render because none was current (M7). */
+  previewQueued: z.boolean().optional(),
 });
 export type ShareView = z.infer<typeof ShareView>;
 
@@ -202,6 +260,8 @@ export const ViewerBook = z.object({
   format: z.object({ trimWidthIn: z.number().positive(), trimHeightIn: z.number().positive(), bleedIn: z.number().nonnegative() }),
   /** Changes whenever the page PNGs change; the viewer appends it to image URLs as a cache buster. */
   version: z.string(),
+  /** A preview render is queued or running (M7): the viewer says so and polls until pages appear. */
+  preparing: z.boolean().default(false),
 });
 export type ViewerBook = z.infer<typeof ViewerBook>;
 
@@ -211,6 +271,16 @@ export const ViewerLocked = z.object({ needsPassword: z.literal(true), message: 
 export const ViewerGone = z.object({ reason: z.enum(['expired', 'revoked']) });
 
 /* ---------- Lulu ordering (M5) ---------- */
+
+/** A webhook subscription on the Lulu account (M7): Lulu POSTs print-job status changes to `url`. */
+export const LuluWebhookView = z.object({
+  id: z.string(),
+  url: z.string(),
+  active: z.boolean(),
+  topics: z.array(z.string()).default([]),
+  env: LuluEnv,
+});
+export type LuluWebhookView = z.infer<typeof LuluWebhookView>;
 
 /** What `POST /api/lulu/test` reports: the token exchange and one authenticated call. */
 export const LuluStatus = z.object({
@@ -222,6 +292,27 @@ export const LuluStatus = z.object({
   error: z.string().optional(),
 });
 export type LuluStatus = z.infer<typeof LuluStatus>;
+
+/** A print job as Lulu lists it (`GET /api/lulu/print-jobs`, M7), with the local order when one tracks it. */
+export const LuluRemoteJob = z.object({
+  id: z.string(),
+  env: LuluEnv,
+  status: z.string(),
+  externalId: z.string().optional(),
+  createdAt: z.string().optional(),
+  contactEmail: z.string().optional(),
+  lineItems: z.array(z.object({ title: z.string(), quantity: z.number().int().nonnegative(), podPackageId: z.string().optional(), pageCount: z.number().int().optional() })).default([]),
+  /** Local order tracking this job, if any. */
+  orderId: z.string().optional(),
+  /** Book the job's external id points at (`<book id>:<order id>`), when that book still exists. */
+  bookId: z.string().optional(),
+  bookTitle: z.string().optional(),
+});
+export type LuluRemoteJob = z.infer<typeof LuluRemoteJob>;
+
+/** `POST /api/lulu/print-jobs/:id/import`: attach a job Lulu knows to a local book. */
+export const ImportJobInput = z.object({ bookId: z.string().min(1).optional() });
+export type ImportJobInput = z.infer<typeof ImportJobInput>;
 
 /** What `POST /api/lulu/reachability` reports after fetching a throwaway export through the public URL. */
 export const ReachabilityReport = z.object({
@@ -327,6 +418,16 @@ export const FileValidation = z.object({
 });
 export type FileValidation = z.infer<typeof FileValidation>;
 
+/** One book in an order (M7 multiple line items); the first is the order's own book. */
+export const OrderLineItem = z.object({
+  bookId: z.string(),
+  title: z.string(),
+  quantity: z.number().int().positive(),
+  pageCount: z.number().int().nonnegative(),
+  podPackageId: z.string(),
+});
+export type OrderLineItem = z.infer<typeof OrderLineItem>;
+
 /** An order as the UI sees it (table `orders`). */
 export const OrderView = z.object({
   id: z.string(),
@@ -351,6 +452,10 @@ export const OrderView = z.object({
   payUrl: z.string().optional(),
   /** The public export URLs Lulu downloads; present once exports exist. */
   exports: z.object({ interior: z.string(), cover: z.string(), expiresAt: z.iso.datetime() }).optional(),
+  /** Every book in the order, the order's own book first (M7). */
+  lineItems: z.array(OrderLineItem).default([]),
+  /** Created from Lulu's job list rather than placed here (M7); files and quotes are not available. */
+  imported: z.boolean().default(false),
   error: z.string().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -364,6 +469,8 @@ export const PrepareOrderInput = z.object({
   shippingAddress: ShippingAddress,
   /** Lulu's contact for the job; defaults to the address email. */
   contactEmail: z.email().optional(),
+  /** Further books shipped in the same parcel (M7): each needs current print and cover renders. */
+  extraBooks: z.array(z.object({ bookId: z.string().min(1), quantity: z.number().int().min(1).max(100).default(1) })).max(10).default([]),
 });
 export type PrepareOrderInput = z.infer<typeof PrepareOrderInput>;
 

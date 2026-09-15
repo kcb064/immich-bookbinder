@@ -135,6 +135,28 @@ async function fromSource(
         );
       return items;
     }
+    case 'pet': {
+      // Text search plus one image-similarity search per example photo; each is capped, the union is not.
+      const byId = new Map<string, ImmichAsset>();
+      const add = (items: readonly ImmichAsset[]): void => {
+        for (const a of items) if (!byId.has(a.id)) byId.set(a.id, a);
+      };
+      const text = await client.searchSmart({ query: source.query, size: source.limit, withExif: true, type: 'IMAGE' });
+      add(text.assets.items);
+      let failed = 0;
+      for (const queryAssetId of source.exampleAssetIds) {
+        try {
+          const similar = await client.searchSmart({ queryAssetId, size: source.limit, withExif: true, type: 'IMAGE' });
+          add(similar.assets.items);
+        } catch {
+          failed++;
+        }
+      }
+      if (failed > 0) warnings.push(`${failed} example photo${failed === 1 ? '' : 's'} of ${source.name} could not be used for a similarity search (deleted, or not an image).`);
+      if (text.assets.items.length >= source.limit)
+        warnings.push(`The search for ${source.name} ("${source.query}") stopped at its limit of ${source.limit} photos; raise the limit to consider more.`);
+      return [...byId.values()];
+    }
   }
 }
 

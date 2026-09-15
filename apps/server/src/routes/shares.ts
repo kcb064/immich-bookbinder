@@ -46,8 +46,20 @@ export const shareRoutes: FastifyPluginAsync = async (app) => {
     const book = app.books.get(params.data.id);
     if (!book) return reply.notFound('Book not found');
     if (book.pages.length === 0) return reply.code(409).send({ statusCode: 409, error: 'Conflict', message: 'Lay out the book before sharing it' });
+    const hadActive = store.active(book.id) !== undefined;
     const row = await store.create(book.id, body.data);
-    return reply.code(201).send(views(request, [row])[0]);
+    // The first active share puts a QR code on the colophon: the printed content changed.
+    if (!hadActive) app.books.touch(book.id);
+    // A link with nothing behind it is useless: queue the web preview when none is current (M7).
+    const renders = app.renders.list(book.id).filter((r) => r.kind === 'preview');
+    const current = renders.some((r) => r.status === 'done' && (r.finishedAt ?? '') >= book.updatedAt);
+    const pending = renders.some((r) => r.status === 'queued' || r.status === 'running');
+    let previewQueued = false;
+    if (!current && !pending && app.immichClient()) {
+      app.renders.create(app.books.get(book.id) ?? book, 'preview');
+      previewQueued = true;
+    }
+    return reply.code(201).send({ ...views(request, [row])[0], ...(previewQueued ? { previewQueued } : {}) });
   });
 
   app.put('/api/books/:id/shares/:sid', async (request, reply) => {
@@ -66,6 +78,9 @@ export const shareRoutes: FastifyPluginAsync = async (app) => {
     if (!params.success) return reply.badRequest('Invalid id');
     const existing = store.get(params.data.sid);
     if (!existing || existing.bookId !== params.data.id) return reply.notFound('Share not found');
-    return views(request, [store.revoke(existing.id)!])[0];
+    const wasActive = store.active(params.data.id)?.id === existing.id;
+    const row = store.revoke(existing.id)!;
+    if (wasActive && !store.active(params.data.id)) app.books.touch(params.data.id);
+    return views(request, [row])[0];
   });
 };

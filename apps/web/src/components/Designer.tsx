@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { BookFormat, SlotFrame, TextStyle } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
-import { DEFAULT_TEXT_STYLE, angleFromCentre, clampToBounds, resizeBy, slotSnapLines, snapAngle, snapMove, snapResize, type Edges, type PxRect, type SnapLine } from '@bookbinder/layout';
+import { DEFAULT_TEXT_STYLE, angleFromCentre, clampToBounds, resizeBy, slotSnapLines, snapAngle, snapAngleToBoxes, snapMove, snapResize, type Edges, type PxRect, type SnapLine } from '@bookbinder/layout';
 import { Icon } from './Icon.tsx';
 import { Button } from './ui.tsx';
 
@@ -109,9 +109,11 @@ export function useDesignDrag(surface: DesignSurface, scale: number, onChange: (
       const guides = e.shiftKey ? [] : [...s.guides, ...slotSnapLines(s.boxes.filter((b) => b.id !== st.id).map((b) => b.rect))];
       if (st.mode === 'rotate') {
         const raw = angleFromCentre(st.centre, { x: e.clientX, y: e.clientY });
-        const angle = e.shiftKey ? Math.round(raw * 10) / 10 : snapAngle(raw);
-        setLines([]);
-        emit(st.id, { rotation: angle }, 'move');
+        // Snap to the tilt of another box first (so two photos line up), else to the 15° grid.
+        const others = s.boxes.filter((b) => b.id !== st.id && b.rotation).map((b) => b.rotation);
+        const snapped = e.shiftKey ? { angle: Math.round(raw * 10) / 10, matched: undefined } : snapAngleToBoxes(raw, others);
+        setLines(snapped.matched !== undefined ? s.boxes.filter((b) => b.id !== st.id && Math.round(b.rotation * 10) / 10 === snapped.matched).map((b) => ({ kind: 'slot' as const, axis: 'x' as const, at: b.rect.x + b.rect.w / 2 })) : []);
+        emit(st.id, { rotation: snapped.angle }, 'move');
         return;
       }
       let rect: PxRect;
@@ -344,6 +346,10 @@ export function DesignPanel({ kind, adHoc, frame, format, onFrame, onZ, onDuplic
 export const SHORTCUTS: ReadonlyArray<[keys: string, what: string]> = [
   ['← →', 'Previous / next spread (with nothing selected)'],
   ['Tab, Enter', 'Move focus between slots and select one'],
+  ['Shift+click', 'Add a box to the selection (nudge, restack and delete act on all of them)'],
+  ['Drag from the tray', 'Drop a photo onto a slot to put it there, or anywhere on the page for a new photo box'],
+  ['Shift+click', 'Add a box to the selection (nudge, restack and delete act on all of them)'],
+  ['Drag from the tray', 'Drop a photo onto a slot to put it there, or anywhere on the page for a new photo box'],
   ['Arrows', 'Nudge the selected slot 0.1 in (Shift: 0.5 in)'],
   ['Drag', 'Move; handles resize (Alt frees a photo’s aspect, Shift skips snapping); top handle rotates'],
   ['] / [', 'Bring to front / send to back'],

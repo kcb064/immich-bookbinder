@@ -14,6 +14,8 @@ import { createImmichClient, type ImmichClient } from './immich/client.js';
 import { createLuluClient, type LuluClient } from './lulu/client.js';
 import { ExportStore } from './lulu/exports.js';
 import { OrderService } from './lulu/orders.js';
+import { Notifier } from './notify/notifier.js';
+import { AiService } from './ai/service.js';
 import { ChromiumRenderer } from './render/renderer.js';
 import { RenderService } from './render/service.js';
 import { SelectionService } from './selection/service.js';
@@ -23,6 +25,8 @@ import { bookRoutes } from './routes/books.js';
 import { healthRoutes } from './routes/health.js';
 import { immichRoutes } from './routes/immich.js';
 import { configuredPublicBase, luluRoutes } from './routes/lulu.js';
+import { notificationRoutes } from './routes/notifications.js';
+import { aiRoutes } from './routes/ai.js';
 import { publicRoutes } from './routes/public.js';
 import { selectionRoutes } from './routes/selection.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -42,6 +46,8 @@ export interface BuildAppOptions {
   selection?: { concurrency?: number };
   /** Lulu order tuning (tests poll in milliseconds and turn the ticker off). */
   lulu?: { pollIntervalMs?: number; pollTimeoutMs?: number; tickerMs?: number };
+  /** Notification tuning (tests retry at once). */
+  notify?: { retryDelayMs?: number; fetch?: typeof globalThis.fetch };
 }
 
 function loggerFor(config: Config): LoggerOption {
@@ -90,6 +96,17 @@ ${config.LULU_BASE_URL ?? ''}`;
     return cachedLulu.client;
   };
   const renderer = new ChromiumRenderer();
+  // ntfy / Gotify / webhook (M7): the target is read per event so Settings changes apply at once.
+  const notifier = new Notifier({
+    target: () => {
+      const n = settings.getNotifications();
+      return n?.kind && n.url ? { kind: n.kind, url: n.url, token: n.token, events: n.events } : undefined;
+    },
+    publicBase: () => configuredPublicBase(app),
+    log: app.log,
+    ...(opts.notify ?? {}),
+  });
+  app.decorate('notifier', notifier);
 
   app.decorate('config', config);
   app.decorate('db', database.db);
@@ -98,7 +115,22 @@ ${config.LULU_BASE_URL ?? ''}`;
   const candidates = new CandidateStore(database.db);
   app.decorate('books', books);
   app.decorate('candidates', candidates);
-  app.decorate('shares', new ShareStore(database.db));
+  const shares = new ShareStore(database.db);
+  app.decorate('shares', shares);
+  app.decorate(
+    'ai',
+    new AiService({
+      db: database.db,
+      books,
+      candidates,
+      settings,
+      client: immichClient,
+      cacheDir: config.cacheDir,
+      log: app.log,
+      baseUrl: config.AI_BASE_URL,
+      notify: (event) => notifier.notify(event),
+    }),
+  );
   app.decorate('immichClient', immichClient);
   app.decorate('luluClient', luluClient);
   const exportStore = new ExportStore(database.db);
@@ -112,6 +144,7 @@ ${config.LULU_BASE_URL ?? ''}`;
       client: immichClient,
       cacheDir: config.cacheDir,
       log: app.log,
+      notify: (event) => notifier.notify(event),
       ...(opts.selection?.concurrency !== undefined ? { concurrency: opts.selection.concurrency } : {}),
     }),
   );
@@ -127,6 +160,13 @@ ${config.LULU_BASE_URL ?? ''}`;
       log: app.log,
       ...(opts.render?.batchSize !== undefined ? { batchSize: opts.render.batchSize } : {}),
       ...(opts.render?.webFonts !== undefined ? { webFonts: opts.render.webFonts } : {}),
+      notify: (event) => notifier.notify(event),
+      // The colophon's QR code needs a stable public origin; without one the page prints no code.
+      shareUrl: (bookId) => {
+        const base = configuredPublicBase(app);
+        const share = shares.active(bookId);
+        return base && share ? ShareStore.url(share, base) : undefined;
+      },
       // Exact cover sheet size from Lulu when connected; undefined -> the estimate plus a warning.
       coverDimensions: async (podPackageId, pageCount) => {
         const client = luluClient();
@@ -146,6 +186,7 @@ ${config.LULU_BASE_URL ?? ''}`;
     client: luluClient,
     publicBase: () => configuredPublicBase(app),
     log: app.log,
+    notify: (event) => notifier.notify(event),
     ...(opts.lulu ?? {}),
   });
   app.decorate('orders', orderService);
@@ -190,6 +231,8 @@ ${config.LULU_BASE_URL ?? ''}`;
   await app.register(selectionRoutes);
   await app.register(shareRoutes);
   await app.register(luluRoutes);
+  await app.register(notificationRoutes);
+  await app.register(aiRoutes);
   await app.register(publicRoutes);
   if (config.webDist) {
     await app.register(staticRoutes, { root: config.webDist });

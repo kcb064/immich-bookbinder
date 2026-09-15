@@ -13,6 +13,7 @@ A book's rules name one or more sources; their photos are unioned, de-duplicated
 | `people`    | One metadata search per person (`personIds` in Immich means _all_ of them; a person book wants _any_), unioned.                                                                                                                                                                                                                                                |
 | `smart`     | `POST /search/smart` with the query (CLIP) and `limit` (default 200, at most 1000) best matches. A warning notes when the limit was hit. Smart results carry EXIF but no people list.                                                                                                                                                                          |
 | `favorites` | `isFavorite` in the metadata search.                                                                                                                                                                                                                                                                                                                           |
+| `pet`       | A pet saved in Settings (M7): `POST /search/smart` for its `query` plus, per example photo, a `queryAssetId` similarity search, each capped at `limit`, unioned. Immich has no pet recognition; this is what its CLIP index can do. Examples that no longer exist are reported, not fatal. The **People & pets** page and Settings edit the saved pets; the wizard offers them as a source (several pets = several sources). |
 
 ### Trip suggestions
 
@@ -59,6 +60,10 @@ A photo is **blurry** when its sharpness score is below 0.25 _and_ its Laplacian
 ## Near-duplicates
 
 Immich duplicate groups (`duplicateId`) always cluster. Otherwise photos are compared with the previous 12 in time order: a Hamming distance of at most 5 bits is the same picture whatever the timestamps say; at most 12 bits within 90 seconds is a burst. The best member wins (your own keep first, then favourites, then not blurry, then composite score); the others become **alternates** with the reason "near-duplicate of a better shot" and a link to the winner. "Use instead" on an alternate keeps it and drops the winner.
+
+### Claude's opinion on bursts (M7, optional)
+
+With Claude enabled, **Best of burst** on the book page sends the thumbnails of every burst of three or more frames that the engine decided on its own and lets Claude pick the frame for the book. A different pick swaps the two frames' `clusterRank` and `decision` and adds an `ai` reason to both (`reason.assetId` points at the other frame); the review page shows it and **Undo Claude's pick** swaps back. See [ai.md](ai.md) for what is sent.
 
 ## Chapters
 

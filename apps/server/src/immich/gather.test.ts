@@ -161,6 +161,24 @@ describe('gatherAssets against the fake Immich', () => {
     expect(immich.requests.some((r) => r.path === '/api/search/smart')).toBe(true);
   });
 
+  it('gathers a pet as the union of its query and similarity searches for its examples (M7)', async () => {
+    const client = createImmichClient({ url: immich.url, apiKey: 'test-api-key-1234' });
+    const dogs = immich.assets.filter((a) => a.description?.includes('dog'));
+    expect(dogs.length).toBeGreaterThan(2);
+    const byText = await gatherAssets(client, rules([{ kind: 'pet', name: 'Biscuit', query: 'dog', exampleAssetIds: [], limit: 50 }]));
+    expect(byText.assets.map((a) => a.id).sort()).toEqual(dogs.map((a) => a.id).sort());
+    // An example photo adds its look-alikes (same town, similar colour) on top of the text matches.
+    const example = immich.assets.find((a) => !a.description && a.city === 'Austin')!;
+    const withExample = await gatherAssets(client, rules([{ kind: 'pet', name: 'Biscuit', query: 'dog', exampleAssetIds: [example.id], limit: 50 }]));
+    expect(withExample.assets.length).toBeGreaterThan(byText.assets.length);
+    expect(withExample.assets.some((a) => a.id === example.id)).toBe(true);
+    expect(withExample.warnings).toEqual([]);
+    // A missing example is reported, not fatal.
+    const missing = await gatherAssets(client, rules([{ kind: 'pet', name: 'Biscuit', query: 'dog', exampleAssetIds: ['asset-gone'], limit: 50 }]));
+    expect(missing.assets.length).toBe(byText.assets.length);
+    expect(missing.warnings[0]).toMatch(/example photo of Biscuit could not be used/);
+  });
+
   it('reports favorites and an empty result', async () => {
     const client = createImmichClient({ url: immich.url, apiKey: 'test-api-key-1234' });
     const fav = await gatherAssets(client, rules([{ kind: 'favorites' }]));

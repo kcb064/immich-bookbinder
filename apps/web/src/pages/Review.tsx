@@ -6,7 +6,7 @@ import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import type { IconName } from '../components/Icon.tsx';
 import { Button, Chip, Note, Select, Skeleton } from '../components/ui.tsx';
-import { isActiveRun, keys, useBook, useBookAssets, useLayoutBook, useSelection, useSetDecisions, useSettings, useStartSelection } from '../lib/queries.ts';
+import { isActiveRun, keys, useBook, useBookAssets, useLayoutBook, useRevertBurst, useSelection, useSetDecisions, useSettings, useStartSelection } from '../lib/queries.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { formatNumber, pluralize } from '../lib/format.ts';
 
@@ -55,6 +55,7 @@ const REASON_ICONS: Record<Reason['kind'], IconName> = {
   chapter: 'chapter',
   'below-cut': 'minus',
   'no-analysis': 'alert',
+  ai: 'sparkles',
 };
 
 const CHAPTER_MODES: Array<{ id: ChapterMode; name: string; hint: string }> = [
@@ -223,6 +224,7 @@ function Detail({
   onSelect,
   onDecide,
   onSwap,
+  onRevertAi,
 }: {
   c: Candidate;
   asset: BookAsset | undefined;
@@ -233,6 +235,8 @@ function Detail({
   onSelect: (id: string) => void;
   onDecide: (decision: 'user-in' | 'user-out' | 'auto') => void;
   onSwap: (winnerId: string) => void;
+  /** Undo Claude's burst pick (M7); present when the candidate carries one. */
+  onRevertAi?: (() => void) | undefined;
 }) {
   const picked = isPicked(c);
   const user = c.decision === 'user-in' || c.decision === 'user-out';
@@ -293,7 +297,15 @@ function Detail({
                   <>
                     {' '}
                     <button type="button" className="linkish" onClick={() => onSelect(r.assetId!)}>
-                      Show the kept one
+                      {r.kind === 'ai' ? 'Show the other frame' : 'Show the kept one'}
+                    </button>
+                  </>
+                ) : null}
+                {r.kind === 'ai' && onRevertAi ? (
+                  <>
+                    {' · '}
+                    <button type="button" className="linkish" onClick={onRevertAi} disabled={busy}>
+                      Undo Claude&apos;s pick
                     </button>
                   </>
                 ) : null}
@@ -360,6 +372,7 @@ export function ReviewPage() {
   const start = useStartSelection(id ?? '');
   const decide = useSetDecisions(id ?? '');
   const layout = useLayoutBook(id ?? '');
+  const revertAi = useRevertBurst(id ?? '');
 
   const [filter, setFilter] = useState<Filter>('picked');
   const [groupBy, setGroupBy] = useState<GroupBy>('chapter');
@@ -617,6 +630,9 @@ export function ReviewPage() {
                 ) : (
                   <div className="muted small">{CHAPTER_MODES.find((m) => m.id === rules.chapters)?.hint}</div>
                 )}
+                {rules.chapters !== 'none' ? (
+                  <Toggle name="Map of the chapter's photos on each opener" checked={rules.chapterMaps} onChange={(v) => updateRules({ ...rules, chapterMaps: v })} />
+                ) : null}
               </div>
               {peopleStats.length > 0 ? (
                 <div className="stack" style={{ gap: 8 }}>
@@ -819,6 +835,7 @@ export function ReviewPage() {
                   { assetId: winnerId, decision: 'user-out' },
                 ])
               }
+              onRevertAi={selected.reasons.some((r) => r.kind === 'ai') ? () => revertAi.mutate(selected.assetId) : undefined}
             />
           ) : (
             <div className="muted small" style={{ lineHeight: 1.6 }}>

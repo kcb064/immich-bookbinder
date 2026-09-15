@@ -7,7 +7,7 @@ import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, Field, LinkButton, Note, Select, Skeleton, TextInput } from '../components/ui.tsx';
 import { OrderCard } from '../components/OrderCard.tsx';
-import { useBook, useCancelOrder, useOrders, usePreflight, usePrepareOrder, useRenders, useSaveBook, useSettings } from '../lib/queries.ts';
+import { useBook, useCancelOrder, useOrders, usePreflight, usePrepareOrder, useRenders, useSaveBook, useSettings, useBooks } from '../lib/queries.ts';
 import { errorMessage, isApiError } from '../lib/api.ts';
 import { formatMoney } from '../lib/format.ts';
 
@@ -177,6 +177,10 @@ export function OrderPage() {
   const [address, setAddress] = useState<ShippingAddress>(EMPTY_ADDRESS);
   const [addressTouched, setAddressTouched] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  /** Further books in the same parcel (M7). */
+  const [extraBooks, setExtraBooks] = useState<Array<{ bookId: string; quantity: number }>>([]);
+  const books = useBooks();
+  const otherBooks = useMemo(() => (books.data ?? []).filter((b) => b.id !== bookId && b.pageCount > 0 && FORMAT_PRESETS[b.formatId]?.vendor === 'lulu'), [books.data, bookId]);
   const [level, setLevel] = useState<ShippingLevel>('MAIL');
   const [contactEmail, setContactEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -246,7 +250,7 @@ export function OrderPage() {
     e.preventDefault();
     setSubmitted(true);
     if (!parsed.success || !canOrder) return;
-    prepare.mutate({ quantity, shippingLevel: level, shippingAddress: parsed.data, ...(contactEmail.trim() ? { contactEmail: contactEmail.trim() } : {}) });
+    prepare.mutate({ quantity, shippingLevel: level, shippingAddress: parsed.data, extraBooks, ...(contactEmail.trim() ? { contactEmail: contactEmail.trim() } : {}) });
   };
 
   const set = (patch: Partial<ShippingAddress>) => {
@@ -343,6 +347,31 @@ export function OrderPage() {
                 {() => <ShippingLevelPicker value={level} onChange={setLevel} options={pricedOptions} currency={currency} />}
               </Field>
             </div>
+
+            {otherBooks.length > 0 ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="label">More books in the same parcel</div>
+                <div className="muted small">Each one needs a current print and cover PDF; Lulu validates every file and ships them together.</div>
+                {otherBooks.map((b) => {
+                  const chosen = extraBooks.find((e) => e.bookId === b.id);
+                  return (
+                    <label key={b.id} className="row" style={{ gap: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(chosen)}
+                        onChange={(e) => setExtraBooks((list) => (e.target.checked ? [...list, { bookId: b.id, quantity: 1 }] : list.filter((x) => x.bookId !== b.id)))}
+                      />
+                      <span className="grow">
+                        {b.title} <span className="muted small">· {b.pageCount} pages</span>
+                      </span>
+                      {chosen ? (
+                        <TextInput type="number" min={1} max={100} value={chosen.quantity} aria-label={`Copies of ${b.title}`} onChange={(e) => setExtraBooks((list) => list.map((x) => (x.bookId === b.id ? { ...x, quantity: Math.max(1, Math.min(100, Number(e.target.value) || 1)) } : x)))} style={{ maxWidth: 90 }} />
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
 
             {prepare.isError ? (
               <Note tone="error" role="alert">

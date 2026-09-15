@@ -149,6 +149,23 @@ export function slotsPlacePhoto(list: SlotList, assetId: string, ratio: number, 
   return slotsAddPhoto(list, assetId, { ...base, x: base.x + step, y: base.y + step }, makeId);
 }
 
+/**
+ * A photo dropped from the tray (M7): onto a photo slot it replaces what is there (the old photo
+ * goes back to the tray); anywhere else it becomes a new photo box centred on the drop point.
+ * `at` is in template units of the surface (page trim, or cover with back = -1..0).
+ */
+export function slotsDropPhoto(list: SlotList, assetId: string, ratio: number, format: BookFormat, target: { slotId?: string | undefined; at?: { x: number; y: number } | undefined }, makeId: MakeId = defaultMakeId): { slots: SlotContent[]; slotId: string } {
+  if (target.slotId) {
+    const slot = effectiveSlots(list.templateId, list.slots).find((s) => s.spec.id === target.slotId);
+    if (slot && (slot.spec.role === 'hero' || slot.spec.role === 'photo')) {
+      return { slots: upsert(list.slots, slot.spec.id, (e) => omitKeys({ ...(e ?? { slotId: slot.spec.id }), assetId }, 'crop')), slotId: slot.spec.id };
+    }
+  }
+  const base = defaultPhotoFrame(ratio, format);
+  const frame = target.at ? { ...base, x: target.at.x - base.w / 2, y: target.at.y - base.h / 2 } : base;
+  return slotsAddPhoto(list, assetId, frame, makeId);
+}
+
 /* ---------- Page wrappers ---------- */
 
 export interface SlotRef {
@@ -217,6 +234,15 @@ export function placePhoto(pages: readonly Page[], pageIndex: number, assetId: s
     return r.slots;
   });
   return { pages: out, slotId };
+}
+
+/** {@link slotsDropPhoto} on a page; a drop on a template slot of an automatic page keeps the page automatic. */
+export function dropPhoto(pages: readonly Page[], pageIndex: number, assetId: string, ratio: number, format: BookFormat, target: { slotId?: string | undefined; at?: { x: number; y: number } | undefined }, makeId: MakeId = defaultMakeId): { pages: Page[]; slotId: string | undefined } {
+  const page = pages[pageIndex];
+  if (!page) return { pages: [...pages], slotId: undefined };
+  const r = slotsDropPhoto(page, assetId, ratio, format, target, makeId);
+  const ontoTemplateSlot = Boolean(target.slotId) && r.slotId === target.slotId && !isAdHocSlot(r.slots.find((s) => s.slotId === r.slotId)!);
+  return { pages: pages.map((p, i) => (i === pageIndex ? { ...p, slots: r.slots, ...(ontoTemplateSlot ? {} : { custom: true }) } : p)), slotId: r.slotId };
 }
 
 /* ---------- Cover wrappers ---------- */

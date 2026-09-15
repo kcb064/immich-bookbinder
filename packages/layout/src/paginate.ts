@@ -31,6 +31,8 @@ export interface PaginateOptions {
   titlePage?: boolean;
   /** Chapters to open; photos name theirs through `chapterId`. */
   chapters?: readonly PaginateChapter[] | undefined;
+  /** End with a colophon page (credits, dates, the share QR code; M7). Default true. */
+  colophon?: boolean;
   /** Id generator, injectable for deterministic tests. */
   makeId?: () => string;
 }
@@ -58,12 +60,13 @@ export const TITLE_TEMPLATE_ID = 'title-page';
 export const BLANK_TEMPLATE_ID = 'blank';
 export const CHAPTER_PHOTO_TEMPLATE_ID = 'chapter-photo';
 export const CHAPTER_TITLE_TEMPLATE_ID = 'chapter-title';
+export const COLOPHON_TEMPLATE_ID = 'colophon';
 
 /** Templates that never show a page number: front matter, fillers and chapter openers. */
 export const NO_FOLIO_TEMPLATE_IDS: ReadonlySet<string> = new Set([
   TITLE_TEMPLATE_ID,
   BLANK_TEMPLATE_ID,
-  'colophon',
+  COLOPHON_TEMPLATE_ID,
   CHAPTER_PHOTO_TEMPLATE_ID,
   CHAPTER_TITLE_TEMPLATE_ID,
 ]);
@@ -214,6 +217,7 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
     throw new Error('paginate needs at least one page template with photo slots');
   const countsAvailable = [...new Set(bodyTemplates.map((t) => photoSlots(t).length))].sort((a, b) => a - b);
   const withTitle = opts.titlePage ?? true;
+  const withColophon = opts.colophon ?? true;
 
   const pages: Page[] = [];
   const chapters: Chapter[] = [];
@@ -233,7 +237,7 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
   const groups = groupByChapter(photos, opts.chapters ?? []);
   const openers = groups.filter((g) => g.chapter && g.photos.length > 0).length;
   const target = normalizePageCount(Math.max(opts.targetPages, 1), opts.format);
-  // Body pages we aim for: total minus front matter, opener spreads, and room for one trailing blank.
+  // Body pages we aim for: total minus front matter, opener spreads, and the colophon (or one trailing blank).
   const bodyTarget = Math.max(1, target - (withTitle ? 1 : 0) - 1 - 2 * openers);
 
   let bodyPages = 0;
@@ -290,6 +294,8 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
     }
   }
 
+  // The colophon closes the book; padding blanks go before it so it stays the last page.
+  if (withColophon) push(COLOPHON_TEMPLATE_ID, []);
   // Pad to the format's rules (even count, minimum pages).
   const finalCount = normalizePageCount(pages.length, opts.format);
   if (pages.length > opts.format.maxPages) {
@@ -298,12 +304,24 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
     );
   }
   while (pages.length < finalCount) push(BLANK_TEMPLATE_ID, []);
+  if (withColophon) moveColophonLast(pages);
   if (pages.length > target + 8) {
     warnings.push(
       `Laid out ${pages.length} pages for a ${target}-page target; the album has more photos than fit at a comfortable density.`,
     );
   }
   return { pages, chapters, warnings };
+}
+
+/** Moves the colophon page (when there is one) to the end, in place, and re-indexes. */
+export function moveColophonLast(pages: Page[]): void {
+  const at = pages.findIndex((p) => p.templateId === COLOPHON_TEMPLATE_ID);
+  if (at < 0 || at === pages.length - 1) return;
+  const [colophon] = pages.splice(at, 1);
+  pages.push(colophon!);
+  pages.forEach((p, index) => {
+    p.index = index;
+  });
 }
 
 /** Re-numbers `index` after edits (moves, removals) so the array order is authoritative. */
@@ -382,9 +400,14 @@ export function mergeCustomPages(fresh: readonly Page[], custom: readonly Page[]
     }
   }
   const isPadding = (p: Page): boolean => p.templateId === BLANK_TEMPLATE_ID && p.slots.length === 0 && !p.custom;
-  while (merged.length > 1 && isPadding(merged[merged.length - 1]!) && merged.length > format.minPages) merged.pop();
+  // The colophon sits behind the padding; take it out, trim, pad, and put it back last.
+  const colophonAt = merged.findIndex((p) => p.templateId === COLOPHON_TEMPLATE_ID && !p.custom);
+  const colophon = colophonAt >= 0 ? merged.splice(colophonAt, 1)[0] : undefined;
+  while (merged.length > 1 && isPadding(merged[merged.length - 1]!) && merged.length + (colophon ? 1 : 0) > format.minPages) merged.pop();
+  if (colophon) merged.push(colophon);
   const finalCount = normalizePageCount(merged.length, format);
   while (merged.length < finalCount) merged.push({ id: makeId(), index: merged.length, templateId: BLANK_TEMPLATE_ID, slots: [] });
+  if (colophon) moveColophonLast(merged);
   const pages = reindexPages(merged);
   const openerOf = new Map<string, number>();
   for (const p of pages) if (p.templateId === CHAPTER_PHOTO_TEMPLATE_ID && p.chapterId && !openerOf.has(p.chapterId)) openerOf.set(p.chapterId, p.index);

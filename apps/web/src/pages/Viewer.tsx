@@ -272,7 +272,9 @@ function Reader({ token, book }: { token: string; book: ViewerBook }) {
           {views.length === 0 ? (
             <div className="viewer__panel">
               <h1 className="viewer__h1">{book.title}</h1>
-              <p className="viewer__p">The pages of this book have not been published yet. Ask whoever sent you the link to render the web preview.</p>
+              <p className="viewer__p">
+                {book.preparing ? 'The pages are being prepared; this page refreshes by itself in a moment.' : 'The pages of this book have not been published yet. Ask whoever sent you the link to render the web preview.'}
+              </p>
             </div>
           ) : view?.kind === 'cover' ? (
             <div className="vspread">
@@ -342,6 +344,12 @@ export function ViewerPage() {
     void fetchBook(token).then(setState);
   }, [token]);
   useEffect(load, [load]);
+  // While the preview render runs, ask again every few seconds (without the loading flash).
+  useEffect(() => {
+    if (state.kind !== 'ready' || !state.book.preparing) return;
+    const t = window.setTimeout(() => void fetchBook(token).then((next) => setState((cur) => (cur.kind === 'ready' ? next : cur))), 3000);
+    return () => window.clearTimeout(t);
+  }, [state, token]);
   useEffect(() => {
     document.documentElement.classList.add('viewer-root');
     return () => document.documentElement.classList.remove('viewer-root');

@@ -28,6 +28,7 @@ corepack pnpm --filter @bookbinder/server db:generate --name <topic>            
 corepack pnpm --filter @bookbinder/server exec playwright install chromium-headless-shell
 corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-immich.ts --port 2290 --photos 90 --home 60
 corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-lulu.ts --port 2390            # then LULU_BASE_URL=http://127.0.0.1:2390, keys fake-key/fake-secret
+corepack pnpm --filter @bookbinder/server exec tsx src/test/fake-claude.ts --port 2490          # then AI_BASE_URL=http://127.0.0.1:2490, any key but bad-key
 ```
 
 Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
@@ -44,7 +45,7 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
   fake Immich as a background Bash task on a spare port instead.
 - No real Immich is reachable from a session. The fake (`apps/server/src/test/fake-immich.ts`)
   serves everything the app calls; when you add an Immich endpoint to the client, add it to the fake too.
-- Same for Lulu: `fake-lulu.ts` + `LULU_BASE_URL` in `apps/server/.env` (dev only). Ordering needs
+- Same for Lulu (`fake-lulu.ts` + `LULU_BASE_URL`) and Claude (`fake-claude.ts` + `AI_BASE_URL`) in `apps/server/.env` (dev only). Ordering needs
   the public URL set to the server's own origin (`http://127.0.0.1:<port>`; loopback is the one
   http exception) because the fake really downloads the exports. `DATA_DIR` from the environment
   wins over `.env`, so a second session can use `.devdata-<name>` when `.devdata` is held elsewhere.
@@ -80,6 +81,12 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 - **Chapters are deterministic.** `planChapters` in `packages/shared/src/chapters.ts` is computed
   identically by the picker, the server layout and the review page. Keep it pure.
 - **Folio rule** lives in one place: `NO_FOLIO_TEMPLATE_IDS` in `packages/layout/src/paginate.ts`.
+- **Last page is the colophon** (M7): `paginate` appends it, `mergeCustomPages` and the editor keep it
+  last, `isBodyPage` excludes it. Its QR code needs `BookMeta.shareUrl` (renders: `RenderService.deps.shareUrl`;
+  editor: the active share) and a configured public URL.
+- **Themes resolve through `resolveTheme(themeId, book.themeOverrides)`** (`packages/shared/src/theme.ts`,
+  `themeFor(book)` on the web); never read `THEMES[id]` where a book is drawn.
+- **Nothing but `ImageStore.aiThumbnail` may feed the Claude client** (`docs/ai.md` promises thumbnails only).
 - **Slot geometry** is never read from `template.slots` directly where a page is drawn or measured:
   go through `pageSlots(page)` / `effectiveSlots(templateId, slots)` so hand-placed frames and
   ad-hoc boxes (M6) count. Edits that rebuild a `SlotContent` must keep `frame`, `role` and `style`
@@ -112,14 +119,17 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 | Render | `apps/server/src/render/` | `RenderService` (queue, `renders` table + `data` JSON, kinds proof/print/cover/preview), `ChromiumRenderer` (`render` = PDF, `renderPreviews` = PNG dir), `ImageStore` (sharp, cache) |
 | Cover, preflight | `packages/layout/src/cover.ts`, `preflight.ts`; `packages/pages/src/CoverView.tsx` | `coverGeometry` (spine ESTIMATE until M5 passes Lulu's override), `preflightBook` (pure; route in `routes/books.ts`), `CoverView` shared by the book page and the cover PDF; default cover made in `books/layout.ts` |
 | Shares | `apps/server/src/shares/store.ts`, `drizzle/0003_*` | `ShareStore` (token, argon2 password, expiry, revoke, views); `ShareView.url` built by `publicBase()` in `routes/shares.ts` |
-| Lulu (M5) | `apps/server/src/lulu/`, `routes/lulu.ts`, `drizzle/0004_*` | `client.ts` (OAuth token cache, zod-narrowed responses, types generated from `specs/lulu-openapi.yml` into `lulu/generated/`), `exports.ts` (`/public/exports/:token.pdf`, MD5), `orders.ts` (`OrderService`: prepare in background -> quoted, submit, refresh, cancel, 10-min ticker), `reachability.ts`; cover renders call `/cover-dimensions/` through `RenderService.coverDimensions`; web: `pages/Order.tsx`, `components/OrderCard.tsx` |
+| Claude (M7) | `apps/server/src/ai/` (`client.ts` SDK wrapper, `service.ts` jobs), `routes/ai.ts`, `drizzle/0005_*`, `test/fake-claude.ts`; shared `ai.ts`; web `components/{AiCard,AiSection}.tsx` | Jobs: captions (+ chapter titles), bursts (swap ranks, `ai` reasons, revert), foreword (`foreword` slot on the title page); one job per book at a time |
+| Notifications (M7) | `apps/server/src/notify/notifier.ts`, `routes/notifications.ts`; web `components/NotificationsSection.tsx` | ntfy / Gotify / webhook, fire-and-forget + one retry; hooks in render, order and selection services |
+| Pets, maps, QR (M7) | `packages/layout/src/{qr,map}.ts`; `pet` source in `gather.ts`; `pets` setting; `PageView` draws `qr`/`map` slots from `BookMeta` | `chapterMetaFor(book, assets)` carries the map points; `rules.chapterMaps` switches maps on |
+| Lulu (M5) | `apps/server/src/lulu/`, `routes/lulu.ts`, `drizzle/0004_*`, `drizzle/0006_*` (line items, imported) | `client.ts` (OAuth token cache, zod-narrowed responses, types generated from `specs/lulu-openapi.yml` into `lulu/generated/`), `exports.ts` (`/public/exports/:token.pdf`, MD5), `orders.ts` (`OrderService`: prepare in background -> quoted, submit, refresh, cancel, 10-min ticker; M7: `extraBooks` line items, `listRemote`/`importJob`, `applyWebhook`), `reachability.ts`; webhook receiver `/public/lulu/webhook` in `routes/public.ts` (HMAC over the raw body); cover renders call `/cover-dimensions/` through `RenderService.coverDimensions`; web: `pages/Order.tsx`, `components/OrderCard.tsx` |
 | Pages | `packages/pages/src/` | `PageView`, `print.tsx`, `meta.ts` (`bookMetaFor`), `spreads.ts` |
 | Templates | `packages/layout/src/templates.ts` | page templates + unused spread/cover templates (`cover-editorial`, `map`, `panorama-spread`) |
 | Formats | `packages/shared/src/format.ts` | `FORMAT_PRESETS`, `LuluProduct`, `luluPodPackageId` |
 | Web | `apps/web/src/pages/*.tsx` | Router in `App.tsx`; `Shell` = sidebar + `RequireAuth`; editor logic is pure in `lib/editor.ts`; `Viewer.tsx` (`/s/:token`) uses plain `fetch`, never `lib/api.ts` (its 401 handler redirects to login); book-page cards live in `components/{Preflight,Share,CoverCard}.tsx` |
 | Specs | `specs/` | Vendored Immich 3.2.0 OpenAPI (types generated, gitignored) and Lulu OpenAPI |
 
-Large files that are easy to mis-edit: `NewBook.tsx` (1100 lines), `Review.tsx` (850), `Editor.tsx` (900).
+Large files that are easy to mis-edit: `NewBook.tsx` (1150 lines), `Review.tsx` (860), `Editor.tsx` (1250), `orders.ts` (750).
 Prefer a new file next to them over growing them; when editing, anchor on a unique multi-line snippet.
 
 ## Verified external facts (do not re-research)

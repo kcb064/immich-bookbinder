@@ -43,6 +43,19 @@ export class CandidateStore {
     });
   }
 
+  /** Rewrites the given candidates in place (rank, decision, reasons); rows that do not exist are ignored. */
+  update(bookId: string, items: readonly Candidate[]): void {
+    const updatedAt = new Date().toISOString();
+    this.db.transaction((tx) => {
+      for (const c of items) {
+        tx.update(candidates)
+          .set({ decision: c.decision, clusterId: c.clusterId ?? null, composite: c.scores.composite, data: JSON.stringify(c), updatedAt })
+          .where(and(eq(candidates.bookId, bookId), eq(candidates.assetId, c.assetId)))
+          .run();
+      }
+    });
+  }
+
   /** Drops rows for photos that are no longer part of the book. */
   prune(bookId: string, keepAssetIds: readonly string[]): number {
     const keep = new Set(keepAssetIds);

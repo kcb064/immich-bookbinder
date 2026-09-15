@@ -1,6 +1,6 @@
-import { Book, FORMAT_PRESETS, LuluStatus, OrderView, ReachabilityReport, RenderJob, SettingsView, type ShippingAddress } from '@bookbinder/shared';
+import { Book, FORMAT_PRESETS, LuluProduct, LuluRemoteJob, LuluStatus, LuluWebhookView, OrderView, ReachabilityReport, RenderJob, SettingsView, type ShippingAddress } from '@bookbinder/shared';
 import { coverGeometry } from '@bookbinder/layout';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
@@ -42,20 +42,24 @@ describe('Lulu ordering', () => {
    * so the order flow (exports, validation, print job) runs on any machine.
    */
   async function fakeRender(kind: 'print' | 'cover', pages: number, finishedAt = new Date().toISOString()): Promise<string> {
+    return fakeRenderFor(bookId, book.pages.length, kind, pages, finishedAt);
+  }
+
+  async function fakeRenderFor(forBookId: string, bookPages: number, kind: 'print' | 'cover', pages: number, finishedAt = new Date().toISOString()): Promise<string> {
     const id = randomUUID();
-    const dir = join(t.config.exportsDir, bookId);
+    const dir = join(t.config.exportsDir, forBookId);
     await mkdir(dir, { recursive: true });
     const doc = await PDFDocument.create();
     for (let i = 0; i < pages; i++) doc.addPage([612, 612]).drawText(`${kind} page ${i + 1}`, { x: 40, y: 300, size: 24 });
     const filePath = join(dir, `${id}.pdf`);
     const bytes = await doc.save();
     await writeFile(filePath, bytes);
-    const geometry = coverGeometry(FORMAT_PRESETS['lulu-square-8.5']!, book.luluProduct, book.pages.length);
+    const geometry = coverGeometry(FORMAT_PRESETS['lulu-square-8.5']!, LuluProduct.parse({}), bookPages);
     t.app.db
       .insert(renders)
       .values({
         id,
-        bookId,
+        bookId: forBookId,
         kind,
         status: 'done',
         pagesTotal: pages,
@@ -66,7 +70,7 @@ describe('Lulu ordering', () => {
         createdAt: finishedAt,
         startedAt: finishedAt,
         finishedAt,
-        ...(kind === 'cover' ? { data: JSON.stringify({ cover: { geometry, pageCount: book.pages.length } }) } : {}),
+        ...(kind === 'cover' ? { data: JSON.stringify({ cover: { geometry, pageCount: bookPages } }) } : {}),
       })
       .run();
     return id;
@@ -332,6 +336,136 @@ describe('Lulu ordering', () => {
 
     // Background refresh touches only orders that still move.
     expect(await t.app.orders.refreshActive()).toBe(0);
+  });
+
+  /* ---------- Webhooks, job import, several books per order (M7) ---------- */
+
+  it('subscribes a webhook on Lulu, applies signed status submissions, and rejects bad signatures', async () => {
+    expect((await t.app.inject({ method: 'GET', url: '/api/lulu/webhook', headers: { cookie } })).json()).toBeNull();
+    const sub = await t.app.inject({ method: 'POST', url: '/api/lulu/webhook', headers: { cookie } });
+    expect(sub.statusCode, sub.body).toBe(200);
+    const hook = LuluWebhookView.parse(sub.json());
+    expect(hook.url).toMatch(/\/public\/lulu\/webhook$/);
+    expect(hook.topics).toEqual(['PRINT_JOB_STATUS_CHANGED']);
+    expect(lulu.webhooks.size).toBe(1);
+    // Subscribing again re-uses the one Lulu has for this URL.
+    expect(LuluWebhookView.parse((await t.app.inject({ method: 'POST', url: '/api/lulu/webhook', headers: { cookie } })).json()).id).toBe(hook.id);
+    expect(LuluWebhookView.parse((await t.app.inject({ method: 'GET', url: '/api/lulu/webhook', headers: { cookie } })).json()).active).toBe(true);
+    expect((await t.app.inject({ method: 'POST', url: '/api/lulu/webhook/test', headers: { cookie } })).statusCode).toBe(200);
+    await lulu.webhooksIdle();
+    expect(lulu.deliveries.at(-1)?.status).toBe(200);
+
+    // A quoted, submitted order follows a status change pushed by Lulu, without a poll.
+    lulu.behaviour.advanceOnPoll = false;
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS } });
+    const quoted = await waitForOrder(OrderView.parse(res.json()).id);
+    const submitted = OrderView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/submit`, headers: { cookie } })).json());
+    const jobId = Number(submitted.luluJobId);
+    const job = lulu.jobs.get(jobId)!;
+    job.status = 'IN_PRODUCTION';
+    job.message = 'Print-job submitted to printer';
+    lulu.fire(jobId);
+    await lulu.webhooksIdle();
+    expect(lulu.deliveries.at(-1)).toMatchObject({ status: 200, jobId });
+    const pushed = OrderView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/orders/${quoted.id}`, headers: { cookie } })).json());
+    expect(pushed.status).toBe('in-production');
+    expect(pushed.luluStatus).toBe('IN_PRODUCTION');
+    expect(pushed.messages.at(-1)?.text).toMatch(/IN_PRODUCTION.*webhook/);
+    job.status = 'SHIPPED';
+    job.trackingUrl = `${lulu.url}/printer-wannabe-tracking/${jobId}_1`;
+    lulu.fire(jobId);
+    await lulu.webhooksIdle();
+    const shipped = OrderView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/orders/${quoted.id}`, headers: { cookie } })).json());
+    expect(shipped.status).toBe('shipped');
+    expect(shipped.tracking[0]?.url).toContain('printer-wannabe-tracking');
+    lulu.behaviour.advanceOnPoll = true;
+
+    // Unsigned or wrongly signed submissions are refused; a well-signed unknown job is ignored.
+    const body = JSON.stringify({ topic: 'PRINT_JOB_STATUS_CHANGED', data: { id: 424242, status: { name: 'SHIPPED' } } });
+    expect((await t.app.inject({ method: 'POST', url: '/public/lulu/webhook', headers: { 'content-type': 'application/json' }, payload: body })).statusCode).toBe(401);
+    expect((await t.app.inject({ method: 'POST', url: '/public/lulu/webhook', headers: { 'content-type': 'application/json', 'lulu-hmac-sha256': 'deadbeef' }, payload: body })).statusCode).toBe(401);
+    const good = createHmac('sha256', lulu.clientSecret).update(body, 'utf8').digest('base64');
+    const ignored = await t.app.inject({ method: 'POST', url: '/public/lulu/webhook', headers: { 'content-type': 'application/json', 'lulu-hmac-sha256': good }, payload: body });
+    expect(ignored.statusCode).toBe(200);
+    expect(ignored.json()).toEqual({ ok: true, ignored: true });
+
+    expect((await t.app.inject({ method: 'DELETE', url: '/api/lulu/webhook', headers: { cookie } })).json()).toEqual({ ok: true });
+    expect(lulu.webhooks.size).toBe(0);
+    expect((await t.app.inject({ method: 'GET', url: '/api/lulu/webhook', headers: { cookie } })).json()).toBeNull();
+  });
+
+  it('lists the print jobs Lulu holds and imports one this app does not track', async () => {
+    const jobs = z.array(LuluRemoteJob).parse((await t.app.inject({ method: 'GET', url: '/api/lulu/print-jobs', headers: { cookie } })).json());
+    expect(jobs.length).toBeGreaterThan(0);
+    const tracked = jobs.find((j) => j.orderId);
+    expect(tracked).toBeDefined();
+    expect(tracked!.bookId).toBe(bookId);
+    expect(tracked!.lineItems[0]).toMatchObject({ title: 'Douro weekend', quantity: 1 });
+    // Forget the local order, then import it back from Lulu.
+    const { orders: ordersTable } = await import('../db/schema.js');
+    const { eq } = await import('drizzle-orm');
+    t.app.db.delete(ordersTable).where(eq(ordersTable.id, tracked!.orderId!)).run();
+    const again = z.array(LuluRemoteJob).parse((await t.app.inject({ method: 'GET', url: '/api/lulu/print-jobs', headers: { cookie } })).json());
+    expect(again.find((j) => j.id === tracked!.id)?.orderId).toBeUndefined();
+    const imported = await t.app.inject({ method: 'POST', url: `/api/lulu/print-jobs/${tracked!.id}/import`, headers: { cookie }, payload: {} });
+    expect(imported.statusCode, imported.body).toBe(200);
+    const order = OrderView.parse(imported.json());
+    expect(order).toMatchObject({ bookId, imported: true, luluJobId: tracked!.id, env: 'sandbox' });
+    expect(order.shippingAddress.city).toBe(ADDRESS.city);
+    expect(order.lineItems).toHaveLength(1);
+    expect(order.exports).toBeUndefined();
+    expect((await t.app.inject({ method: 'POST', url: `/api/lulu/print-jobs/${tracked!.id}/import`, headers: { cookie }, payload: {} })).statusCode).toBe(409);
+    // A job with a foreign external id needs a book named by the caller.
+    const foreign = lulu.jobs.get(Number(tracked!.id))!;
+    const clone = { ...foreign, id: 999999, externalId: 'somewhere-else' };
+    lulu.jobs.set(999999, clone);
+    expect((await t.app.inject({ method: 'POST', url: '/api/lulu/print-jobs/999999/import', headers: { cookie }, payload: {} })).statusCode).toBe(404);
+    const attached = OrderView.parse((await t.app.inject({ method: 'POST', url: '/api/lulu/print-jobs/999999/import', headers: { cookie }, payload: { bookId } })).json());
+    expect(attached.externalId).toBe('somewhere-else');
+    // Imported orders refresh like any other.
+    const refreshed = OrderView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${order.id}/refresh`, headers: { cookie } })).json());
+    expect(refreshed.luluStatus).toBeTruthy();
+    lulu.jobs.delete(999999);
+  });
+
+  it('orders several books in one print job: every file validated, one quote, one job with all line items', async () => {
+    // A second book with its own renders.
+    const created = await t.app.inject({
+      method: 'POST',
+      url: '/api/books',
+      headers: { cookie },
+      payload: { title: 'Sintra day', formatId: 'lulu-square-8.5', themeId: 'warm-editorial', rules: { sources: [{ kind: 'album', albumIds: ['album-best'] }], targetPages: 24 } },
+    });
+    const otherId = Book.parse(created.json()).id;
+    expect((await t.app.inject({ method: 'POST', url: `/api/books/${otherId}/layout`, headers: { cookie }, payload: {} })).statusCode).toBe(200);
+    const other = t.app.books.get(otherId)!;
+    // Without renders the extra book is refused before anything is created.
+    const refused = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS, extraBooks: [{ bookId: otherId, quantity: 2 }] } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().message).toMatch(/Sintra day/);
+    await fakeRenderFor(otherId, other.pages.length, 'print', other.pages.length);
+    await fakeRenderFor(otherId, other.pages.length, 'cover', 1);
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS, extraBooks: [{ bookId: otherId, quantity: 2 }] } });
+    expect(res.statusCode, res.body).toBe(202);
+    const quoted = await waitForOrder(OrderView.parse(res.json()).id);
+    expect(quoted.status, JSON.stringify(quoted.messages)).toBe('quoted');
+    expect(quoted.lineItems.map((li) => [li.title, li.quantity])).toEqual([
+      ['Douro weekend', 1],
+      ['Sintra day', 2],
+    ]);
+    expect(quoted.cost?.lineItems).toHaveLength(2);
+    expect(quoted.cost?.lineItems[1]?.quantity).toBe(2);
+    expect(quoted.messages.some((m) => /2 books validated/.test(m.text))).toBe(true);
+    const submitted = OrderView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/submit`, headers: { cookie } })).json());
+    expect(submitted.luluJobId).toBeTruthy();
+    const job = lulu.jobs.get(Number(submitted.luluJobId))!;
+    const items = job.body['line_items'] as Array<Record<string, unknown>>;
+    expect(items.map((li) => li['title'])).toEqual(['Douro weekend', 'Sintra day']);
+    expect(items[1]!['external_id']).toBe(`${quoted.externalId}:2`);
+    expect(t.app.books.get(otherId)?.status).toBe('editing');
+    expect(t.app.books.get(bookId)?.status).toBe('ordered');
+    // Duplicates and self-references are refused.
+    expect((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS, extraBooks: [{ bookId }] } })).statusCode).toBe(400);
   });
 
   it('rejects a print job whose md5 no longer matches the file', async () => {

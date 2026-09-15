@@ -65,6 +65,29 @@ export function coverGeometry(format: BookFormat, product: LuluProduct, pageCoun
   };
 }
 
+/**
+ * Box of a cover slot on the sheet, in inches from the sheet's top-left: back cover on the left,
+ * the spine, then the front; template x runs -1..0 (back) and 0..1 (front), bleed slots reach the
+ * sheet edge, and the `spine` slot is the spine itself.
+ */
+export function coverSlotIn(slot: { id: string; x: number; y: number; w: number; h: number }, format: BookFormat, g: CoverGeometry): { x: number; y: number; w: number; h: number } {
+  const trimW = format.trimWidthIn;
+  const trimH = format.trimHeightIn;
+  const eps = 1e-6;
+  const mapX = (u: number): number => {
+    if (u <= -1 - eps) return 0;
+    if (u >= 1 + eps) return g.widthIn;
+    return u <= 0 ? g.wrapIn + (u + 1) * trimW : g.wrapIn + trimW + g.spineIn + u * trimW;
+  };
+  const mapY = (v: number): number => (v <= -eps ? 0 : v >= 1 + eps ? g.heightIn : g.wrapIn + v * trimH);
+  if (slot.id === 'spine') return { x: g.wrapIn + trimW, y: g.wrapIn, w: g.spineIn, h: trimH };
+  const x0 = mapX(slot.x);
+  const x1 = mapX(slot.x + slot.w);
+  const y0 = mapY(slot.y);
+  const y1 = mapY(slot.y + slot.h);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
 function round4(v: number): number {
   return Math.round(v * 10000) / 10000;
 }

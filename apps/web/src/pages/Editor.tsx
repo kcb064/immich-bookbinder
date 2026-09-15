@@ -23,7 +23,7 @@ import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, isActiveRender } from '../components/Renders.tsx';
 import { DesignOverlay, DesignPanel, ShortcutHelp, useDesignDrag, type DesignSurface, type FramePatch, type SurfaceBox } from '../components/Designer.tsx';
-import { useBook, useBookAssets, useLayoutBook, useRenders, useSaveBook } from '../lib/queries.ts';
+import { useBook, useBookAssets, useLayoutBook, useRenders, useSaveBook, useShares } from '../lib/queries.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { themeFor } from '../lib/format.ts';
 import {
@@ -34,6 +34,7 @@ import {
   historyUndo,
   insertBlankPage,
   isBodyPage,
+  isColophonPage,
   isFlexiblePage,
   isOpenerPage,
   movePage,
@@ -52,7 +53,7 @@ import {
   type History,
   type SlotRef,
 } from '../lib/editor.ts';
-import { addTextBox, coverFrame, currentFrame, deleteSlot, duplicateSlot, nudgeSlot, omitKeys, resetPage, setBoxText, setFrame, setTextStyle, setZ, slotsAddText, slotsDelete, slotsDuplicate, slotsNudge, slotsSetFrame, slotsSetText, slotsSetTextStyle, slotsSetZ, slotsUnsetText, withCoverSlots } from '../lib/designer.ts';
+import { addTextBox, coverFrame, currentFrame, deleteSlot, dropPhoto, duplicateSlot, nudgeSlot, omitKeys, resetPage, setBoxText, setFrame, setTextStyle, setZ, slotsAddText, slotsDelete, slotsDropPhoto, slotsDuplicate, slotsNudge, slotsSetFrame, slotsSetText, slotsSetTextStyle, slotsSetZ, slotsUnsetText, withCoverSlots } from '../lib/designer.ts';
 
 /** Editor image provider: Immich thumbnails through the server proxy, sized for the canvas or filmstrip. */
 export function editorImageSrc(size: 'thumbnail' | 'preview'): ImageSrc {
@@ -139,6 +140,9 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const save = useSaveBook(book.id);
   const layout = useLayoutBook(book.id);
   const renders = useRenders(book.id);
+  const shares = useShares(book.id);
+  /** The colophon prints the newest active share as a QR code (M7), on screen as in the PDF. */
+  const shareUrl = shares.data?.find((s) => s.status === 'active')?.url;
 
   const assetMap = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const ratios = useMemo(() => ratiosOf(assets), [assets]);
@@ -238,6 +242,9 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   }, [setSearch]);
 
   const [selected, setSelected] = useState<SlotRef | undefined>();
+  /** Further boxes added with Shift+click (M7 multi-selection), always on the primary's surface. */
+  const [extra, setExtra] = useState<SlotRef[]>([]);
+  const shiftHeld = useRef(false);
   const [swapFrom, setSwapFrom] = useState<SlotRef | undefined>();
   const [focusIndex, setFocusIndex] = useState<number | undefined>();
   const [help, setHelp] = useState(false);
@@ -257,10 +264,14 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     if (selected && (!selectedSlot || (selected.pageIndex === COVER) !== (view === 'cover'))) setSelected(undefined);
     if (swapFrom && !pages[swapFrom.pageIndex]) setSwapFrom(undefined);
   }, [pages, selected, selectedSlot, swapFrom, view]);
+  // Extras follow the primary: a new primary (or none) starts a fresh multi-selection.
+  useEffect(() => setExtra([]), [selected, view]);
+  const extraIds = useMemo(() => new Set(extra.map((r) => r.slotId)), [extra]);
+  const allSelected = useMemo(() => (selected ? [selected, ...extra] : []), [selected, extra]);
 
   const placed = useMemo(() => new Set(pages.flatMap(pageAssetIds)), [pages]);
   // Chapter titles and photo counts follow the working copy of the pages, not the saved book.
-  const meta = useMemo(() => bookMetaFor({ ...book, pages }, assets.filter((a) => placed.has(a.id)), placed.size), [book, pages, assets, placed]);
+  const meta = useMemo(() => bookMetaFor({ ...book, pages }, assets.filter((a) => placed.has(a.id)), placed.size, { shareUrl }), [book, pages, assets, placed, shareUrl]);
   const chapterStarts = useMemo(() => new Map(book.chapters.map((c) => [c.id, c])), [book.chapters]);
   /** Chapter that opens on a spread (its opener photo page is the spread's left page). */
   const chapterOpening = (sp: Spread) => {
@@ -390,6 +401,12 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const onSlotPointerDown = (pageIndex: number) => (slot: SlotSpec, _content: SlotContent | undefined, e: ReactPointerEvent<HTMLElement>) => {
     if (slot.role === 'map' || slot.role === 'qr') return;
     const ref: SlotRef = { pageIndex, slotId: slot.id };
+    shiftHeld.current = e.shiftKey;
+    if (e.shiftKey && selected && selected.pageIndex === pageIndex && selected.slotId !== slot.id) {
+      e.preventDefault();
+      setExtra((list) => (list.some((r) => r.slotId === slot.id) ? list.filter((r) => r.slotId !== slot.id) : [...list, ref]));
+      return;
+    }
     setDragRef(ref);
     if (pageIndex !== COVER) setFocusIndex(pageIndex);
     // The drag prevents the pointer default (no text selection), which would also skip focusing the
@@ -401,6 +418,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
 
   const onSlotClick = (pageIndex: number) => (slot: SlotSpec, content: SlotContent | undefined) => {
     const ref: SlotRef = { pageIndex, slotId: slot.id };
+    if (shiftHeld.current && selected && selected.pageIndex === pageIndex && selected.slotId !== slot.id) return;
     if (pageIndex !== COVER) setFocusIndex(pageIndex);
     const isPhoto = slot.role === 'hero' || slot.role === 'photo';
     if (!isPhoto) {
@@ -448,20 +466,29 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     (pageOp: (pages: Page[], ref: SlotRef) => Page[], coverOp: (cover: BookCover, slotId: string) => BookCover, coalesce?: string) => {
       if (!selected) return;
       if (selected.pageIndex === COVER) {
-        if (doc.cover) applyCover(coverOp(doc.cover, selected.slotId), coalesce);
-      } else apply(pageOp(pages, selected), coalesce);
+        if (doc.cover) applyCover(allSelected.reduce((c, ref) => coverOp(c, ref.slotId), doc.cover), coalesce);
+      } else apply(allSelected.reduce((p, ref) => pageOp(p, ref), pages), coalesce);
     },
-    [selected, doc.cover, pages, apply, applyCover],
+    [selected, allSelected, doc.cover, pages, apply, applyCover],
   );
 
   const removeSelected = useCallback(() => {
     if (!selected || !selectedSlot) return;
     if (selected.pageIndex === COVER) {
-      if (doc.cover) applyCover(withCoverSlots(doc.cover, (c) => slotsDelete(c, selected.slotId)));
-    } else if (selectedSlot.adHoc || !selectedIsPhoto) apply(deleteSlot(pages, selected));
-    else apply(removePhoto(pages, selected, ratios));
+      if (doc.cover) applyCover(allSelected.reduce((c, ref) => withCoverSlots(c, (l) => slotsDelete(l, ref.slotId)), doc.cover));
+    } else {
+      // Boxes and text go through the designer; template photos are removed with a refit.
+      const page = pages[selected.pageIndex];
+      const next = allSelected.reduce((p, ref) => {
+        const slot = page ? pageSlots(p[selected.pageIndex] ?? page).find((s) => s.spec.id === ref.slotId) : undefined;
+        if (!slot) return p;
+        const isPhoto = slot.spec.role === 'hero' || slot.spec.role === 'photo';
+        return slot.adHoc || !isPhoto ? deleteSlot(p, ref) : removePhoto(p, ref, ratios);
+      }, pages);
+      apply(next);
+    }
     setSelected(undefined);
-  }, [selected, selectedSlot, selectedIsPhoto, doc.cover, pages, ratios, apply, applyCover]);
+  }, [selected, selectedSlot, allSelected, doc.cover, pages, ratios, apply, applyCover]);
 
   const nudgeSelected = useCallback(
     (dxIn: number, dyIn: number) => {
@@ -593,6 +620,55 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     );
   };
 
+  /* ---------- Drag and drop from the tray (M7) ---------- */
+
+  const DRAG_TYPE = 'application/x-bookbinder-asset';
+  const acceptsDrop = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE);
+  /** Slot id under the drop point, if the drop landed on a slot. */
+  const slotUnder = (e: React.DragEvent): string | undefined => (e.target as HTMLElement).closest?.('[data-slot-id]')?.getAttribute('data-slot-id') ?? undefined;
+  const onPageDrop = (pageIndex: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (!acceptsDrop(e)) return;
+    e.preventDefault();
+    const assetId = e.dataTransfer.getData(DRAG_TYPE);
+    if (!assetId || placed.has(assetId)) return;
+    const host = e.currentTarget.getBoundingClientRect();
+    const bleed = format.bleedIn * PX_PER_IN;
+    const at = { x: ((e.clientX - host.left) / scale - bleed) / (format.trimWidthIn * PX_PER_IN), y: ((e.clientY - host.top) / scale - bleed) / (format.trimHeightIn * PX_PER_IN) };
+    const slotId = slotUnder(e);
+    const page = pages[pageIndex];
+    if (!page) return;
+    const target = slotId && pageSlots(page).some((s) => s.spec.id === slotId && (s.spec.role === 'hero' || s.spec.role === 'photo')) ? { slotId } : { at };
+    if (!target.slotId && !page.custom && isFlexiblePage(page)) {
+      // A drop on the background of an automatic page adds the photo the automatic way.
+      const r = addPhoto(pages, pageIndex, assetId, ratios, undefined, format);
+      apply(r.pages);
+      setFocusIndex(r.pageIndex);
+      if (r.slotId) setSelected({ pageIndex: r.pageIndex, slotId: r.slotId });
+      return;
+    }
+    const r = dropPhoto(pages, pageIndex, assetId, ratios.get(assetId) ?? 1.5, format, target);
+    apply(r.pages);
+    setFocusIndex(pageIndex);
+    if (r.slotId) setSelected({ pageIndex, slotId: r.slotId });
+  };
+  const onCoverDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!acceptsDrop(e) || !doc.cover) return;
+    e.preventDefault();
+    const assetId = e.dataTransfer.getData(DRAG_TYPE);
+    if (!assetId) return;
+    const host = e.currentTarget.getBoundingClientRect();
+    const at = coverPxToUnits((e.clientX - host.left) / coverScale, (e.clientY - host.top) / coverScale, format, geometry);
+    const slotId = slotUnder(e);
+    const r = slotsDropPhoto(doc.cover, assetId, ratios.get(assetId) ?? 1.5, format, slotId ? { slotId } : { at });
+    applyCover({ ...doc.cover, slots: r.slots });
+    setSelected({ pageIndex: COVER, slotId: r.slotId });
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (!acceptsDrop(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
   const renderPage = (page: Page | undefined, side: 'left' | 'right', number: number | undefined) => {
     if (!page) return <div className="page-gap" style={{ width: px.w * scale, height: px.h * scale }} aria-hidden="true" />;
     const isFocus = focusPageIndex === page.index;
@@ -604,6 +680,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         ref={(el) => {
           surfaceHost.current.set(page.index, el);
         }}
+        onDragOver={onDragOver}
+        onDrop={onPageDrop(page.index)}
       >
         <PageView
           page={shown}
@@ -617,6 +695,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           scale={scale}
           guides
           selectedSlotId={selected?.pageIndex === page.index ? selected.slotId : swapFrom?.pageIndex === page.index ? swapFrom.slotId : undefined}
+          selectedSlotIds={selected?.pageIndex === page.index ? extraIds : undefined}
           onSlotClick={onSlotClick(page.index)}
           onSlotPointerDown={onSlotPointerDown(page.index)}
           onBackgroundClick={() => {
@@ -644,6 +723,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         ref={(el) => {
           surfaceHost.current.set(COVER, el);
         }}
+        onDragOver={onDragOver}
+        onDrop={onCoverDrop}
       >
         <CoverView
           cover={liveCover}
@@ -656,6 +737,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           scale={coverScale}
           guides
           selectedSlotId={selected?.pageIndex === COVER ? selected.slotId : undefined}
+          selectedSlotIds={selected?.pageIndex === COVER ? extraIds : undefined}
           onSlotClick={onSlotClick(COVER)}
           onSlotPointerDown={onSlotPointerDown(COVER)}
           onBackgroundClick={() => setSelected(undefined)}
@@ -882,7 +964,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                   ) : null}
                 </div>
                 <span className="muted small">
-                  {isOpenerPage(focusPage) ? getTemplate(focusPage.templateId).name : isBodyPage(focusPage) ? `${focusPhotos.length} photo${focusPhotos.length === 1 ? '' : 's'} · ${getTemplate(focusPage.templateId).name}` : 'Title page'}
+                  {isOpenerPage(focusPage) ? getTemplate(focusPage.templateId).name : isBodyPage(focusPage) ? `${focusPhotos.length} photo${focusPhotos.length === 1 ? '' : 's'} · ${getTemplate(focusPage.templateId).name}` : isColophonPage(focusPage) ? 'Colophon' : 'Title page'}
                 </span>
               </div>
               {focusChapter ? (
@@ -920,6 +1002,23 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                     />
                   </label>
                   <div className="muted small">The place and dates come from the photos; type over them to change this opener only.</div>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      className="visually-hidden"
+                      checked={Boolean(book.rules?.chapterMaps)}
+                      disabled={!book.rules || save.isPending}
+                      onChange={(e) => {
+                        if (book.rules) save.mutate({ ...book, pages, rules: { ...book.rules, chapterMaps: e.target.checked } });
+                      }}
+                    />
+                    <span className={`toggle__track${book.rules?.chapterMaps ? ' toggle__track--on' : ''}`} aria-hidden="true">
+                      <span className="toggle__knob" />
+                    </span>
+                    <span>
+                      Map of the photos <span className="muted">on every chapter opener (drawn offline from GPS data)</span>
+                    </span>
+                  </label>
                 </div>
               ) : null}
               {templateChoices.length > 1 ? (
@@ -934,6 +1033,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                 <div className="muted small">Only one template holds {focusPhotos.length} photos. Add or remove a photo for more choices, or drag a photo to design the page by hand.</div>
               ) : focusPage.templateId === 'chapter-photo' ? (
                 <div className="muted small">The opener photo fills the page and faces the chapter title. Swap it with any photo, or remove it to leave the page empty.</div>
+              ) : isColophonPage(focusPage) ? (
+                <div className="muted small">{shareUrl ? 'The QR code opens the share link; the texts come from the book and can be typed over.' : 'Create a share link on the book page and its QR code is printed here.'}</div>
               ) : null}
               <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
                 <Button size="sm" variant="ghost" icon="plus" onClick={addText} title="Add a text box to this page (T)">
@@ -970,12 +1071,29 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                     Remove page
                   </Button>
                 </div>
+              ) : isColophonPage(focusPage) ? (
+                <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon="trash"
+                    onClick={() => {
+                      apply(removePage(pages, focusPageIndex));
+                      setFocusIndex(Math.max(0, focusPageIndex - 1));
+                      gotoPage(Math.max(0, focusPageIndex - 1));
+                    }}
+                    title="Remove the colophon; re-layout brings it back"
+                  >
+                    Remove page
+                  </Button>
+                </div>
               ) : null}
             </section>
           ) : null}
 
           <section className="panel__section">
-            <div className="label">{selectedIsText ? 'Selected text' : selectedSlot && !selectedIsPhoto ? 'Selected rule' : 'Selected photo'}</div>
+            <div className="label">{extra.length > 0 ? `${extra.length + 1} selected` : selectedIsText ? 'Selected text' : selectedSlot && !selectedIsPhoto ? 'Selected rule' : 'Selected photo'}</div>
+            {extra.length > 0 ? <div className="muted small">Arrows nudge, [ and ] restack and Delete removes all of them; the handles and the fields below act on the first one. Shift+click a box to drop it from the selection.</div> : null}
             {selected && selectedIsPhoto && selectedAsset ? (
               <>
                 <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
@@ -1067,7 +1185,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                 <span className="muted small">{tray.length}</span>
               </div>
               {tray.length === 0 ? (
-                <div className="muted small">Every gathered photo is on a page. Removed photos land here so you can put them back.</div>
+                <div className="muted small">Every gathered photo is on a page. Removed photos land here so you can put them back, by click or by dragging onto a page.</div>
               ) : (
                 <div className="tray">
                   {tray.map((a) => (
@@ -1075,7 +1193,12 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                       key={a.id}
                       type="button"
                       className="tray__item"
-                      title={`${a.fileName ?? a.id}: add to page ${focusPageIndex + 1}`}
+                      title={`${a.fileName ?? a.id}: click to add to page ${focusPageIndex + 1}, or drag onto a page or slot`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DRAG_TYPE, a.id);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
                       onClick={() => {
                         const r = addPhoto(pages, focusPageIndex, a.id, ratios, undefined, format);
                         apply(r.pages);
@@ -1156,5 +1279,5 @@ export function EditorPage() {
       </div>
     );
   }
-  return <Editor key={b.id} book={b} assets={assets.data} format={format} theme={themeFor(b.themeId)} />;
+  return <Editor key={b.id} book={b} assets={assets.data} format={format} theme={themeFor(b)} />;
 }

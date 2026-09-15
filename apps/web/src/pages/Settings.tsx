@@ -3,6 +3,10 @@ import type { FormEvent } from 'react';
 import { REQUIRED_IMMICH_PERMISSIONS, SUPPORTED_IMMICH_VERSION } from '@bookbinder/shared';
 import type { ImmichConnectionInput, ImmichStatus, LuluEnv } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
+import { PetsSection } from '../components/PetsSection.tsx';
+import { NotificationsSection } from '../components/NotificationsSection.tsx';
+import { AiSection } from '../components/AiSection.tsx';
+import { LuluWebhookBlock } from '../components/LuluWebhook.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, Dot, Field, Note, PasswordInput, Skeleton, TextInput } from '../components/ui.tsx';
 import {
@@ -691,39 +695,7 @@ function LuluSection() {
           )}
         </div>
       ) : null}
-    </section>
-  );
-}
-
-function PlaceholderSection({
-  id,
-  icon,
-  title,
-  milestone,
-  children,
-}: {
-  id: string;
-  icon: 'sparkles';
-  title: string;
-  milestone: string;
-  children: string;
-}) {
-  return (
-    <section className="card section section--disabled" aria-labelledby={`${id}-title`} aria-disabled="true">
-      <div className="section__head">
-        <div>
-          <h2 className="section__title" id={`${id}-title`}>
-            <Icon name={icon} />
-            {title}
-            <Chip>{milestone}</Chip>
-          </h2>
-          <p className="section__desc">{children}</p>
-        </div>
-      </div>
-      <div className="form-grid">
-        <Field label="API key">{({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}</Field>
-        <Field label="Model">{({ id: fid }) => <TextInput id={fid} disabled placeholder="Not available yet" />}</Field>
-      </div>
+      {keySet ? <LuluWebhookBlock /> : null}
     </section>
   );
 }
@@ -736,10 +708,10 @@ export function SettingsPage() {
         <div className="settings">
           <ImmichSection />
           <PublicUrlSection />
+          <PetsSection />
           <LuluSection />
-          <PlaceholderSection id="ai" icon="sparkles" title="AI captions & pet finder" milestone="coming in M7">
-            Optional: an LLM writes chapter titles and captions, and a small model learns to find your pets across the library.
-          </PlaceholderSection>
+          <NotificationsSection />
+          <AiSection />
         </div>
       </div>
     </>

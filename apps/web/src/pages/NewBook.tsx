@@ -6,6 +6,7 @@ import {
   FORMAT_PRESETS,
   THEMES,
   formatIsoRange,
+  type SavedPet,
 } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
 import { StepRail } from '../components/StepRail.tsx';
@@ -22,10 +23,10 @@ import {
   useTrips,
 } from '../lib/queries.ts';
 import type { AlbumSummary, PersonSummary, SourceInput, TripSuggestion } from '../lib/queries.ts';
-import { errorMessage } from '../lib/api.ts';
+import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 import { formatDateRange, formatNumber, formatTrim, pluralize } from '../lib/format.ts';
 
-type SourceKind = 'album' | 'trip' | 'people' | 'smart';
+type SourceKind = 'album' | 'trip' | 'people' | 'pet' | 'smart';
 
 const SOURCES: Array<{ kind: SourceKind; icon: IconName; name: string; desc: string }> = [
   { kind: 'album', icon: 'album', name: 'Album', desc: 'Pick one or more Immich albums.' },
@@ -39,7 +40,13 @@ const SOURCES: Array<{ kind: SourceKind; icon: IconName; name: string; desc: str
     kind: 'people',
     icon: 'people',
     name: 'People',
-    desc: 'Everything with the people you choose. Pets as a saved search come later.',
+    desc: 'Everything with the people you choose.',
+  },
+  {
+    kind: 'pet',
+    icon: 'paw',
+    name: 'Pets',
+    desc: 'A pet saved in Settings: its search plus look-alikes of its example photos.',
   },
   {
     kind: 'smart',
@@ -559,6 +566,49 @@ function PeoplePicker({
   );
 }
 
+/** Saved pets (Settings → Pets) as a source; several union. */
+function PetPicker({ selected, onChange }: { selected: ReadonlySet<string>; onChange: (next: Set<string>, pets: SavedPet[]) => void }) {
+  const settings = useSettings();
+  const pets = settings.data?.pets ?? [];
+  const toggle = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next, pets);
+  };
+  if (pets.length === 0) {
+    return (
+      <div className="card card--pad stack" style={{ gap: 10 }}>
+        <div className="muted">No pets saved yet. A pet is a smart search plus a few example photos.</div>
+        <div>
+          <Link to="/settings" className="btn">
+            <Icon name="paw" size={16} /> Add a pet in Settings
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="card albums">
+      <div className="people-grid">
+        {pets.map((pet) => {
+          const checked = selected.has(pet.id);
+          return (
+            <label key={pet.id} className={`person${checked ? ' person--on' : ''}`}>
+              <input type="checkbox" className="visually-hidden" checked={checked} onChange={() => toggle(pet.id)} />
+              <CheckboxMark checked={checked} />
+              <span className="person__thumb">{pet.exampleAssetIds[0] ? <img src={thumbnailUrl(pet.exampleAssetIds[0])} alt="" loading="lazy" /> : <Icon name="paw" />}</span>
+              <span className="person__name" title={pet.query}>
+                {pet.name}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Optional for every source: people who must appear and get a scoring boost. */
 function FeaturedPeople({
   selected,
@@ -717,6 +767,8 @@ export function NewBookPage() {
   const [people, setPeople] = useState<Set<string>>(() => new Set());
   const [peopleNames, setPeopleNames] = useState<Map<string, string>>(() => new Map());
   const [smart, setSmart] = useState({ query: '', limit: 200 });
+  const [petIds, setPetIds] = useState<Set<string>>(() => new Set());
+  const [petsChosen, setPetsChosen] = useState<SavedPet[]>([]);
   const [featured, setFeatured] = useState<Set<string>>(() => new Set());
   const [title, setTitle] = useState('');
   const [titleEdited, setTitleEdited] = useState(false);
@@ -754,6 +806,13 @@ export function NewBookPage() {
             : `${chosen.slice(0, -1).join(', ')} & ${chosen[chosen.length - 1]}`,
     );
   };
+  const onPets = (next: Set<string>, pets: SavedPet[]) => {
+    setPetIds(next);
+    const chosen = pets.filter((p) => next.has(p.id));
+    setPetsChosen(chosen);
+    const names = chosen.map((p) => p.name);
+    suggestTitle(names.length === 0 ? '' : names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`);
+  };
   const onTripSuggestion = (t: TripSuggestion | undefined) => {
     setTripSuggestion(t);
     if (t) suggestTitle(tripTitleFor(t));
@@ -775,7 +834,9 @@ export function NewBookPage() {
         ? tripValid
         : source === 'people'
           ? people.size > 0
-          : smart.query.trim().length > 0;
+          : source === 'pet'
+            ? petIds.size > 0
+            : smart.query.trim().length > 0;
   const sourceError =
     !submitted || sourceValid
       ? undefined
@@ -785,10 +846,16 @@ export function NewBookPage() {
           ? 'Pick a trip or enter a valid date range.'
           : source === 'people'
             ? 'Pick at least one person.'
-            : 'Describe what to search for.';
+            : source === 'pet'
+              ? 'Pick at least one pet.'
+              : 'Describe what to search for.';
   const titleError = submitted && !title.trim() ? 'Give the book a title.' : undefined;
   const canCreate = title.trim().length > 0 && sourceValid && !create.isPending;
 
+  const buildSources = (): SourceInput[] => {
+    if (source === 'pet') return petsChosen.map((p) => ({ kind: 'pet', name: p.name, query: p.query, exampleAssetIds: p.exampleAssetIds, limit: smart.limit }));
+    return [buildSource()];
+  };
   const buildSource = (): SourceInput => {
     switch (source) {
       case 'album':
@@ -807,6 +874,8 @@ export function NewBookPage() {
         return { kind: 'people', personIds: [...people] };
       case 'smart':
         return { kind: 'smart', query: smart.query.trim(), limit: smart.limit };
+      case 'pet':
+        throw new Error('pets build several sources');
     }
   };
 
@@ -820,7 +889,7 @@ export function NewBookPage() {
         title: title.trim(),
         formatId,
         themeId: DEFAULT_THEME_ID,
-        rules: { sources: [buildSource()], targetPages: TARGET_PAGES, featuredPersonIds },
+        rules: { sources: buildSources(), targetPages: TARGET_PAGES, featuredPersonIds },
       },
       { onSuccess: (book) => navigate(`/books/${encodeURIComponent(book.id)}/review`) },
     );
@@ -850,7 +919,12 @@ export function NewBookPage() {
                   ? `photos with ${pluralize(people.size, 'person', 'people')}, counted when created`
                   : 'pick people',
             }
-          : {
+          : source === 'pet'
+            ? {
+                value: petIds.size > 0 ? `≤${formatNumber(smart.limit * petsChosen.reduce((n, p) => n + 1 + p.exampleAssetIds.length, 0))}` : '—',
+                label: petIds.size > 0 ? `best matches for ${pluralize(petIds.size, 'pet')}, counted when created` : 'pick pets',
+              }
+            : {
               value: smart.query.trim() ? `≤${formatNumber(smart.limit)}` : '—',
               label: smart.query.trim() ? 'best matches considered' : 'describe the photos',
             };
@@ -908,7 +982,9 @@ export function NewBookPage() {
                         ? 'Trip'
                         : source === 'people'
                           ? 'People'
-                          : 'Search'}
+                          : source === 'pet'
+                            ? 'Pets'
+                            : 'Search'}
                   </div>
                   {source === 'album' && albumIds.length > 0 ? (
                     <Button size="sm" variant="ghost" onClick={() => onAlbums(new Set(), [])}>
@@ -930,6 +1006,7 @@ export function NewBookPage() {
                 {source === 'people' ? (
                   <PeoplePicker selected={people} onChange={onPeople} ready={ready} />
                 ) : null}
+                {source === 'pet' ? <PetPicker selected={petIds} onChange={onPets} /> : null}
                 {source === 'smart' ? (
                   <SmartPanel query={smart.query} limit={smart.limit} onChange={onSmart} ready={ready} />
                 ) : null}
@@ -969,6 +1046,15 @@ export function NewBookPage() {
                   </Chip>
                   {trip.places.map((p) => (
                     <Chip key={p.name} icon="trip">
+                      {p.name}
+                    </Chip>
+                  ))}
+                </div>
+              ) : null}
+              {source === 'pet' && petsChosen.length > 0 ? (
+                <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                  {petsChosen.map((p) => (
+                    <Chip key={p.id} tone="accent" icon="paw">
                       {p.name}
                     </Chip>
                   ))}

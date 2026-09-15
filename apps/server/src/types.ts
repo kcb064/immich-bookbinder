@@ -7,6 +7,8 @@ import type { ImmichClient } from './immich/client.js';
 import type { LuluClient } from './lulu/client.js';
 import type { ExportStore } from './lulu/exports.js';
 import type { OrderService } from './lulu/orders.js';
+import type { Notifier } from './notify/notifier.js';
+import type { AiService } from './ai/service.js';
 import type { RenderService } from './render/service.js';
 import type { SelectionService } from './selection/service.js';
 import type { CandidateStore } from './selection/store.js';
@@ -26,6 +28,8 @@ declare module 'fastify' {
     shares: ShareStore;
     exports: ExportStore;
     orders: OrderService;
+    notifier: Notifier;
+    ai: AiService;
     /** Client for the stored Immich connection, or undefined until Settings has a URL and key. */
     immichClient: () => ImmichClient | undefined;
     /** Client for the active Lulu environment, or undefined until its key and secret are saved. */

@@ -198,6 +198,35 @@ const PATHS = {
       <path d="M12 4v16M7 9h2M7 12h2M15 9h2M15 12h2" />
     </>
   ),
+  paw: (
+    <>
+      <circle cx="12" cy="15.5" r="3.5" />
+      <circle cx="6" cy="10" r="1.6" />
+      <circle cx="18" cy="10" r="1.6" />
+      <circle cx="9" cy="6" r="1.6" />
+      <circle cx="15" cy="6" r="1.6" />
+    </>
+  ),
+  map: (
+    <>
+      <path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z" />
+      <path d="M9 4v14M15 6v14" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z" />
+      <path d="M10 20a2 2 0 0 0 4 0" />
+    </>
+  ),
+  palette: (
+    <>
+      <path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h3a6 6 0 0 0 6-6 4 4 0 0 0-9-4z" />
+      <circle cx="7.5" cy="11" r="1" />
+      <circle cx="9.5" cy="7" r="1" />
+      <circle cx="14" cy="6.5" r="1" />
+    </>
+  ),
   grid: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1" />

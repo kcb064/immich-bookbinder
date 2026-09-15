@@ -8,6 +8,7 @@ import { EditorPage } from './pages/Editor.tsx';
 import { NewBookPage } from './pages/NewBook.tsx';
 import { OrderPage } from './pages/Order.tsx';
 import { OrdersPage } from './pages/Orders.tsx';
+import { PeoplePage } from './pages/People.tsx';
 import { ReviewPage } from './pages/Review.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
 import { ViewerPage } from './pages/Viewer.tsx';
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
       { path: 'books/:id', Component: BookDetailPage },
       { path: 'books/:id/review', Component: ReviewPage },
       { path: 'books/:id/order', Component: OrderPage },
+      { path: 'people', Component: PeoplePage },
       { path: 'orders', Component: OrdersPage },
       { path: 'settings', Component: SettingsPage },
       { path: '*', Component: NotFoundPage },

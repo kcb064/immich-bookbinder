@@ -16,7 +16,7 @@
  * a job left UNPAID.
  */
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 
 export interface FakeLuluOptions {
@@ -57,6 +57,13 @@ export interface FakeLulu {
   downloads: Map<string, { md5: string; bytes: number; pages: number }>;
   behaviour: FakeLuluBehaviour;
   requests: { method: string; path: string }[];
+  /** Webhook subscriptions (M7) and what was delivered to them. */
+  webhooks: Map<string, { id: string; url: string; topics: string[]; is_active: boolean }>;
+  deliveries: Array<{ url: string; status: number | undefined; topic: string; jobId: number }>;
+  /** Resolves once every webhook delivery so far has been answered. */
+  webhooksIdle(): Promise<void>;
+  /** Sends a PRINT_JOB_STATUS_CHANGED submission for a job as it currently is. */
+  fire(jobId: number): void;
   /** Forget every issued token (the next authenticated call gets a 401). */
   revokeTokens(): void;
   close(): Promise<void>;
@@ -127,6 +134,9 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
   const validations = new Map<number, { kind: 'interior' | 'cover'; url: string; polls: number; errors: string[] | undefined; pages: number | undefined; ok: boolean }>();
   const requests: { method: string; path: string }[] = [];
   const behaviour: FakeLuluBehaviour = { advanceOnPoll: true };
+  const webhooks = new Map<string, { id: string; url: string; topics: string[]; is_active: boolean }>();
+  const deliveries: Array<{ url: string; status: number | undefined; topic: string; jobId: number }> = [];
+  let inflight: Promise<unknown> = Promise.resolve();
   let nextJobId = 1000;
   let nextValidationId = 1;
 
@@ -396,6 +406,53 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
     return reply.code(201).send(jobView(job));
   });
 
+  /** Lulu signs each submission with the API secret (HMAC-SHA256 over the raw body) and retries failures; the fake sends once. */
+  const submit = (topic: string, job: FakeLuluJob): void => {
+    for (const hook of webhooks.values()) {
+      if (!hook.is_active || !hook.topics.includes(topic)) continue;
+      const body = JSON.stringify({ topic, data: jobView(job) });
+      const signature = createHmac('sha256', clientSecret).update(body, 'utf8').digest('hex');
+      const p = fetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'Lulu-HMAC-SHA256': signature }, body, signal: AbortSignal.timeout(5000) })
+        .then((res) => deliveries.push({ url: hook.url, status: res.status, topic, jobId: job.id }))
+        .catch(() => deliveries.push({ url: hook.url, status: undefined, topic, jobId: job.id }));
+      inflight = inflight.then(() => p);
+    }
+  };
+
+  app.get('/webhooks/', async (req, reply) => {
+    if (!authed(req, reply)) return;
+    return [...webhooks.values()];
+  });
+  app.post<{ Body: { topics?: string[]; url?: string } }>('/webhooks/', async (req, reply) => {
+    if (!authed(req, reply)) return;
+    const url = req.body?.url;
+    const topics = req.body?.topics ?? [];
+    if (!url || !/^https?:\/\//.test(url)) return reply.code(400).send({ url: ['Enter a valid URL.'] });
+    if (topics.some((t) => t !== 'PRINT_JOB_STATUS_CHANGED')) return reply.code(400).send({ topics: ['No matching enum type.'] });
+    if ([...webhooks.values()].some((h) => h.url === url)) return reply.code(400).send({ url: ['Webhook with this url already exists.'] });
+    const hook = { id: randomBytes(8).toString('hex'), url, topics, is_active: true };
+    webhooks.set(hook.id, hook);
+    return reply.code(201).send(hook);
+  });
+  app.get<{ Params: { id: string } }>('/webhooks/:id/', async (req, reply) => {
+    if (!authed(req, reply)) return;
+    const hook = webhooks.get(req.params.id);
+    return hook ?? reply.code(404).send({ detail: 'Not found.' });
+  });
+  app.delete<{ Params: { id: string } }>('/webhooks/:id/', async (req, reply) => {
+    if (!authed(req, reply)) return;
+    if (!webhooks.delete(req.params.id)) return reply.code(404).send({ detail: 'Not found.' });
+    return reply.code(204).send();
+  });
+  app.post<{ Params: { id: string; topic: string } }>('/webhooks/:id/test-submission/:topic/', async (req, reply) => {
+    if (!authed(req, reply)) return;
+    const hook = webhooks.get(req.params.id);
+    if (!hook) return reply.code(404).send({ detail: 'Not found.' });
+    const dummy: FakeLuluJob = { id: 1, status: 'UNPAID', message: STATUS_MESSAGES['UNPAID']!, body: { line_items: [] }, createdAt: new Date().toISOString() };
+    submit(req.params.topic, dummy);
+    return reply.code(200).send({ ok: true });
+  });
+
   app.get<{ Querystring: { page_size?: string; page?: string } }>('/print-jobs/', async (req, reply) => {
     if (!authed(req, reply)) return;
     const size = Number(req.query.page_size ?? 100) || 100;
@@ -431,6 +488,7 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
         job.status = STATUS_FLOW[i + 1]!;
         job.message = STATUS_MESSAGES[job.status]!;
         if (job.status === 'SHIPPED') job.trackingUrl = `${url}/printer-wannabe-tracking/${job.id}_1`;
+        submit('PRINT_JOB_STATUS_CHANGED', job);
       }
     }
     return statusView(job);
@@ -444,13 +502,14 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
     if (job.status !== 'CREATED' && job.status !== 'UNPAID') return reply.code(400).send({ detail: `Print-Job in status ${job.status} cannot be canceled` });
     job.status = 'CANCELED';
     job.message = STATUS_MESSAGES['CANCELED']!;
+    submit('PRINT_JOB_STATUS_CHANGED', job);
     return statusView(job);
   });
 
   app.get<{ Params: { id: string } }>('/printer-wannabe-tracking/:id', async (req) => `Parcel ${req.params.id}: out for delivery (fake)`);
 
   const url = await app.listen({ port: opts.port ?? 0, host: opts.host ?? '127.0.0.1' });
-  return { url, app, clientKey, clientSecret, jobs, downloads, behaviour, requests, revokeTokens: () => tokens.clear(), close: () => app.close() };
+  return { url, app, clientKey, clientSecret, jobs, downloads, behaviour, requests, webhooks, deliveries, webhooksIdle: () => inflight.then(() => undefined), fire: (jobId) => { const j = jobs.get(jobId); if (j) submit('PRINT_JOB_STATUS_CHANGED', j); }, revokeTokens: () => tokens.clear(), close: () => app.close() };
 }
 
 // Run directly: node/tsx src/test/fake-lulu.ts [--port N] [--key K] [--secret S]; PORT in the environment also sets the port.

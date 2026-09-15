@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { Book, BookAsset, ImmichStatus, LuluStatus, OrderView, Preflight, ReachabilityReport, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
-import type { CreateShareInput, DecisionChoice, ImmichConnectionInput, LuluConnectionInput, LuluEnv, PrepareOrderInput, RenderKind, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
+import { AiJob, AiTest, Book, BookAsset, ImmichStatus, LuluRemoteJob, LuluStatus, LuluWebhookView, NotificationTest, OrderView, Preflight, ReachabilityReport, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
+import type { AiJobKind, AiSettingsInput, CreateShareInput, DecisionChoice, ImmichConnectionInput, LuluConnectionInput, LuluEnv, NotificationSettingsInput, PrepareOrderInput, RenderKind, SavedPet, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
 import { del, get, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -94,6 +94,7 @@ export const keys = {
   selection: (id: string) => ['books', id, 'selection'] as const,
   preflight: (id: string) => ['books', id, 'preflight'] as const,
   shares: (id: string) => ['books', id, 'shares'] as const,
+  aiJobs: (id: string) => ['books', id, 'ai'] as const,
   allOrders: ['orders'] as const,
   orders: (id: string) => ['books', id, 'orders'] as const,
   order: (id: string, oid: string) => ['books', id, 'orders', oid] as const,
@@ -195,6 +196,105 @@ export function useSavePublicUrl() {
   });
 }
 
+/** Replaces the saved pets (M7). */
+export function useSavePets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pets: SavedPet[]) => put('/api/settings/pets', { pets }, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+/* ---------- Claude (M7) ---------- */
+
+export function useSaveAi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AiSettingsInput) => put('/api/settings/ai', input, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+export function useClearAi() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => del('/api/settings/ai', SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+export function useTestAi() {
+  return useMutation({ mutationFn: () => post('/api/ai/test', undefined, AiTest) });
+}
+
+const ACTIVE_AI = new Set(['queued', 'running']);
+
+/** Claude jobs of a book; polls while one runs and refreshes the book, selection and preflight when it settles. */
+export function useAiJobs(id: string | undefined) {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: keys.aiJobs(id ?? ''),
+    queryFn: ({ signal }) => get(`/api/books/${encodeURIComponent(id ?? '')}/ai/jobs`, z.array(AiJob), signal),
+    enabled: Boolean(id),
+    refetchInterval: (q) => (q.state.data?.some((j) => ACTIVE_AI.has(j.status)) ? 1000 : false),
+  });
+  const active = query.data?.filter((j) => ACTIVE_AI.has(j.status)).length ?? 0;
+  const prev = useRef(active);
+  useEffect(() => {
+    if (prev.current > 0 && active === 0 && id) {
+      void Promise.all([qc.invalidateQueries({ queryKey: keys.book(id) }), qc.invalidateQueries({ queryKey: keys.selection(id) }), qc.invalidateQueries({ queryKey: keys.preflight(id) })]);
+    }
+    prev.current = active;
+  }, [active, id, qc]);
+  return query;
+}
+
+export function useStartAiJob(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, overwrite }: { kind: AiJobKind; overwrite?: boolean }) => post(`/api/books/${encodeURIComponent(id)}/ai/${kind}`, { overwrite: overwrite ?? false }, AiJob),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.aiJobs(id) });
+    },
+  });
+}
+
+/** Undoes Claude's pick for one burst; the selection is refetched. */
+export function useRevertBurst(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (assetId: string) => post(`/api/books/${encodeURIComponent(id)}/ai/bursts/revert`, { assetId }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: keys.selection(id) });
+    },
+  });
+}
+
+/* ---------- Notifications (M7) ---------- */
+
+export function useSaveNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: NotificationSettingsInput) => put('/api/settings/notifications', input, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+export function useClearNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => del('/api/settings/notifications', SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
+/** Sends a test message through the stored target, or the typed one when given. */
+export function useTestNotifications() {
+  return useMutation({
+    mutationFn: (input?: NotificationSettingsInput) => post('/api/notifications/test', input ?? {}, NotificationTest),
+  });
+}
+
 export function useAlbums(enabled = true) {
   return useQuery({
     queryKey: keys.albums,
@@ -266,6 +366,7 @@ export type SourceInput =
   | { kind: 'trip'; takenAfter: string; takenBefore: string; places?: Array<{ name: string; bbox: [number, number, number, number] }>; includeUngeotagged?: boolean }
   | { kind: 'people'; personIds: string[] }
   | { kind: 'smart'; query: string; limit?: number }
+  | { kind: 'pet'; name: string; query: string; exampleAssetIds?: string[]; limit?: number }
   | { kind: 'favorites' };
 
 export interface CreateBookInput {
@@ -519,6 +620,59 @@ export function useSetLuluSandbox() {
 export function useReachability() {
   return useMutation({
     mutationFn: () => post('/api/lulu/reachability', undefined, ReachabilityReport),
+  });
+}
+
+/* ---------- Lulu webhooks and job list (M7) ---------- */
+
+export function useLuluWebhook(enabled = true) {
+  return useQuery({
+    queryKey: ['lulu', 'webhook'] as const,
+    queryFn: ({ signal }) => get('/api/lulu/webhook', LuluWebhookView.nullable(), signal),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+export function useSubscribeLuluWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => post('/api/lulu/webhook', undefined, LuluWebhookView),
+    onSuccess: (hook) => qc.setQueryData(['lulu', 'webhook'], hook),
+  });
+}
+
+export function useUnsubscribeLuluWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => del('/api/lulu/webhook'),
+    onSuccess: () => qc.setQueryData(['lulu', 'webhook'], null),
+  });
+}
+
+export function useTestLuluWebhook() {
+  return useMutation({ mutationFn: () => post('/api/lulu/webhook/test') });
+}
+
+/** Print jobs on the Lulu account (newest first), with the local order when one tracks them. */
+export function useLuluPrintJobs(enabled = true) {
+  return useQuery({
+    queryKey: ['lulu', 'print-jobs'] as const,
+    queryFn: ({ signal }) => get('/api/lulu/print-jobs', z.array(LuluRemoteJob), signal),
+    enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useImportLuluJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobId, bookId }: { jobId: string; bookId?: string }) => post(`/api/lulu/print-jobs/${encodeURIComponent(jobId)}/import`, bookId ? { bookId } : {}, OrderView),
+    onSuccess: async () => {
+      await Promise.all([qc.invalidateQueries({ queryKey: ['lulu', 'print-jobs'] }), qc.invalidateQueries({ queryKey: keys.allOrders }), qc.invalidateQueries({ queryKey: keys.books })]);
+    },
   });
 }
 

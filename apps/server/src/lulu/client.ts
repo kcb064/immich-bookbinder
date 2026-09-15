@@ -121,10 +121,32 @@ export const LuluPrintJob = z.object({
   id: z.number().int(),
   external_id: z.string().nullish(),
   status: z.object({ name: z.string(), message: z.string().nullish(), messages: LineItemMessages.nullish() }).optional(),
+  contact_email: z.string().nullish(),
+  shipping_level: z.string().nullish(),
+  date_created: z.string().nullish(),
+  shipping_address: z
+    .object({
+      name: z.string().nullish(),
+      street1: z.string().nullish(),
+      street2: z.string().nullish(),
+      city: z.string().nullish(),
+      state_code: z.string().nullish(),
+      postcode: z.string().nullish(),
+      country_code: z.string().nullish(),
+      phone_number: z.string().nullish(),
+      email: z.string().nullish(),
+    })
+    .loose()
+    .nullish(),
   line_items: z
     .array(
       z.object({
         id: z.number().int().optional(),
+        title: z.string().nullish(),
+        quantity: z.number().nullish(),
+        external_id: z.string().nullish(),
+        pod_package_id: z.string().nullish(),
+        printable_normalization: z.object({ pod_package_id: z.string().nullish(), interior: z.object({ page_count: z.number().nullish() }).loose().nullish() }).loose().nullish(),
         status: z.object({ name: z.string(), messages: LineItemMessages.nullish() }).optional(),
         tracking_id: z.string().nullish(),
         tracking_urls: z.array(z.string()).nullish(),
@@ -133,6 +155,10 @@ export const LuluPrintJob = z.object({
     .default([]),
 });
 export type LuluPrintJob = z.infer<typeof LuluPrintJob>;
+
+export const LuluWebhook = z.object({ id: z.string(), is_active: z.boolean().default(true), topics: z.array(z.string()).default([]), url: z.string() });
+export type LuluWebhook = z.infer<typeof LuluWebhook>;
+const LuluWebhookList = z.union([z.array(LuluWebhook), z.object({ results: z.array(LuluWebhook) }).transform((v) => v.results)]);
 
 export const LuluPrintJobStatus = z.object({
   name: z.string(),
@@ -154,6 +180,13 @@ export interface LuluClientOptions {
   baseUrl?: string | undefined;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
+}
+
+/** A further book in a quote (M7 multiple line items). */
+export interface QuoteLineItem {
+  podPackageId: string;
+  pageCount: number;
+  quantity: number;
 }
 
 export interface PrintJobLineItem {
@@ -229,6 +262,33 @@ export function createLuluClient(opts: LuluClientOptions) {
       return authed('/print-jobs/', LuluPrintJobList, (headers) => api.GET('/print-jobs/', { params: { query }, headers }));
     },
 
+    /** The account's print jobs, newest first, parsed one by one (rows the schema cannot read are skipped). */
+    async listPrintJobsParsed(query: { page_size?: number } = { page_size: 50 }): Promise<LuluPrintJob[]> {
+      const list = await this.listPrintJobs(query);
+      return (list.results ?? []).map((r) => LuluPrintJob.safeParse(r)).filter((p) => p.success).map((p) => p.data);
+    },
+
+    /* ---------- Webhooks (M7) ---------- */
+
+    async listWebhooks(): Promise<LuluWebhook[]> {
+      return authed('/webhooks/', LuluWebhookList, (headers) => api.GET('/webhooks/', { headers }));
+    },
+
+    async subscribeWebhook(url: string): Promise<LuluWebhook> {
+      return authed('/webhooks/', LuluWebhook, (headers) => api.POST('/webhooks/', { body: { topics: ['PRINT_JOB_STATUS_CHANGED'], url }, headers }));
+    },
+
+    async deleteWebhook(id: string): Promise<void> {
+      await authed(`/webhooks/${id}/`, z.unknown(), (headers) => api.DELETE('/webhooks/{id}/', { params: { path: { id } }, headers }));
+    },
+
+    /** Asks Lulu to POST a dummy PRINT_JOB_STATUS_CHANGED payload to the webhook. */
+    async testWebhook(id: string): Promise<void> {
+      await authed(`/webhooks/${id}/test-submission/PRINT_JOB_STATUS_CHANGED/`, z.unknown(), (headers) =>
+        api.POST('/webhooks/{id}/test-submission/{topic}/', { params: { path: { id, topic: 'PRINT_JOB_STATUS_CHANGED' } }, headers }),
+      );
+    },
+
     async coverDimensions(input: { podPackageId: string; pageCount: number; unit?: 'pt' | 'mm' | 'inch' }) {
       return authed('/cover-dimensions/', LuluCoverDimensions, (headers) =>
         api.POST('/cover-dimensions/', { body: { pod_package_id: input.podPackageId, interior_page_count: input.pageCount, unit: input.unit ?? 'pt' }, headers }),
@@ -255,13 +315,13 @@ export function createLuluClient(opts: LuluClientOptions) {
       return authed(`/validate-cover/${id}/`, LuluFileValidation, (headers) => api.GET('/validate-cover/{id}/', { params: { path: { id } }, headers }));
     },
 
-    async shippingOptions(input: { podPackageId: string; pageCount: number; quantity: number; address: ShippingAddress; currency?: string }) {
+    async shippingOptions(input: { podPackageId: string; pageCount: number; quantity: number; address: ShippingAddress; currency?: string; extra?: readonly QuoteLineItem[] }) {
       const a = input.address;
       return authed('/shipping-options/', LuluShippingOptions, (headers) =>
         api.POST('/shipping-options/', {
           body: {
             ...(input.currency ? { currency: input.currency } : {}),
-            line_items: [{ page_count: input.pageCount, pod_package_id: input.podPackageId, quantity: input.quantity }],
+            line_items: [{ page_count: input.pageCount, pod_package_id: input.podPackageId, quantity: input.quantity }, ...(input.extra ?? []).map((li) => ({ page_count: li.pageCount, pod_package_id: li.podPackageId, quantity: li.quantity }))],
             shipping_address: {
               country: a.country_code,
               city: a.city,
@@ -278,11 +338,11 @@ export function createLuluClient(opts: LuluClientOptions) {
       );
     },
 
-    async costCalculation(input: { podPackageId: string; pageCount: number; quantity: number; address: ShippingAddress; shippingLevel: ShippingLevel }) {
+    async costCalculation(input: { podPackageId: string; pageCount: number; quantity: number; address: ShippingAddress; shippingLevel: ShippingLevel; extra?: readonly QuoteLineItem[] }) {
       return authed('/print-job-cost-calculations/', LuluCostCalculation, (headers) =>
         api.POST('/print-job-cost-calculations/', {
           body: {
-            line_items: [{ page_count: input.pageCount, pod_package_id: input.podPackageId, quantity: input.quantity }],
+            line_items: [{ page_count: input.pageCount, pod_package_id: input.podPackageId, quantity: input.quantity }, ...(input.extra ?? []).map((li) => ({ page_count: li.pageCount, pod_package_id: li.podPackageId, quantity: li.quantity }))],
             shipping_address: toLuluAddress(input.address),
             shipping_option: input.shippingLevel,
           },

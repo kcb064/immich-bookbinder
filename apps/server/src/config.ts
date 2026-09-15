@@ -29,6 +29,8 @@ const EnvSchema = z
     TRUST_CF_ACCESS: bool.default(false),
     /** Development only: point the Lulu client at a fake (see src/test/fake-lulu.ts) instead of api.lulu.com. */
     LULU_BASE_URL: z.url({ error: 'LULU_BASE_URL must be an absolute URL' }).optional(),
+    /** Development only: point the Anthropic SDK at a fake (see src/test/fake-claude.ts). */
+    AI_BASE_URL: z.url({ error: 'AI_BASE_URL must be an absolute URL' }).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
     WEB_DIST: z.string().min(1).default(defaultWebDist),
   })

@@ -65,7 +65,9 @@ describe('auth flow', () => {
     expect(ok.json()).toEqual({
       immich: { apiKeySet: false },
       lulu: { sandbox: true, clientKeySet: false, sandboxKeySet: false, productionKeySet: false },
-      ai: { enabled: false, apiKeySet: false },
+      ai: { enabled: false, apiKeySet: false, model: 'claude-opus-5' },
+      pets: [],
+      notifications: { configured: false, tokenSet: false, events: { renderDone: true, orderStatus: true, selectionFailed: true } },
     });
   });
 
@@ -134,6 +136,22 @@ describe('auth flow', () => {
       payload: { publicUrl: 'https://books.example.com/' },
     });
     expect(pub.json().publicUrl).toBe('https://books.example.com');
+
+    // Saved pets (M7) round-trip through the view; duplicate ids and empty queries are refused.
+    const pets = await t.app.inject({
+      method: 'PUT',
+      url: '/api/settings/pets',
+      headers: { cookie },
+      payload: { pets: [{ id: 'pet-1', name: ' Biscuit ', query: 'golden retriever', exampleAssetIds: ['asset-0001'] }] },
+    });
+    expect(pets.statusCode).toBe(200);
+    expect(pets.json().pets).toEqual([{ id: 'pet-1', name: 'Biscuit', query: 'golden retriever', exampleAssetIds: ['asset-0001'] }]);
+    const dup = await t.app.inject({ method: 'PUT', url: '/api/settings/pets', headers: { cookie }, payload: { pets: [{ id: 'x', name: 'A', query: 'a' }, { id: 'x', name: 'B', query: 'b' }] } });
+    expect(dup.statusCode).toBe(400);
+    const blank = await t.app.inject({ method: 'PUT', url: '/api/settings/pets', headers: { cookie }, payload: { pets: [{ id: 'y', name: 'A', query: '  ' }] } });
+    expect(blank.statusCode).toBe(400);
+    const cleared = await t.app.inject({ method: 'PUT', url: '/api/settings/pets', headers: { cookie }, payload: { pets: [] } });
+    expect(cleared.json().pets).toEqual([]);
   });
 
   it('rate-limits login to 5 per minute per IP', async () => {

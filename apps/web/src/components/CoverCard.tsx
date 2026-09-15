@@ -28,7 +28,7 @@ function withSlotText(slots: SlotContent[], slotId: string, text: string): SlotC
  */
 export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] }) {
   const format = FORMAT_PRESETS[book.formatId];
-  const theme = themeFor(book.themeId);
+  const theme = themeFor(book);
   const save = useSaveBook(book.id);
   const renders = useRenders(book.id);
   const [draft, setDraft] = useState<BookCover | undefined>(book.cover);

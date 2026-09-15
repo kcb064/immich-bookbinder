@@ -33,7 +33,7 @@ The app is meant to sit behind `cloudflared` so that share links and Lulu's PDF 
 
 Putting the admin UI behind Access adds an identity login in front of the app's own password. If you do that:
 
-- Create the Access application for `books.example.com`, **but exclude the public paths**: add bypass rules (or separate applications with an "Everyone -> Bypass" policy) for `books.example.com/s/*` (shared viewer: the page, `book.json`, page PNGs, the PDF and the password unlock all live under the token) and `books.example.com/public/*` (PDFs that Lulu downloads). Without this, people who receive a share link get a Cloudflare login page, and Lulu's download fails. The app rate-limits `/s/*` itself (60 requests per minute per IP, 10 unlock attempts) and share tokens are 32 random bytes, so bypassing Access there exposes nothing guessable.
+- Create the Access application for `books.example.com`, **but exclude the public paths**: add bypass rules (or separate applications with an "Everyone -> Bypass" policy) for `books.example.com/s/*` (shared viewer: the page, `book.json`, page PNGs, the PDF and the password unlock all live under the token) and `books.example.com/public/*` (PDFs that Lulu downloads, and `/public/lulu/webhook`, where Lulu posts signed status changes when you subscribe the webhook in Settings). Without this, people who receive a share link get a Cloudflare login page, and Lulu's download fails. The app rate-limits `/s/*` itself (60 requests per minute per IP, 10 unlock attempts) and share tokens are 32 random bytes, so bypassing Access there exposes nothing guessable.
 - Add a **WAF skip rule** for `/public/exports/*`. Lulu fetches large PDFs from a data-centre IP with a non-browser client, which managed rules and Bot Fight Mode may block. Expression: `(http.host eq "books.example.com" and starts_with(http.request.uri.path, "/public/exports/"))`, action Skip: all remaining custom rules, managed rules, and Bot Fight Mode / Super Bot Fight Mode. The export URLs contain a 64-character random token and expire, so skipping the WAF here does not expose anything guessable.
 - Optionally set `TRUST_CF_ACCESS=true` so an Access-authenticated user is treated as the admin without the app password. Only do this when the container is **unreachable except through the tunnel** (no `ports:` published on a routable interface, or firewall rules), because the `Cf-Access-Authenticated-User-Email` header is trivial to forge on a direct connection.
 - Large PDFs: a 100-page book can be 200-300 MB. Cloudflare proxies responses of that size, but if Lulu reports a download failure use **Settings -> Public URL -> Check reachability** (it publishes a throwaway PDF and fetches it through `PUBLIC_URL` from the server itself, reporting an Access login page or WAF challenge as "HTML instead of a PDF") and, failing that, upload the exported PDFs on lulu.com by hand. Run the check after every change to Access or WAF rules.
@@ -61,7 +61,13 @@ Images are published to `ghcr.io/kcb064/immich-bookbinder`. `latest` follows `ma
 
 Check the logs after an update with `docker logs -f immich-bookbinder`. Set `LOG_LEVEL=debug` in `.env` when reporting a problem.
 
-## 6. Resource notes
+## 6. Optional services (M7)
+
+- **Notifications** (Settings -> Notifications): an ntfy topic URL, a Gotify server + application token, or any webhook URL. The container only needs outbound HTTPS to it. Messages link back through `PUBLIC_URL`.
+- **Claude features** (Settings -> Claude): your own Anthropic API key, stored encrypted with `SECRET_KEY`. Outbound HTTPS to `api.anthropic.com`; see [ai.md](ai.md) for what leaves the server (thumbnails, dates, places; never originals).
+- **Lulu webhook** (Settings -> Lulu): needs `PUBLIC_URL` reachable by Lulu, like the export URLs; see [lulu-setup.md](lulu-setup.md).
+
+## 7. Resource notes
 
 - `mem_limit: 2g` covers one render at a time on a 60-page book. Chromium is started per render and closed afterwards.
 - `ipc: host` and `init: true` are not optional: without them Chromium crashes on large full-bleed pages or leaves zombie processes.

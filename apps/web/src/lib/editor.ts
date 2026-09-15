@@ -1,6 +1,6 @@
 import type { BookAsset, BookFormat, Crop, Page, SlotContent } from '@bookbinder/shared';
 import { FORMAT_PRESETS } from '@bookbinder/shared';
-import { assignPhotos, BLANK_TEMPLATE_ID, effectivePhotoSlots, getTemplate, isOpenerTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
+import { assignPhotos, BLANK_TEMPLATE_ID, COLOPHON_TEMPLATE_ID, effectivePhotoSlots, getTemplate, isOpenerTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
 import { omitKeys, placePhoto } from './designer.ts';
 
 /** Pure page-list edits behind the editor. Every function returns a new array; nothing is mutated. */
@@ -40,7 +40,12 @@ function keeps(c: SlotContent): boolean {
 }
 
 export function isBodyPage(page: Page): boolean {
-  return page.templateId !== TITLE_TEMPLATE_ID;
+  return page.templateId !== TITLE_TEMPLATE_ID && page.templateId !== COLOPHON_TEMPLATE_ID;
+}
+
+/** The closing page (credits, dates, share QR code); it stays last. */
+export function isColophonPage(page: Page): boolean {
+  return page.templateId === COLOPHON_TEMPLATE_ID;
 }
 
 /** Chapter opener halves (hero photo, title page): their template is fixed and photos are not added to them. */
@@ -131,13 +136,15 @@ export function addPhoto(
   return { pages: reindexPages([...pages.slice(0, pageIndex + 1), fresh, ...pages.slice(pageIndex + 1)]), pageIndex: pageIndex + 1 };
 }
 
-/** Moves a page to another position (the title page stays first; chapter opener halves stay put). */
+/** Moves a page to another position (the title page stays first, the colophon last; chapter opener halves stay put). */
 export function movePage(pages: readonly Page[], from: number, to: number): Page[] {
   const first = pages[0];
+  const last = pages[pages.length - 1];
   const min = first && !isBodyPage(first) ? 1 : 0;
-  if (from < min || from >= pages.length) return [...pages];
+  const max = last && isColophonPage(last) ? pages.length - 2 : pages.length - 1;
+  if (from < min || from > max) return [...pages];
   if (isOpenerPage(pages[from]!)) return [...pages];
-  const target = Math.max(min, Math.min(pages.length - 1, to));
+  const target = Math.max(min, Math.min(max, to));
   if (from === target) return [...pages];
   const out = [...pages];
   const [page] = out.splice(from, 1);

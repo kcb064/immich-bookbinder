@@ -61,7 +61,7 @@ function CostTable({ order }: { order: OrderView }) {
         {c.lineItems.map((li, i) => (
           <tr key={i}>
             <td>
-              {li.quantity} × book, {order.pageCount} pages <span className="muted">({m(li.unitCost)} each)</span>
+              {li.quantity} × {order.lineItems[i]?.title ?? 'book'}, {order.lineItems[i]?.pageCount ?? order.pageCount} pages <span className="muted">({m(li.unitCost)} each)</span>
             </td>
             <td className="mono">{m(li.totalExclTax)}</td>
           </tr>
@@ -121,7 +121,8 @@ export function OrderCard({ order, expanded = false, onCancel }: { order: OrderV
       <button type="button" className="order__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <Chip tone={ORDER_STATUS_TONES[order.status]}>{ORDER_STATUS_LABELS[order.status]}</Chip>
         <span className="grow">
-          {order.quantity} {order.quantity === 1 ? 'copy' : 'copies'} to {a.name}, {a.city} {a.country_code}
+          {order.lineItems.length > 1 ? `${order.lineItems.reduce((n, li) => n + li.quantity, 0)} copies of ${order.lineItems.length} books` : `${order.quantity} ${order.quantity === 1 ? 'copy' : 'copies'}`} to {a.name}, {a.city} {a.country_code}
+          {order.imported ? <span className="muted"> · imported from Lulu</span> : null}
           {order.cost ? <span className="muted"> · {formatMoney(order.cost.totalInclTax, order.cost.currency)}</span> : null}
         </span>
         <span className="muted small">

@@ -1,4 +1,4 @@
-import { FORMAT_PRESETS, RenderData, THEMES, luluPodPackageId, type Book, type BookCover, type BookFormat, type CoverGeometry, type RenderJob, type RenderKind } from '@bookbinder/shared';
+import { FORMAT_PRESETS, RenderData, luluPodPackageId, resolveTheme, type Book, type BookCover, type BookFormat, type CoverGeometry, type RenderJob, type RenderKind } from '@bookbinder/shared';
 import { coverGeometry, type CoverOverride } from '@bookbinder/layout';
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -10,6 +10,7 @@ import type { Db } from '../db/index.js';
 import { renders, type RenderRow } from '../db/schema.js';
 import type { ImmichClient } from '../immich/client.js';
 import { ImageStore } from './images.js';
+import type { NotifyEvent } from '../notify/notifier.js';
 import { PREVIEW_COVER_FILE, previewPageFile, type ChromiumRenderer } from './renderer.js';
 
 /** Render kinds that produce one PDF file (the rest write a directory of PNGs). */
@@ -36,6 +37,10 @@ export interface RenderServiceDeps {
    * undefined when Lulu is not connected; a throw is reported as a render warning.
    */
   coverDimensions?: (podPackageId: string, pageCount: number) => Promise<CoverOverride | undefined>;
+  /** Public viewer link of the book's active share, printed as a QR code on the colophon (M7); undefined = none. */
+  shareUrl?: (bookId: string) => string | undefined;
+  /** Fired when a render finishes or fails (M7 notifications). */
+  notify?: (event: NotifyEvent) => void;
 }
 
 /** Warning on cover and preview renders sized with the caliper estimate instead of Lulu's answer. */
@@ -204,7 +209,7 @@ export class RenderService {
       if (book.pages.length === 0) throw new Error('The book has no pages yet; run the layout first');
       const format = FORMAT_PRESETS[book.formatId];
       if (!format) throw new Error(`Unknown format ${book.formatId}`);
-      const theme = THEMES[book.themeId] ?? THEMES['warm-editorial']!;
+      const theme = resolveTheme(book.themeId, book.themeOverrides);
       const client = this.deps.client();
       if (!client) throw new Error('Immich is not configured');
       let images = this.imageStores.get(client);
@@ -230,6 +235,7 @@ export class RenderService {
         kind,
         images,
         cover,
+        shareUrl: this.deps.shareUrl?.(book.id),
         ...(this.deps.batchSize !== undefined ? { batchSize: this.deps.batchSize } : {}),
         ...(this.deps.webFonts !== undefined ? { webFonts: this.deps.webFonts } : {}),
         onProgress: (pagesDone: number, pagesTotal: number) => {
@@ -258,6 +264,7 @@ export class RenderService {
           finishedAt: new Date().toISOString(),
         });
         log.info({ pageCount: out.pageCount, hasCover: out.hasCover, bytes: out.bytes, warnings: out.warnings.length }, 'preview finished');
+        this.deps.notify?.(this.finishedEvent(book, kind, out.pageCount, out.warnings.length));
         return;
       }
 
@@ -278,10 +285,33 @@ export class RenderService {
       // Status only: the content did not change, so updatedAt stays put (preflight compares it to render times).
       if (kind === 'print' && book.status === 'editing') this.deps.store.setStatus(book.id, 'rendered');
       log.info({ pageCount: out.pageCount, bytes: out.pdf.byteLength, warnings: out.warnings.length }, 'render finished');
+      this.deps.notify?.(this.finishedEvent(book, kind, out.pageCount, out.warnings.length));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err }, 'render failed');
       this.update(id, { status: 'error', error: message, finishedAt: new Date().toISOString() });
+      const book = this.deps.store.get(row.bookId);
+      this.deps.notify?.({
+        kind: 'render-failed',
+        level: 'error',
+        title: `${row.kind} render failed`,
+        message: `${book?.title ?? row.bookId}: ${message}`,
+        bookId: row.bookId,
+        bookTitle: book?.title,
+        path: `/books/${encodeURIComponent(row.bookId)}`,
+      });
     }
+  }
+
+  private finishedEvent(book: Book, kind: RenderKind, pageCount: number, warnings: number): NotifyEvent {
+    const what = kind === 'preview' ? 'Preview pages' : `${kind[0]!.toUpperCase()}${kind.slice(1)} PDF`;
+    return {
+      kind: 'render-done',
+      title: `${what} ready`,
+      message: `${book.title}: ${pageCount} page${pageCount === 1 ? '' : 's'}${warnings > 0 ? `, ${warnings} warning${warnings === 1 ? '' : 's'}` : ''}.`,
+      bookId: book.id,
+      bookTitle: book.title,
+      path: `/books/${encodeURIComponent(book.id)}`,
+    };
   }
 }

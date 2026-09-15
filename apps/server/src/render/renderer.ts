@@ -29,6 +29,8 @@ export interface RenderInput {
   batchSize?: number;
   /** Load web fonts from Google Fonts (default true; tests turn it off). */
   webFonts?: boolean;
+  /** Public share link for the colophon's QR code (M7); absent = no QR. */
+  shareUrl?: string | undefined;
   onProgress?: (pagesDone: number, pagesTotal: number) => void;
 }
 
@@ -161,7 +163,7 @@ export class ChromiumRenderer {
   private documentFor(input: RenderInput, pages: Book['pages'], firstPageIndex: number, withCover: boolean): string {
     const { book, format, theme, assets, kind } = input;
     const placed = new Set(book.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter((id): id is string => Boolean(id))));
-    const meta = bookMetaFor(book, [...placed].map((id) => assets.get(id)).filter((a): a is BookAsset => a !== undefined), placed.size);
+    const meta = bookMetaFor(book, [...placed].map((id) => assets.get(id)).filter((a): a is BookAsset => a !== undefined), placed.size, { shareUrl: input.shareUrl });
     return renderPrintDocument({
       pages,
       firstPageIndex,

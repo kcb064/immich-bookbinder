@@ -179,6 +179,8 @@ export function makeHomeAssets(startIndex: number, n: number, longEdge = 1800): 
       albumIds: [],
       hue: (i * 61) % 360,
       ...(k % 4 === 0 ? { people: [FAKE_PEOPLE[1]!] } : {}),
+      // Every fifth home photo shows the dog, so a pet query ("dog") and similarity searches find something.
+      ...(k % 5 === 2 ? { description: `Biscuit the dog ${isWeekend ? 'on the beach' : 'in the garden'}` } : {}),
     });
   }
   return out;
@@ -334,6 +336,17 @@ function smartRelevance(a: FakeAsset, query: string): number {
   return score;
 }
 
+/** Image similarity stand-in: shared description words count most, then the same town and a close hue. */
+function similarity(a: FakeAsset, ref: FakeAsset): number {
+  if (a.id === ref.id) return 100;
+  let score = 0;
+  if (ref.description) score += smartRelevance(a, ref.description) * 2;
+  if (a.city && a.city === ref.city) score += 1;
+  const dh = Math.abs(a.hue - ref.hue);
+  if (Math.min(dh, 360 - dh) < 30) score += 1;
+  return score;
+}
+
 export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<FakeImmich> {
   const longEdge = opts.originalLongEdge ?? 1800;
   const tripCount = opts.photos ?? 40;
@@ -432,9 +445,11 @@ export async function startFakeImmich(opts: FakeImmichOptions = {}): Promise<Fak
     const body = req.body ?? {};
     if (!body.query && !body.queryAssetId) return reply.code(400).send({ message: 'query is required', statusCode: 400 });
     const size = Math.min(body.size ?? 100, 1000);
+    const reference = body.queryAssetId ? assets.find((a) => a.id === body.queryAssetId) : undefined;
+    if (body.queryAssetId && !reference) return reply.code(400).send({ message: 'queryAssetId not found', statusCode: 400 });
     const ranked = assets
-      .map((a) => ({ a, r: body.query ? smartRelevance(a, body.query) : 0 }))
-      .filter((x) => x.r > 0 || !body.query)
+      .map((a) => ({ a, r: body.query ? smartRelevance(a, body.query) : reference ? similarity(a, reference) : 0 }))
+      .filter((x) => x.r > 0 || (!body.query && !reference))
       .sort((x, y) => y.r - x.r || x.a.id.localeCompare(y.a.id))
       .slice(0, size)
       .map((x) => assetDto(x.a));

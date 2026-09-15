@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import type { ThemeOverrides } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import type { IconName } from '../components/Icon.tsx';
@@ -8,8 +9,8 @@ import type { BookSummary } from '../lib/queries.ts';
 import { STATUS_LABELS, STATUS_TONES, bookMeta, themeFor } from '../lib/format.ts';
 import { errorMessage } from '../lib/api.ts';
 
-export function BookCover({ book, className }: { book: { title: string; themeId: string }; className?: string }) {
-  const theme = themeFor(book.themeId);
+export function BookCover({ book, className }: { book: { title: string; themeId: string; themeOverrides?: ThemeOverrides | undefined }; className?: string }) {
+  const theme = themeFor(book);
   // Serif display themes set titles in italic; sans themes use small tracked caps (see the design canvas).
   const serif = /serif/i.test(theme.displayFont) && !/sans-serif/i.test(theme.displayFont);
   return (

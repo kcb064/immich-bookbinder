@@ -39,6 +39,12 @@ Presets (`FORMAT_PRESETS`): Lulu `0850X0850` 8.5 in square (default), `0750X0750
 - The cover is created with the first layout (best-scored placed photo, framed on its faces; title, dates and spine text inherited from the book) and edited on the book page (photo, title, subtitle, spine, back-cover text) or laid out by hand in the editor's cover view (M6): every slot but the spine can be moved, resized and rotated, and text boxes can be added; frames keep the back/front convention, so a box at x < 0 sits on the back cover.
 - Same font, colour and image rules as the interior; a pdf-lib post-pass checks that the one page measures the geometry's width × height in points.
 
+## Colophon, QR code and maps (M7)
+
+- Every automatic layout ends with a **colophon** page (`colophon` template, last page, before nothing; padding blanks go before it). It prints the book title, the photograph count, "made with immich-bookbinder" and the date range. When the book has an active share link **and** a public URL is configured, the share URL is encoded as a QR code (byte mode, error correction M, `packages/layout/src/qr.ts`, no dependency) with the URL text next to it. The editor, the viewer PNGs and the print PDF draw the same modules. Remove the page in the editor if you do not want one; a re-layout brings it back.
+- Chapter title pages carry an optional **map** (`rules.chapterMaps`, toggled on the review page or the chapter opener panel in the editor): an SVG drawn from the coordinates of the chapter's placed photos, equirectangular around their centre, with a graticule, a chronological route and one dot per distinct spot (`packages/layout/src/map.ts`). No tiles, no network, so the PDF is deterministic; chapters without GPS data draw nothing.
+- The title page has a `foreword` text slot (empty unless typed or written by Claude, see [ai.md](ai.md)).
+
 ## Page previews (PNG)
 
 - A `preview` render screenshots every `.bb-sheet` of the same print document at a device scale factor that puts the longest edge at **1600 px**, writing `DATA_DIR/exports/<book>/<render>/0000.png`, `0001.png`, ... plus `cover.png` (the whole cover sheet, 1600 px wide) when the book has a cover. Images come from Immich previews at 180 ppi, JPEG 85, so a preview costs about what a proof does.
@@ -56,7 +62,8 @@ Presets (`FORMAT_PRESETS`): Lulu `0850X0850` 8.5 in square (default), `0750X0750
 | `caption-safety` | warn | A caption box reaching into the safety band: `safetyIn` from the outer trim edges, `max(safetyIn, gutterSafetyIn)` on the spine side, 0.02 in tolerance. Only captions that would print (user text, or a page with photos) count. |
 | `cover-missing` | error (no cover document) / warn (no cover PDF) | Lulu formats only. |
 | `cover-stale` | warn | The newest cover PDF was sized for a different page count (spine width), or the book changed after it was rendered. |
-| `render-missing` | warn | No done print PDF, or the book changed after the last one. Marking a book "rendered" does not count as a change. |
+| `cover-safety` | warn | Cover text (title, subtitle, back-cover text, text boxes) or a hand-placed photo box that leaves its cover's safe area: `safetyIn` from the outer trim edges, `max(safetyIn, gutterSafetyIn)` towards the spine, nothing across the spine or on the wrap. Uses the geometry of the newest cover render (Lulu's when it had one), else the estimate. |
+| `render-missing` | warn | No done print PDF, or the book changed after the last one. Marking a book "rendered" does not count as a change. Creating or revoking the last active share counts (the colophon's QR code appears or goes). |
 
 ## Rendering pipeline
 

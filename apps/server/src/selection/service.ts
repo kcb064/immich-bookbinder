@@ -13,6 +13,7 @@ import { gatherAssets } from '../immich/gather.js';
 import { ImageStore } from '../render/images.js';
 import { analyzeFile } from './analyze.js';
 import type { CandidateStore } from './store.js';
+import type { NotifyEvent } from '../notify/notifier.js';
 
 export interface SelectionServiceDeps {
   db: Db;
@@ -23,6 +24,8 @@ export interface SelectionServiceDeps {
   log: FastifyBaseLogger;
   /** Parallel preview decodes (default: cores - 1, between 1 and 4). */
   concurrency?: number;
+  /** Fired when a run fails (M7 notifications). */
+  notify?: (event: NotifyEvent) => void;
 }
 
 export interface StartOptions {
@@ -264,6 +267,16 @@ export class SelectionService {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err }, 'selection failed');
       this.update(id, { status: 'error', error: message, warnings: JSON.stringify(warnings), finishedAt: new Date().toISOString() });
+      const book = this.deps.store.get(row.bookId);
+      this.deps.notify?.({
+        kind: 'selection-failed',
+        level: 'error',
+        title: 'Photo selection failed',
+        message: `${book?.title ?? row.bookId}: ${message}`,
+        bookId: row.bookId,
+        bookTitle: book?.title,
+        path: `/books/${encodeURIComponent(row.bookId)}/review`,
+      });
     }
   }
 }

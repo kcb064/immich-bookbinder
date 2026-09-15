@@ -23,7 +23,7 @@ export interface SourceImage {
   width: number;
   height: number;
   /** Which Immich variant the file came from. */
-  variant: 'original' | 'fullsize' | 'preview';
+  variant: 'original' | 'fullsize' | 'preview' | 'thumbnail';
 }
 
 export class ImageError extends Error {
@@ -83,6 +83,19 @@ export class ImageStore {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * A small JPEG (long edge at most `longEdge` px, default 320) for the Claude features (M7): cut
+   * from Immich's `thumbnail` variant, so nothing larger than a thumbnail ever leaves the server.
+   */
+  async aiThumbnail(assetId: string, longEdge = 320): Promise<Buffer> {
+    const path = await this.limit(() => this.download(assetId, 'thumbnail'));
+    return sharp(await readFile(path))
+      .rotate()
+      .resize({ width: longEdge, height: longEdge, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 72, mozjpeg: true })
+      .toBuffer();
   }
 
   /** Path of the cached Immich `preview` JPEG (downloaded on first use); the selection engine scores from it. */

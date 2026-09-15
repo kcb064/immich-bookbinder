@@ -1,5 +1,5 @@
-import { FORMAT_PRESETS, THEMES, DEFAULT_THEME_ID } from '@bookbinder/shared';
-import type { Book, BookStatus, LuluBinding, OrderStatus, Theme } from '@bookbinder/shared';
+import { FORMAT_PRESETS, resolveTheme } from '@bookbinder/shared';
+import type { Book, BookStatus, LuluBinding, OrderStatus, Theme, ThemeOverrides } from '@bookbinder/shared';
 
 const numberFmt = new Intl.NumberFormat(undefined);
 export const formatNumber = (n: number | undefined | null): string =>
@@ -61,8 +61,9 @@ export function bookMetaFromBook(book: Book): string {
   });
 }
 
-export function themeFor(themeId: string): Theme {
-  return THEMES[themeId] ?? (THEMES[DEFAULT_THEME_ID] as Theme);
+/** The theme a book draws with, overrides applied (M7); a bare id gives the theme itself. */
+export function themeFor(book: string | { themeId: string; themeOverrides?: ThemeOverrides | undefined }): Theme {
+  return typeof book === 'string' ? resolveTheme(book) : resolveTheme(book.themeId, book.themeOverrides);
 }
 
 export type ChipTone = 'neutral' | 'accent' | 'green' | 'amber' | 'red';
