@@ -4,7 +4,7 @@ import pLimit from 'p-limit';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 import { ImmichApiError, type ImmichClient, type ImmichMediaSize } from '../immich/client.js';
 
 /** Pixels per inch each render kind targets; sources are never upscaled past their own resolution. */
@@ -17,6 +17,20 @@ const SOURCE_VARIANTS: Record<RenderKind, SourceImage['variant'][]> = {
   print: ['original', 'fullsize', 'preview'],
   cover: ['original', 'fullsize', 'preview'],
 };
+
+/**
+ * sharp's prebuilt libvips ships libheif with an AV1 decoder only (HEVC is patent-encumbered), so
+ * iPhone/Samsung HEIC originals open (`metadata()` reads the container) but fail at pixel decode
+ * with "Decoder plugin generated an error". libvips lists `.heic` as an input suffix only when a
+ * HEVC decoder is compiled in.
+ */
+const HEVC_DECODABLE = (sharp.format.heif?.input.fileSuffix ?? []).some((s) => s === '.heic' || s === '.heif');
+
+/** Whether this build can turn the probed file into pixels, judged from metadata alone (no decode). */
+export function decodableMetadata(m: Pick<Metadata, 'format' | 'compression'>, hevc = HEVC_DECODABLE): boolean {
+  if (m.format === 'heif' && m.compression === 'hevc' && !hevc) return false;
+  return true;
+}
 
 export interface SourceImage {
   path: string;
@@ -39,11 +53,13 @@ export class ImageError extends Error {
 /**
  * Fetches Immich originals/previews into DATA_DIR/cache and cuts slot-sized JPEGs from them with
  * sharp: cover-fit around the focal point, resized to the slot's pixel size at the render's ppi.
- * Originals sharp cannot decode (HEIC on most builds) fall back to Immich's `fullsize` JPEG.
+ * Originals sharp cannot decode (HEVC HEIC on the prebuilt binaries) fall back to Immich's `fullsize` JPEG.
  */
 export class ImageStore {
   private readonly limit = pLimit(4);
   private readonly inflight = new Map<string, Promise<SourceImage>>();
+  /** `assetId:variant` pairs whose file opened but would not decode; `resolveSource` skips them. */
+  private readonly undecodable = new Set<string>();
 
   constructor(
     private readonly cacheDir: string,
@@ -77,7 +93,7 @@ export class ImageStore {
   private async probe(path: string): Promise<{ width: number; height: number } | undefined> {
     try {
       const m = await sharp(path).metadata();
-      if (!m.width || !m.height) return undefined;
+      if (!m.width || !m.height || !decodableMetadata(m)) return undefined;
       const swap = (m.orientation ?? 1) >= 5;
       return swap ? { width: m.height, height: m.width } : { width: m.width, height: m.height };
     } catch {
@@ -118,6 +134,7 @@ export class ImageStore {
     const order = SOURCE_VARIANTS[kind];
     let lastError: unknown;
     for (const variant of order) {
+      if (this.undecodable.has(`${asset.id}:${variant}`)) continue;
       try {
         const path = await this.download(asset.id, variant);
         const dims = await this.probe(path);
@@ -134,17 +151,27 @@ export class ImageStore {
   /**
    * A JPEG exactly filling `wPx × hPx` (or smaller when the source lacks the pixels), cropped around
    * the focal point. EXIF orientation is applied first so crops match what Immich shows.
+   * A source that opened but fails to decode (a codec `probe` could not foresee, a truncated file)
+   * is marked undecodable and the next variant in the kind's order is tried.
    */
   async slotImage(asset: BookAsset, kind: RenderKind, wPx: number, hPx: number, crop?: Crop): Promise<Buffer> {
-    const src = await this.source(asset, kind);
-    const region = coverCrop(src.width, src.height, wPx, hPx, crop);
-    const targetW = Math.min(wPx, region.w);
-    const targetH = Math.min(hPx, region.h);
-    return sharp(await readFile(src.path))
-      .rotate()
-      .extract({ left: region.x, top: region.y, width: region.w, height: region.h })
-      .resize({ width: targetW, height: targetH, fit: 'fill', withoutEnlargement: true })
-      .jpeg({ quality: JPEG_QUALITY[kind], mozjpeg: true })
-      .toBuffer();
+    for (;;) {
+      const src = await this.source(asset, kind);
+      const region = coverCrop(src.width, src.height, wPx, hPx, crop);
+      const targetW = Math.min(wPx, region.w);
+      const targetH = Math.min(hPx, region.h);
+      try {
+        return await sharp(await readFile(src.path))
+          .rotate()
+          .extract({ left: region.x, top: region.y, width: region.w, height: region.h })
+          .resize({ width: targetW, height: targetH, fit: 'fill', withoutEnlargement: true })
+          .jpeg({ quality: JPEG_QUALITY[kind], mozjpeg: true })
+          .toBuffer();
+      } catch (err) {
+        const order = SOURCE_VARIANTS[kind];
+        if (src.variant === order[order.length - 1]) throw err;
+        this.undecodable.add(`${asset.id}:${src.variant}`);
+      }
+    }
   }
 }
