@@ -1,10 +1,10 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
-import type { CSSProperties } from 'react';
-import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotSpec, Theme } from '@bookbinder/shared';
+import type { CSSProperties, PointerEvent } from 'react';
+import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
-import { MIN_SPINE_TEXT_IN, getTemplate, objectPosition } from '@bookbinder/layout';
-import type { BookMeta, ImageSrc } from './PageView.js';
+import { MIN_SPINE_TEXT_IN, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
+import { activateOnKey, frameTransform, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
 
 export interface CoverViewProps {
   cover: BookCover;
@@ -18,6 +18,11 @@ export interface CoverViewProps {
   scale?: number | undefined;
   /** Draw the trim, spine and wrap guides (admin preview only). */
   guides?: boolean | undefined;
+  /** Designer hooks (M6), as on PageView. */
+  selectedSlotId?: string | undefined;
+  onSlotClick?: ((slot: SlotSpec, content: SlotContent | undefined) => void) | undefined;
+  onSlotPointerDown?: ((slot: SlotSpec, content: SlotContent | undefined, event: PointerEvent<HTMLElement>) => void) | undefined;
+  onBackgroundClick?: (() => void) | undefined;
   className?: string | undefined;
   style?: CSSProperties | undefined;
 }
@@ -40,8 +45,18 @@ export function coverText(cover: BookCover, slotId: string, meta: BookMeta): str
   }
 }
 
+/** Template x/y of a point on the cover sheet (inverse of the mapping in {@link coverSlotPx}); the spine maps to x = 0. */
+export function coverPxToUnits(px: number, py: number, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN): { x: number; y: number } {
+  const trimW = format.trimWidthIn * ppi;
+  const trimH = format.trimHeightIn * ppi;
+  const wrap = g.wrapIn * ppi;
+  const spine = g.spineIn * ppi;
+  const x = px < wrap + trimW ? (px - wrap) / trimW - 1 : px < wrap + trimW + spine ? 0 : (px - wrap - trimW - spine) / trimW;
+  return { x, y: (py - wrap) / trimH };
+}
+
 /** Pixel box of a cover slot on the sheet: back cover left, spine, then front; bleed slots run to the sheet edge. */
-export function coverSlotPx(slot: SlotSpec, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN): { x: number; y: number; w: number; h: number } {
+export function coverSlotPx(slot: Pick<SlotSpec, 'id' | 'x' | 'y' | 'w' | 'h'>, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN): { x: number; y: number; w: number; h: number } {
   const trimW = format.trimWidthIn * ppi;
   const trimH = format.trimHeightIn * ppi;
   const wrap = g.wrapIn * ppi;
@@ -77,10 +92,28 @@ function fitTitle(text: string, w: number, h: number): number {
  * the spine text reads bottom-to-top once the spine is wide enough. Same markup for the admin
  * preview and the PDF.
  */
-export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, className, style }: CoverViewProps) {
+export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
   const template = getTemplate(cover.templateId);
-  const photoSlots = template.slots.filter((s) => s.role === 'hero' || s.role === 'photo');
-  const textSlots = template.slots.filter((s) => s.role !== 'hero' && s.role !== 'photo' && s.role !== 'map' && s.role !== 'qr');
+  const slots = effectiveSlots(cover.templateId, cover.slots);
+  const photoSlots = slots.filter((s) => s.spec.role === 'hero' || s.spec.role === 'photo');
+  const textSlots = slots.filter((s) => s.spec.role !== 'hero' && s.spec.role !== 'photo' && s.spec.role !== 'map' && s.spec.role !== 'qr');
+  const interactive = Boolean(onSlotClick);
+  const designing = Boolean(onSlotPointerDown);
+  const hooksFor = (slot: SlotSpec, content: SlotContent | undefined, label: string) => {
+    if (!interactive) return {};
+    const activate = () => onSlotClick?.(slot, content);
+    return {
+      onClick: (e: { stopPropagation: () => void }) => {
+        e.stopPropagation();
+        activate();
+      },
+      onPointerDown: onSlotPointerDown ? (e: PointerEvent<HTMLElement>) => onSlotPointerDown(slot, content, e) : undefined,
+      onKeyDown: activateOnKey(activate),
+      role: 'button' as const,
+      tabIndex: 0,
+      'aria-label': label,
+    };
+  };
   const ppi = PX_PER_IN;
   const sheetW = Math.round(g.widthIn * ppi);
   const sheetH = Math.round(g.heightIn * ppi);
@@ -119,13 +152,30 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
 
   return (
     <div className={['bb-cover', className].filter(Boolean).join(' ')} style={outer} data-template={template.id} data-spine-in={g.spineIn}>
-      <div className="bb-cover__inner" style={inner}>
-        {photoSlots.map((slot) => {
+      <div className="bb-cover__inner" style={inner} onClick={onBackgroundClick}>
+        {photoSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
           const r = coverSlotPx(slot, format, g, ppi);
-          const content = cover.slots.find((s) => s.slotId === slot.id);
           const asset = content?.assetId ? assets.get(content.assetId) : undefined;
+          const selected = selectedSlotId === slot.id;
           return (
-            <div key={slot.id} className={['bb-slot', asset ? 'bb-slot--filled' : 'bb-slot--empty'].join(' ')} data-slot-id={slot.id} style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, overflow: 'hidden' }}>
+            <div
+              key={slot.id}
+              className={['bb-slot', asset ? 'bb-slot--filled' : 'bb-slot--empty', selected ? 'bb-slot--selected' : '', adHoc ? 'bb-slot--adhoc' : ''].filter(Boolean).join(' ')}
+              data-slot-id={slot.id}
+              {...hooksFor(slot, content, asset ? `Photo ${asset.fileName ?? asset.id}` : `Empty slot ${slot.id}`)}
+              style={{
+                position: 'absolute',
+                left: r.x,
+                top: r.y,
+                width: r.w,
+                height: r.h,
+                overflow: 'hidden',
+                ...frameTransform(frame, z),
+                cursor: interactive ? (designing ? 'move' : 'pointer') : undefined,
+                outline: selected ? '3px solid #7c8cff' : undefined,
+                outlineOffset: selected ? -3 : undefined,
+              }}
+            >
               {asset ? (
                 <img
                   src={imageSrc({ asset, wIn: r.w / ppi, hIn: r.h / ppi, crop: content?.crop })}
@@ -144,10 +194,13 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
             style={{ position: 'absolute', left: 0, top: 0, width: sheetW, height: sheetH, background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.28) 30%, rgba(0,0,0,0) 55%)', pointerEvents: 'none' }}
           />
         ) : null}
-        {textSlots.map((slot) => {
+        {textSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
           const r = coverSlotPx(slot, format, g, ppi);
-          const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h };
-          const text = coverText(cover, slot.id, meta);
+          const selected = selectedSlotId === slot.id;
+          const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, ...frameTransform(frame, z) };
+          const textHooks = designing && slot.id !== 'spine' ? hooksFor(slot, content, `Text ${slot.id}`) : {};
+          const textOutline: CSSProperties = designing && slot.id !== 'spine' ? { cursor: 'move', outline: selected ? '2px solid #7c8cff' : undefined, outlineOffset: 2 } : {};
+          const text = adHoc ? (content?.text ?? '') : coverText(cover, slot.id, meta);
           if (slot.id === 'spine') {
             if (!text || g.spineIn < MIN_SPINE_TEXT_IN) return null;
             // A horizontal box as long as the spine, rotated so the text reads bottom-to-top.
@@ -186,18 +239,26 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
           }
           if (slot.role === 'folio') {
             if (!coverText(cover, 'title', meta)) return null;
-            return <div key={slot.id} className="bb-rule" style={{ ...base, background: onPhoto ? ink : theme.accent, boxShadow: shadow }} />;
+            return <div key={slot.id} className="bb-rule" data-slot-id={slot.id} {...textHooks} style={{ ...base, background: onPhoto ? ink : theme.accent, boxShadow: shadow, ...textOutline }} />;
           }
-          if (!text) return null;
+          if (!text && !designing) return null;
           const styles: CSSProperties =
-            slot.role === 'title'
-              ? { fontFamily: theme.displayFont, fontStyle: 'italic', fontWeight: 300, fontSize: fitTitle(text, r.w, r.h), lineHeight: 1, letterSpacing: '-0.02em', display: 'flex', alignItems: 'flex-end' }
-              : slot.role === 'caption'
-                ? { fontFamily: theme.bodyFont, fontStyle: theme.captionItalic ? 'italic' : 'normal', fontSize: theme.captionSizePx + 2, lineHeight: 1.45, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }
-                : { fontFamily: theme.bodyFont, fontSize: 14, lineHeight: 1.55 };
+            content?.style || adHoc
+              ? textBoxStyle(theme, content?.style, ink)
+              : slot.role === 'title'
+                ? { fontFamily: theme.displayFont, fontStyle: 'italic', fontWeight: 300, fontSize: fitTitle(text, r.w, r.h), lineHeight: 1, letterSpacing: '-0.02em', display: 'flex', alignItems: 'flex-end' }
+                : slot.role === 'caption'
+                  ? { fontFamily: theme.bodyFont, fontStyle: theme.captionItalic ? 'italic' : 'normal', fontSize: theme.captionSizePx + 2, lineHeight: 1.45, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }
+                  : { fontFamily: theme.bodyFont, fontSize: 14, lineHeight: 1.55 };
           return (
-            <div key={slot.id} className={`bb-text bb-text--${slot.role}`} data-slot-id={slot.id} style={{ ...base, ...styles, color: ink, textShadow: shadow, overflow: 'hidden' }}>
-              {slot.role === 'title' ? <span style={{ display: 'block', width: '100%' }}>{text}</span> : text}
+            <div
+              key={slot.id}
+              className={['bb-text', `bb-text--${slot.role}`, adHoc ? 'bb-text--box' : '', !text ? 'bb-text--empty' : ''].filter(Boolean).join(' ')}
+              data-slot-id={slot.id}
+              {...textHooks}
+              style={{ ...base, ...styles, color: ink, textShadow: shadow, overflow: 'hidden', ...textOutline }}
+            >
+              {slot.role === 'title' && !adHoc ? <span style={{ display: 'block', width: '100%' }}>{text}</span> : text}
             </div>
           );
         })}

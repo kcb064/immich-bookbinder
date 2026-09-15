@@ -362,3 +362,34 @@ export function templatesForPhotos(
     .map((template) => ({ template, cost: assignPhotos(template, photos).cost }))
     .sort((a, b) => a.cost - b.cost);
 }
+
+/**
+ * Puts hand-designed pages (M6, `custom: true`) back into a fresh automatic layout: each returns to
+ * its previous index (or the end), chapter openers that lost their verso are re-aligned with a blank,
+ * trailing padding is dropped and the count is normalised again. Chapter `startsAtPage` is
+ * recomputed from the merged list. The caller leaves the custom pages' photos out of `paginate`.
+ */
+export function mergeCustomPages(fresh: readonly Page[], custom: readonly Page[], format: BookFormat, chapters: readonly Chapter[] = [], makeId: () => string = defaultMakeId): { pages: Page[]; chapters: Chapter[] } {
+  const merged: Page[] = [...fresh];
+  for (const page of [...custom].sort((a, b) => a.index - b.index)) {
+    merged.splice(Math.min(page.index, merged.length), 0, page);
+  }
+  // A chapter opener photo must sit on a verso (odd index) so its title faces it.
+  for (let i = 0; i < merged.length; i++) {
+    if (merged[i]!.templateId === CHAPTER_PHOTO_TEMPLATE_ID && i % 2 === 0) {
+      merged.splice(i, 0, { id: makeId(), index: i, templateId: BLANK_TEMPLATE_ID, slots: [] });
+      i++;
+    }
+  }
+  const isPadding = (p: Page): boolean => p.templateId === BLANK_TEMPLATE_ID && p.slots.length === 0 && !p.custom;
+  while (merged.length > 1 && isPadding(merged[merged.length - 1]!) && merged.length > format.minPages) merged.pop();
+  const finalCount = normalizePageCount(merged.length, format);
+  while (merged.length < finalCount) merged.push({ id: makeId(), index: merged.length, templateId: BLANK_TEMPLATE_ID, slots: [] });
+  const pages = reindexPages(merged);
+  const openerOf = new Map<string, number>();
+  for (const p of pages) if (p.templateId === CHAPTER_PHOTO_TEMPLATE_ID && p.chapterId && !openerOf.has(p.chapterId)) openerOf.set(p.chapterId, p.index);
+  return {
+    pages,
+    chapters: chapters.map((c) => (openerOf.has(c.id) ? { ...c, startsAtPage: openerOf.get(c.id)! } : c)),
+  };
+}

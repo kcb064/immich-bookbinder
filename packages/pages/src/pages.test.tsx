@@ -3,7 +3,7 @@ import { FORMAT_PRESETS, LuluProduct, THEMES, type BookAsset, type BookCover, ty
 import { TEMPLATES, coverGeometry, paginate } from '@bookbinder/layout';
 import { describe, expect, it } from 'vitest';
 import { autoCaption, dateRangeLabel, formatTakenDate } from './captions.js';
-import { CoverView, coverSlotPx, coverText } from './CoverView.js';
+import { CoverView, coverPxToUnits, coverSlotPx, coverText } from './CoverView.js';
 import { PageView, pagePhotos, type ImageSrc } from './PageView.js';
 import { bookMetaFor } from './meta.js';
 import { renderPrintDocument, sideOf } from './print.js';
@@ -80,6 +80,64 @@ describe('PageView', () => {
     const html = renderToStaticMarkup(<PageView page={pages[0]!} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} scale={0.25} />);
     expect(html).toContain('width:210px;height:210px');
     expect(html).toContain('transform:scale(0.25)');
+  });
+});
+
+describe('designer overrides (M6)', () => {
+  it('places a framed slot by its frame, rotated and stacked, and asks for an image of the frame size', () => {
+    const { assets } = fixtures(2);
+    // 1 in from the trim corner, 4 x 2 in, on the 8.5 in square page (bleed 0.125 in => +12 px).
+    const page: Page = { id: 'x', index: 2, templateId: 'one-up-full-bleed', custom: true, slots: [{ slotId: 'p1', assetId: 'a0', frame: { x: 1 / 8.5, y: 1 / 8.5, w: 4 / 8.5, h: 2 / 8.5, rotation: 15, z: 3 } }] };
+    const html = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html).toContain('left:108px;top:108px;width:384px;height:192px');
+    expect(html).toContain('z-index:3');
+    expect(html).toContain('transform:rotate(15deg)');
+    expect(html).toContain('img://a0?w=4.00&amp;h=2.00');
+    // Without the frame the template's full-bleed box is used, as before.
+    const plain = renderToStaticMarkup(<PageView page={{ ...page, slots: [{ slotId: 'p1', assetId: 'a0' }] }} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(plain).toContain('img://a0?w=8.75&amp;h=8.75');
+    expect(plain).not.toContain('rotate(');
+  });
+
+  it('draws ad-hoc text and photo boxes with the theme faces and the requested style', () => {
+    const { assets } = fixtures(2);
+    const page: Page = {
+      id: 'x',
+      index: 2,
+      templateId: 'blank',
+      custom: true,
+      slots: [
+        { slotId: 'text-1', role: 'text', text: 'Hello\nworld', frame: { x: 0.1, y: 0.1, w: 0.5, h: 0.1 }, style: { font: 'display', sizePt: 24, align: 'center', italic: true } },
+        { slotId: 'photo-1', role: 'photo', assetId: 'a1', frame: { x: 0.5, y: 0.5, w: 0.25, h: 0.25 } },
+        { slotId: 'text-2', role: 'text', text: '', frame: { x: 0.1, y: 0.8, w: 0.5, h: 0.1 } },
+      ],
+    };
+    const html = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html).toContain('bb-text--box');
+    expect(html).toContain('white-space:pre-wrap;overflow-wrap:break-word;overflow:hidden">Hello\nworld</div>');
+    expect(html).toContain('font-size:32px'); // 24 pt
+    expect(html).toContain('text-align:center');
+    expect(html).toContain('font-style:italic');
+    expect(html).toContain('Newsreader');
+    expect(html).toContain('img://a1?w=2.13&amp;h=2.13');
+    expect(html).toContain('bb-slot--adhoc');
+    // Empty text boxes are not printed; they only show while designing.
+    expect(html.match(/bb-text--box/g)).toHaveLength(1);
+    const designing = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} onSlotClick={() => undefined} onSlotPointerDown={() => undefined} />);
+    expect(designing.match(/bb-text--box/g)).toHaveLength(2);
+    expect(designing).toContain('bb-text--empty');
+    expect(designing).toContain('aria-label="Text text-1"');
+  });
+
+  it('prints the same page markup that the editor draws', () => {
+    const { assets } = fixtures(2);
+    const page: Page = { id: 'x', index: 0, templateId: 'one-up-full-bleed', custom: true, slots: [{ slotId: 'p1', assetId: 'a0', frame: { x: 0.1, y: 0.1, w: 0.4, h: 0.3 } }] };
+    const doc = renderPrintDocument({ pages: [page], firstPageIndex: 0, format, theme, assets, imageSrc, meta, webFonts: false, folios: false });
+    const editor = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    // React hoists image preloads ahead of the markup; the page itself is byte-identical.
+    const pageOnly = (html: string) => html.slice(html.indexOf('<div class="bb-page"'), html.indexOf('</div></div></div>') + '</div></div></div>'.length);
+    expect(pageOnly(doc)).toBe(pageOnly(editor));
+    expect(pageOnly(doc)).toContain('left:94px;top:94px;width:326px;height:245px');
   });
 });
 
@@ -191,6 +249,27 @@ describe('cover', () => {
     expect(thin.spineIn).toBeLessThan(0.25);
     const html2 = renderToStaticMarkup(<CoverView cover={cover} geometry={thin} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
     expect(html2).not.toContain('bb-text--spine');
+  });
+
+  it('honours frames and ad-hoc boxes on the cover and inverts the sheet mapping', () => {
+    const { assets } = fixtures(2);
+    const framed: BookCover = {
+      ...cover,
+      slots: [
+        { slotId: 'p1', assetId: 'a0', frame: { x: 0.1, y: 0.1, w: 0.8, h: 0.5 } },
+        { slotId: 'text-1', role: 'text', text: 'Back note', frame: { x: -0.9, y: 0.2, w: 0.5, h: 0.1 } },
+      ],
+    };
+    const html = renderToStaticMarkup(<CoverView cover={framed} geometry={g} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    const hero = coverSlotPx({ id: 'p1', x: 0.1, y: 0.1, w: 0.8, h: 0.5 }, format, g);
+    expect(html).toContain(`left:${hero.x}px;top:${hero.y}px;width:${hero.w}px;height:${hero.h}px`);
+    expect(html).toContain('Back note');
+    // The front panel starts after wrap + trim + spine; the spine itself maps to x = 0.
+    const front = coverPxToUnits(Math.round(g.frontLeftIn * 96) + 96, Math.round(g.wrapIn * 96), format, g);
+    expect(front.x).toBeCloseTo(1 / 8.5, 3);
+    expect(front.y).toBeCloseTo(0, 6);
+    expect(coverPxToUnits(Math.round(g.wrapIn * 96), 0, format, g).x).toBeCloseTo(-1, 6);
+    expect(coverPxToUnits(Math.round((g.wrapIn + 8.5 + g.spineIn / 2) * 96), 0, format, g).x).toBe(0);
   });
 
   it('makes a cover-only print document whose @page is the cover size', () => {

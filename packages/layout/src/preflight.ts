@@ -1,6 +1,6 @@
 import type { Book, BookAsset, BookFormat, Preflight, PreflightItem, RenderData, RenderKind } from '@bookbinder/shared';
 import { effectivePpi } from './crop.js';
-import { getTemplate } from './templates.js';
+import { pageSlots } from './design.js';
 
 /** Effective ppi thresholds: below WARN the print looks soft, below ERROR visibly so. */
 export const PPI_WARN = 200;
@@ -47,11 +47,9 @@ export function preflightBook(input: PreflightInput): Preflight {
   }
 
   for (const page of pages) {
-    const template = getTemplate(page.templateId);
-    const content = new Map(page.slots.map((s) => [s.slotId, s]));
     const hasPhotos = page.slots.some((s) => s.assetId);
-    for (const slot of template.slots) {
-      const c = content.get(slot.id);
+    // Effective geometry: a hand-placed frame (M6) replaces the template box, ad-hoc boxes count too.
+    for (const { spec: slot, content: c } of pageSlots(page)) {
       if (slot.role === 'hero' || slot.role === 'photo') {
         if (!c?.assetId) {
           items.push({ level: 'warn', code: 'empty-slot', message: `Page ${page.index + 1} has an empty photo slot.`, pageIndex: page.index, slotId: slot.id });

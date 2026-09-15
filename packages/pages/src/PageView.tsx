@@ -1,9 +1,9 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
-import type { CSSProperties, ReactNode } from 'react';
-import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotSpec, Template, Theme } from '@bookbinder/shared';
-import { PX_PER_IN } from '@bookbinder/shared';
-import { getTemplate, objectPosition, pagePx, slotToPx } from '@bookbinder/layout';
+import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
+import { PT_PER_IN, PX_PER_IN } from '@bookbinder/shared';
+import { DEFAULT_TEXT_STYLE, getTemplate, objectPosition, pagePx, pageSlots, slotToPx } from '@bookbinder/layout';
 import { autoCaption, photographsLabel } from './captions.js';
 
 /** A chapter as the opener pages need it. */
@@ -58,9 +58,11 @@ export interface PageViewProps {
   scale?: number | undefined;
   /** Draw trim and safety guides (editor only). */
   guides?: boolean | undefined;
-  /** Editor hooks. */
+  /** Editor hooks. Text slots take part too when `onSlotPointerDown` is given (the designer). */
   selectedSlotId?: string | undefined;
   onSlotClick?: ((slot: SlotSpec, content: SlotContent | undefined) => void) | undefined;
+  /** Starts a drag on any slot (designer); called before `onSlotClick`. */
+  onSlotPointerDown?: ((slot: SlotSpec, content: SlotContent | undefined, event: PointerEvent<HTMLElement>) => void) | undefined;
   onBackgroundClick?: (() => void) | undefined;
   /** Renders extra UI on top of a photo slot (ppi badges, empty-slot hints). */
   slotOverlay?: ((ctx: SlotOverlayContext) => ReactNode) | undefined;
@@ -78,11 +80,46 @@ export function photoSlotsOf(template: Template): SlotSpec[] {
 
 /** Photos on a page in slot order (undefined where a slot is empty). */
 export function pagePhotos(page: Page, assets: ReadonlyMap<string, BookAsset>): (BookAsset | undefined)[] {
-  const t = templateFor(page);
-  return photoSlotsOf(t).map((s) => {
-    const c = page.slots.find((x) => x.slotId === s.id);
-    return c?.assetId ? assets.get(c.assetId) : undefined;
-  });
+  return pageSlots(page)
+    .filter((s) => s.spec.role === 'hero' || s.spec.role === 'photo')
+    .map((s) => (s.content?.assetId ? assets.get(s.content.assetId) : undefined));
+}
+
+/** CSS for a text box styled by the user (M6): face and colour from the theme, size in points. */
+export function textBoxStyle(theme: Theme, style: TextStyle | undefined, ink = theme.ink): CSSProperties {
+  const s = style ?? DEFAULT_TEXT_STYLE;
+  return {
+    fontFamily: s.font === 'display' ? theme.displayFont : theme.bodyFont,
+    fontStyle: s.italic ? 'italic' : 'normal',
+    fontWeight: s.font === 'display' ? 300 : 400,
+    fontSize: (s.sizePt * PX_PER_IN) / PT_PER_IN,
+    lineHeight: 1.35,
+    letterSpacing: s.font === 'display' ? '-0.01em' : undefined,
+    textAlign: s.align,
+    color: ink,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    overflow: 'hidden',
+  };
+}
+
+/** Rotation and stacking of a slot box (shared by pages and the cover). */
+export function frameTransform(frame: SlotFrame, z: number): CSSProperties {
+  return {
+    zIndex: z,
+    ...(frame.rotation ? { transform: `rotate(${frame.rotation}deg)`, transformOrigin: '50% 50%' } : {}),
+  };
+}
+
+/** Enter or Space on a focused slot acts like a click (keyboard-only editing). */
+export function activateOnKey(activate: () => void): (e: KeyboardEvent<HTMLElement>) => void {
+  return (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      activate();
+    }
+  };
 }
 
 function textFor(template: Template, slot: SlotSpec, content: SlotContent | undefined, page: Page, assets: ReadonlyMap<string, BookAsset>, meta: BookMeta): string {
@@ -164,6 +201,7 @@ export function PageView({
   guides = false,
   selectedSlotId,
   onSlotClick,
+  onSlotPointerDown,
   onBackgroundClick,
   slotOverlay,
   className,
@@ -177,6 +215,8 @@ export function PageView({
   const trimH = format.trimHeightIn * PX_PER_IN;
   const contentById = new Map(page.slots.map((s) => [s.slotId, s]));
   const interactive = Boolean(onSlotClick);
+  const designing = Boolean(onSlotPointerDown);
+  const slots = pageSlots(page);
 
   const outer: CSSProperties = {
     position: 'relative',
@@ -202,39 +242,42 @@ export function PageView({
   return (
     <div className={['bb-page', className].filter(Boolean).join(' ')} style={outer} data-template={template.id} data-page-index={page.index}>
       <div className="bb-page__inner" style={inner} onClick={onBackgroundClick}>
-        {template.slots.map((slot) => {
+        {slots.map(({ spec: slot, content, frame, z, adHoc }) => {
           const r = slotToPx(slot, format, PX_PER_IN);
-          const content = contentById.get(slot.id);
-          const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h };
+          const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, ...frameTransform(frame, z) };
           const wIn = slot.w * format.trimWidthIn;
           const hIn = slot.h * format.trimHeightIn;
+          const selected = selectedSlotId === slot.id;
+          const activate = () => onSlotClick?.(slot, content);
+          const hooks = interactive
+            ? {
+                onClick: (e: { stopPropagation: () => void }) => {
+                  e.stopPropagation();
+                  activate();
+                },
+                onPointerDown: onSlotPointerDown ? (e: PointerEvent<HTMLElement>) => onSlotPointerDown(slot, content, e) : undefined,
+                onKeyDown: activateOnKey(activate),
+                role: 'button' as const,
+                tabIndex: 0,
+              }
+            : {};
 
           if (slot.role === 'hero' || slot.role === 'photo') {
             const asset = content?.assetId ? assets.get(content.assetId) : undefined;
-            const selected = selectedSlotId === slot.id;
             return (
               <div
                 key={slot.id}
-                className={['bb-slot', asset ? 'bb-slot--filled' : 'bb-slot--empty', selected ? 'bb-slot--selected' : ''].filter(Boolean).join(' ')}
+                className={['bb-slot', asset ? 'bb-slot--filled' : 'bb-slot--empty', selected ? 'bb-slot--selected' : '', adHoc ? 'bb-slot--adhoc' : ''].filter(Boolean).join(' ')}
                 data-slot-id={slot.id}
                 style={{
                   ...base,
                   overflow: 'hidden',
                   background: asset ? undefined : 'rgba(0,0,0,0.05)',
-                  cursor: interactive ? 'pointer' : undefined,
+                  cursor: interactive ? (designing ? 'move' : 'pointer') : undefined,
                   outline: selected ? '3px solid #7c8cff' : undefined,
                   outlineOffset: selected ? -3 : undefined,
                 }}
-                onClick={
-                  interactive
-                    ? (e) => {
-                        e.stopPropagation();
-                        onSlotClick?.(slot, content);
-                      }
-                    : undefined
-                }
-                role={interactive ? 'button' : undefined}
-                tabIndex={interactive ? 0 : undefined}
+                {...hooks}
                 aria-label={interactive ? (asset ? `Photo ${asset.fileName ?? asset.id}` : `Empty slot ${slot.id}`) : undefined}
               >
                 {asset ? (
@@ -252,19 +295,29 @@ export function PageView({
 
           if (slot.role === 'map' || slot.role === 'qr') return null;
 
-          const text = textFor(template, slot, content, page, assets, meta);
+          const text = adHoc ? (content?.text ?? '') : textFor(template, slot, content, page, assets, meta);
+          const textHooks: Record<string, unknown> = designing ? { ...hooks, 'aria-label': `Text ${slot.id}` } : {};
+          const textOutline: CSSProperties = designing ? { cursor: 'move', outline: selected ? '2px solid #7c8cff' : undefined, outlineOffset: 2 } : {};
           if (slot.role === 'folio') {
             // The chapter rule only appears under a chapter title.
             if (template.id === 'chapter-title') {
               const titleSlot = template.slots.find((s) => s.id === 'title')!;
               if (!textFor(template, titleSlot, contentById.get('title'), page, assets, meta)) return null;
             }
-            return <div key={slot.id} className="bb-rule" style={{ ...base, ...textStyle(theme, template, slot, r.w, r.h, '') }} />;
+            return <div key={slot.id} className="bb-rule" data-slot-id={slot.id} {...textHooks} style={{ ...base, ...textStyle(theme, template, slot, r.w, r.h, ''), ...textOutline }} />;
           }
-          if (!text) return null;
+          // Empty text only shows while designing, as a placeholder the user can select.
+          if (!text && !designing) return null;
+          const styled = content?.style || adHoc ? textBoxStyle(theme, content?.style) : textStyle(theme, template, slot, r.w, r.h, text);
           return (
-            <div key={slot.id} className={`bb-text bb-text--${slot.role}`} data-slot-id={slot.id} style={{ ...base, ...textStyle(theme, template, slot, r.w, r.h, text) }}>
-              {slot.role === 'title' ? <span style={{ display: 'block', width: '100%' }}>{text}</span> : text}
+            <div
+              key={slot.id}
+              className={['bb-text', `bb-text--${slot.role}`, adHoc ? 'bb-text--box' : '', !text ? 'bb-text--empty' : ''].filter(Boolean).join(' ')}
+              data-slot-id={slot.id}
+              {...textHooks}
+              style={{ ...base, ...styled, ...textOutline }}
+            >
+              {slot.role === 'title' && !adHoc ? <span style={{ display: 'block', width: '100%' }}>{text}</span> : text}
             </div>
           );
         })}

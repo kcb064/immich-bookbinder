@@ -66,6 +66,7 @@ export function Button({
 interface LinkButtonProps extends ButtonBaseProps {
   to: string;
   'aria-label'?: string;
+  title?: string;
 }
 
 export function LinkButton({ to, variant = 'default', size = 'default', icon, iconRight, className, children, ...rest }: LinkButtonProps) {

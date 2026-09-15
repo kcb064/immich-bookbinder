@@ -55,6 +55,9 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 - Browser pane: `file://` is blocked; screenshots time out while the pane is hidden (use
   `get_page_text`/`find`); navigating to a PDF URL opens a save dialog, so rasterise PDFs with a
   scratch pdf.js script instead; `find` matches accessible names (a button's `title`), not labels.
+  Its `key` action does not deliver `Enter`/`ArrowUp` as real keys: test keyboard handlers by
+  dispatching `KeyboardEvent`s with `javascript_tool`. `document.querySelector` on `.bb-cover`
+  finds the filmstrip thumbnail first; scope to `.page-frame`.
 
 ## Conventions that are enforced
 
@@ -77,6 +80,10 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 - **Chapters are deterministic.** `planChapters` in `packages/shared/src/chapters.ts` is computed
   identically by the picker, the server layout and the review page. Keep it pure.
 - **Folio rule** lives in one place: `NO_FOLIO_TEMPLATE_IDS` in `packages/layout/src/paginate.ts`.
+- **Slot geometry** is never read from `template.slots` directly where a page is drawn or measured:
+  go through `pageSlots(page)` / `effectiveSlots(templateId, slots)` so hand-placed frames and
+  ad-hoc boxes (M6) count. Edits that rebuild a `SlotContent` must keep `frame`, `role` and `style`
+  (use `omitKeys` in `apps/web/src/lib/designer.ts`, never re-create the object from scratch).
 - **Formatting.** The repo is not prettier-clean and never will be mass-formatted. Do not run
   `pnpm format`. Match the surrounding style (single quotes, semicolons, 110 columns) by hand.
 - **Dependencies.** Few, and native ones must ship linux/amd64 + arm64 prebuilds (Docker installs
@@ -100,7 +107,8 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 | DB | `apps/server/src/db/schema.ts`, `drizzle/` | better-sqlite3 + drizzle, WAL, migrations run at startup |
 | Immich | `apps/server/src/immich/` | `client.ts` (openapi-fetch over generated types), `gather.ts` (sources), `trips.ts`, `status.ts` (permission probe) |
 | Selection | `apps/server/src/selection/` + `packages/scoring` | analyze (sharp) -> score -> cluster -> pick; candidates cached per photo |
-| Layout | `apps/server/src/books/layout.ts` + `packages/layout` | `layoutBook` places picked photos, applies openers and face crops |
+| Layout | `apps/server/src/books/layout.ts` + `packages/layout` | `layoutBook` places picked photos, applies openers and face crops; custom pages (M6) are left out of `paginate` and merged back by `mergeCustomPages` |
+| Designer (M6) | `packages/layout/src/design.ts`, `snap.ts`; `apps/web/src/lib/designer.ts`, `components/Designer.tsx` | `SlotContent.frame/role/style` + `Page.custom`; `pageSlots`/`effectiveSlots` resolve template + frames + ad-hoc boxes for PageView, CoverView, preflight and the editor; snapping/clamping pure in `snap.ts`; `useDesignDrag` + `DesignOverlay` do the pointer work; `Editor.tsx` keeps `{ pages, cover }` in one coalescing `History` and edits the cover at `?view=cover` |
 | Render | `apps/server/src/render/` | `RenderService` (queue, `renders` table + `data` JSON, kinds proof/print/cover/preview), `ChromiumRenderer` (`render` = PDF, `renderPreviews` = PNG dir), `ImageStore` (sharp, cache) |
 | Cover, preflight | `packages/layout/src/cover.ts`, `preflight.ts`; `packages/pages/src/CoverView.tsx` | `coverGeometry` (spine ESTIMATE until M5 passes Lulu's override), `preflightBook` (pure; route in `routes/books.ts`), `CoverView` shared by the book page and the cover PDF; default cover made in `books/layout.ts` |
 | Shares | `apps/server/src/shares/store.ts`, `drizzle/0003_*` | `ShareStore` (token, argon2 password, expiry, revoke, views); `ShareView.url` built by `publicBase()` in `routes/shares.ts` |
@@ -111,7 +119,7 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 | Web | `apps/web/src/pages/*.tsx` | Router in `App.tsx`; `Shell` = sidebar + `RequireAuth`; editor logic is pure in `lib/editor.ts`; `Viewer.tsx` (`/s/:token`) uses plain `fetch`, never `lib/api.ts` (its 401 handler redirects to login); book-page cards live in `components/{Preflight,Share,CoverCard}.tsx` |
 | Specs | `specs/` | Vendored Immich 3.2.0 OpenAPI (types generated, gitignored) and Lulu OpenAPI |
 
-Large files that are easy to mis-edit: `NewBook.tsx` (1100 lines), `Review.tsx` (850), `Editor.tsx` (700).
+Large files that are easy to mis-edit: `NewBook.tsx` (1100 lines), `Review.tsx` (850), `Editor.tsx` (900).
 Prefer a new file next to them over growing them; when editing, anchor on a unique multi-line snippet.
 
 ## Verified external facts (do not re-research)

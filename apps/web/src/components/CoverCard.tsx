@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FORMAT_PRESETS, type Book, type BookAsset, type BookCover, type SlotContent } from '@bookbinder/shared';
 import { coverGeometry, placedAssetIds } from '@bookbinder/layout';
 import { CoverView, bookMetaFor, coverText } from '@bookbinder/pages';
-import { Button, Field, Note, TextInput } from './ui.tsx';
+import { Button, Field, LinkButton, Note, TextInput } from './ui.tsx';
 import { useRenders, useSaveBook } from '../lib/queries.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 import { themeFor } from '../lib/format.ts';
@@ -23,7 +23,8 @@ function withSlotText(slots: SlotContent[], slotId: string, text: string): SlotC
 
 /**
  * The cover card on the book page: a live preview of the wrap-around cover, the hero photo picked
- * from the book's placed photos, and the title, dates, spine and back-cover text. Free placement is M6.
+ * from the book's placed photos, and the title, dates, spine and back-cover text. Free placement of
+ * the photo and texts happens in the editor's cover view (M6).
  */
 export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] }) {
   const format = FORMAT_PRESETS[book.formatId];
@@ -94,9 +95,14 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
         <div className="stack" style={{ gap: 10 }}>
           <div className="row row--between">
             <span className="small muted">{heroId ? (assetMap.get(heroId)?.fileName ?? 'Photo') : 'No photo'}</span>
-            <Button size="sm" variant="ghost" icon="image" onClick={() => setPicking((p) => !p)}>
-              {picking ? 'Close' : 'Change photo'}
-            </Button>
+            <div className="row" style={{ gap: 6 }}>
+              <Button size="sm" variant="ghost" icon="image" onClick={() => setPicking((p) => !p)}>
+                {picking ? 'Close' : 'Change photo'}
+              </Button>
+              <LinkButton size="sm" variant="ghost" icon="edit" to={`/books/${encodeURIComponent(book.id)}/edit?view=cover`} title="Move and resize the photo and texts on the cover sheet">
+                Design
+              </LinkButton>
+            </div>
           </div>
           {picking ? (
             <div className="thumb-grid" role="listbox" aria-label="Cover photo">

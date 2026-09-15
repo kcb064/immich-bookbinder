@@ -1,5 +1,7 @@
-import type { BookAsset, Crop, Page, SlotContent } from '@bookbinder/shared';
-import { assignPhotos, BLANK_TEMPLATE_ID, getTemplate, isOpenerTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
+import type { BookAsset, BookFormat, Crop, Page, SlotContent } from '@bookbinder/shared';
+import { FORMAT_PRESETS } from '@bookbinder/shared';
+import { assignPhotos, BLANK_TEMPLATE_ID, effectivePhotoSlots, getTemplate, isOpenerTemplate, photoSlots, refitPage, reindexPages, TITLE_TEMPLATE_ID } from '@bookbinder/layout';
+import { omitKeys, placePhoto } from './designer.ts';
 
 /** Pure page-list edits behind the editor. Every function returns a new array; nothing is mutated. */
 
@@ -20,12 +22,21 @@ function contentOf(page: Page, slotId: string): SlotContent | undefined {
   return page.slots.find((s) => s.slotId === slotId);
 }
 
-/** Asset ids on a page in slot order. */
+/** Asset ids on a page in drawing order (template slots, then photo boxes added by hand). */
 export function pageAssetIds(page: Page): string[] {
-  const t = getTemplate(page.templateId);
-  return photoSlots(t)
-    .map((s) => contentOf(page, s.id)?.assetId)
+  return effectivePhotoSlots(page.templateId, page.slots)
+    .map((s) => s.content?.assetId)
     .filter((id): id is string => Boolean(id));
+}
+
+/** A slot content without its photo (frame, text and style stay with the slot). */
+function withoutPhoto(c: SlotContent): SlotContent {
+  return omitKeys(c, 'assetId', 'crop');
+}
+
+/** Whether a slot content still says anything once emptied of its photo. */
+function keeps(c: SlotContent): boolean {
+  return Object.keys(c).length > 1;
 }
 
 export function isBodyPage(page: Page): boolean {
@@ -54,11 +65,12 @@ export function swapSlots(pages: readonly Page[], a: SlotRef, b: SlotRef): Page[
   if (!pa || !pb) return [...pages];
   const ca = contentOf(pa, a.slotId);
   const cb = contentOf(pb, b.slotId);
+  // The photo and its crop travel; whatever belongs to the slot (text, frame, style, role) stays put.
   const moveInto = (page: Page, slotId: string, from: SlotContent | undefined): Page => {
     const rest = page.slots.filter((s) => s.slotId !== slotId);
-    const keepText = contentOf(page, slotId)?.text;
-    const next: SlotContent = { slotId, ...(from?.assetId ? { assetId: from.assetId } : {}), ...(from?.crop ? { crop: from.crop } : {}), ...(keepText !== undefined ? { text: keepText } : {}) };
-    return { ...page, slots: [...rest, next] };
+    const own = contentOf(page, slotId);
+    const next: SlotContent = { ...(own ? withoutPhoto(own) : { slotId }), ...(from?.assetId ? { assetId: from.assetId } : {}), ...(from?.crop ? { crop: from.crop } : {}) };
+    return { ...page, slots: keeps(next) ? [...rest, next] : rest };
   };
   if (a.pageIndex === b.pageIndex) {
     return replaceAt(pages, a.pageIndex, moveInto(moveInto(pa, a.slotId, cb), b.slotId, ca));
@@ -68,11 +80,16 @@ export function swapSlots(pages: readonly Page[], a: SlotRef, b: SlotRef): Page[
   return out;
 }
 
-/** Removes a photo from its slot; the page refits to a template with one photo fewer (opener photo pages just empty the slot). */
+/**
+ * Removes a photo from its slot; the page refits to a template with one photo fewer. Opener photo
+ * pages and hand-designed pages just empty the slot (the box stays where it was put).
+ */
 export function removePhoto(pages: readonly Page[], ref: SlotRef, ratios: RatioMap): Page[] {
   const page = pages[ref.pageIndex];
   if (!page) return [...pages];
-  if (isOpenerPage(page)) return replaceAt(pages, ref.pageIndex, { ...page, slots: page.slots.filter((s) => s.slotId !== ref.slotId) });
+  if (isOpenerPage(page) || page.custom) {
+    return replaceAt(pages, ref.pageIndex, { ...page, slots: page.slots.flatMap((s) => (s.slotId !== ref.slotId ? [s] : keeps(withoutPhoto(s)) ? [withoutPhoto(s)] : [])) });
+  }
   const remaining = photoSlots(getTemplate(page.templateId))
     .filter((s) => s.id !== ref.slotId)
     .map((s) => contentOf(page, s.id)?.assetId)
@@ -82,10 +99,22 @@ export function removePhoto(pages: readonly Page[], ref: SlotRef, ratios: RatioM
 
 /**
  * Adds a photo to a page: the page refits to a template with one more photo, or when it is full a
- * new page holding just this photo is inserted right after it. Returns the pages and where it landed.
+ * new page holding just this photo is inserted right after it. A hand-designed page takes the photo
+ * in its first empty box or a new photo box instead (M6). Returns the pages and where it landed.
  */
-export function addPhoto(pages: readonly Page[], pageIndex: number, assetId: string, ratios: RatioMap, makeId: () => string = () => globalThis.crypto.randomUUID()): { pages: Page[]; pageIndex: number } {
+export function addPhoto(
+  pages: readonly Page[],
+  pageIndex: number,
+  assetId: string,
+  ratios: RatioMap,
+  makeId: () => string = () => globalThis.crypto.randomUUID(),
+  format: BookFormat = FORMAT_PRESETS['lulu-square-8.5']!,
+): { pages: Page[]; pageIndex: number; slotId?: string | undefined } {
   const page = pages[pageIndex];
+  if (page?.custom) {
+    const r = placePhoto(pages, pageIndex, assetId, ratios.get(assetId) ?? 1.5, format, makeId);
+    return { pages: r.pages, pageIndex, slotId: r.slotId };
+  }
   if (!page || !isFlexiblePage(page)) {
     // Title and opener pages keep their template: the photo goes on a new page right after (after
     // the facing title page when this is an opener photo page, so the spread stays intact).
@@ -155,11 +184,7 @@ export function setCaption(pages: readonly Page[], pageIndex: number, text: stri
   if (!page) return [...pages];
   const slotId = captionSlotId(page.templateId);
   if (!slotId) return [...pages];
-  const rest = page.slots.filter((s) => s.slotId !== slotId);
-  const existing = contentOf(page, slotId);
-  const trimmed = text.trim();
-  const next: SlotContent | undefined = trimmed ? { slotId, ...(existing?.assetId ? { assetId: existing.assetId } : {}), text } : undefined;
-  return replaceAt(pages, pageIndex, { ...page, slots: next ? [...rest, next] : rest });
+  return setSlotText(pages, pageIndex, slotId, text);
 }
 
 export function userCaption(page: Page): string | undefined {
@@ -173,9 +198,9 @@ export function setSlotText(pages: readonly Page[], pageIndex: number, slotId: s
   if (!page) return [...pages];
   const rest = page.slots.filter((s) => s.slotId !== slotId);
   const existing = contentOf(page, slotId);
-  const trimmed = text.trim();
-  const next: SlotContent | undefined = trimmed ? { slotId, ...(existing?.assetId ? { assetId: existing.assetId } : {}), ...(existing?.crop ? { crop: existing.crop } : {}), text } : undefined;
-  return replaceAt(pages, pageIndex, { ...page, slots: next ? [...rest, next] : rest });
+  const keep = omitKeys(existing ?? { slotId }, 'text');
+  const next: SlotContent = text.trim() ? { ...keep, text } : keep;
+  return replaceAt(pages, pageIndex, { ...page, slots: keeps(next) ? [...rest, next] : rest });
 }
 
 export function slotText(page: Page, slotId: string): string | undefined {
@@ -190,7 +215,7 @@ export function setCrop(pages: readonly Page[], ref: SlotRef, crop: Crop | undef
     ...page,
     slots: page.slots.map((s) => {
       if (s.slotId !== ref.slotId) return s;
-      const restOfSlot: SlotContent = { slotId: s.slotId, ...(s.assetId ? { assetId: s.assetId } : {}), ...(s.text !== undefined ? { text: s.text } : {}) };
+      const restOfSlot = omitKeys(s, 'crop');
       return crop ? { ...restOfSlot, crop } : restOfSlot;
     }),
   });
@@ -202,27 +227,38 @@ export function unplacedAssets(pages: readonly Page[], assets: readonly BookAsse
   return assets.filter((a) => !placed.has(a.id));
 }
 
-/** Undo/redo stack over page lists. */
-export interface History {
-  present: Page[];
-  past: Page[][];
-  future: Page[][];
+/**
+ * Undo/redo stack over any document (the editor keeps `{ pages, cover }` in one). A push with a
+ * `coalesce` key within {@link COALESCE_MS} of the previous push with the same key replaces the
+ * present entry instead of adding one, so a run of nudges or keystrokes undoes as one step.
+ */
+export interface History<T = Page[]> {
+  present: T;
+  past: T[];
+  future: T[];
+  coalesceKey?: string | undefined;
+  coalesceAt?: number | undefined;
 }
 
 export const HISTORY_LIMIT = 100;
+export const COALESCE_MS = 800;
 
-export function historyPush(h: History, next: Page[]): History {
+export function historyPush<T>(h: History<T>, next: T, coalesce?: { key: string; now?: number }): History<T> {
   if (next === h.present) return h;
-  return { present: next, past: [...h.past.slice(-(HISTORY_LIMIT - 1)), h.present], future: [] };
+  const now = coalesce?.now ?? Date.now();
+  if (coalesce && h.coalesceKey === coalesce.key && h.coalesceAt !== undefined && now - h.coalesceAt < COALESCE_MS) {
+    return { present: next, past: h.past, future: [], coalesceKey: coalesce.key, coalesceAt: now };
+  }
+  return { present: next, past: [...h.past.slice(-(HISTORY_LIMIT - 1)), h.present], future: [], ...(coalesce ? { coalesceKey: coalesce.key, coalesceAt: now } : {}) };
 }
 
-export function historyUndo(h: History): History {
+export function historyUndo<T>(h: History<T>): History<T> {
   const prev = h.past[h.past.length - 1];
   if (!prev) return h;
   return { present: prev, past: h.past.slice(0, -1), future: [h.present, ...h.future] };
 }
 
-export function historyRedo(h: History): History {
+export function historyRedo<T>(h: History<T>): History<T> {
   const [next, ...rest] = h.future;
   if (!next) return h;
   return { present: next, past: [...h.past, h.present], future: rest };

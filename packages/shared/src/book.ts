@@ -95,11 +95,49 @@ export const Crop = z.object({
 });
 export type Crop = z.infer<typeof Crop>;
 
+/**
+ * Free placement of a slot (M6): a box in template units (fractions of the trim width for x/w and
+ * of the trim height for y/h; covers keep back = [-1, 0], front = [0, 1]). Overrides the template's
+ * slot box; ad-hoc slots have nothing else.
+ */
+export const SlotFrame = z.object({
+  x: z.number(),
+  y: z.number(),
+  w: z.number().positive(),
+  h: z.number().positive(),
+  /** Degrees clockwise around the box centre. */
+  rotation: z.number().min(-180).max(180).optional(),
+  /** Stacking order; higher draws on top. Slot order when absent. */
+  z: z.number().int().optional(),
+});
+export type SlotFrame = z.infer<typeof SlotFrame>;
+
+export const TextAlign = z.enum(['left', 'center', 'right']);
+export type TextAlign = z.infer<typeof TextAlign>;
+
+/** How an ad-hoc text box is set; faces and colours come from the theme. */
+export const TextStyle = z.object({
+  font: z.enum(['display', 'body']).default('body'),
+  /** Printed size in points. */
+  sizePt: z.number().min(6).max(144).default(11),
+  align: TextAlign.default('left'),
+  italic: z.boolean().default(false),
+});
+export type TextStyle = z.infer<typeof TextStyle>;
+
+/** Roles an ad-hoc slot (one the template does not know) may have. */
+export const AdHocRole = z.enum(['photo', 'text']);
+export type AdHocRole = z.infer<typeof AdHocRole>;
+
 export const SlotContent = z.object({
   slotId: Id,
   assetId: Id.optional(),
   crop: Crop.optional(),
   text: z.string().optional(),
+  /** Set only on ad-hoc slots (ids `photo-<uuid>` / `text-<uuid>`), which must also carry a frame. */
+  role: AdHocRole.optional(),
+  frame: SlotFrame.optional(),
+  style: TextStyle.optional(),
 });
 export type SlotContent = z.infer<typeof SlotContent>;
 
@@ -109,6 +147,8 @@ export const Page = z.object({
   templateId: Id,
   chapterId: Id.optional(),
   slots: z.array(SlotContent),
+  /** True once any slot was placed by hand (M6): re-layout leaves the page alone, the template is only a base. */
+  custom: z.boolean().optional(),
 });
 export type Page = z.infer<typeof Page>;
 

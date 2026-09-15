@@ -6,6 +6,8 @@ export * from './paginate.js';
 export * from './crop.js';
 export * from './cover.js';
 export * from './preflight.js';
+export * from './design.js';
+export * from './snap.js';
 
 export interface PxRect {
   x: number;

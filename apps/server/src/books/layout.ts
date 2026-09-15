@@ -1,6 +1,6 @@
 import type { Book, BookAsset, BookCover, BookFormat, Candidate, FaceBox } from '@bookbinder/shared';
 import { FORMAT_PRESETS, chapterIndex, isPicked, planChapters } from '@bookbinder/shared';
-import { applyFaceCrops, coverGeometry, faceFocal, getTemplate, paginate, placedAssetIds } from '@bookbinder/layout';
+import { TITLE_TEMPLATE_ID, applyFaceCrops, coverGeometry, faceFocal, getTemplate, mergeCustomPages, paginate, placedAssetIds } from '@bookbinder/layout';
 import { formatHasCover } from '../render/service.js';
 import type { ImmichClient } from '../immich/client.js';
 import { gatherAssets } from '../immich/gather.js';
@@ -34,7 +34,8 @@ export class LayoutError extends Error {
  * picked photos are placed and their scores steer hero slots; otherwise every photo goes in (M1).
  * Chapters come from the same plan the picker budgeted against (M3), so every chapter that kept
  * photos opens with a photo + title spread; face boxes from the selection set each photo's focal point.
- * The book moves to `editing`.
+ * Hand-designed pages (`custom`, M6) are kept as they are: their photos stay on them and the pages
+ * return to their place in the new sequence. The book moves to `editing`.
  */
 export async function layoutBook(
   deps: { store: BookStore; candidates: CandidateStore; client: () => ImmichClient | undefined },
@@ -80,35 +81,45 @@ export async function layoutBook(
       );
   }
 
+  // Hand-designed pages keep their photos; the automatic layout places the rest around them.
+  const custom = book.pages.filter((p) => p.custom);
+  const onCustom = new Set(placedAssetIds(custom));
+  const customTitle = custom.some((p) => p.templateId === TITLE_TEMPLATE_ID);
+
   // Chapters are planned over every gathered photo (as the picker did), then only picked photos keep them.
   const plan = planChapters(assets, { mode: book.rules.chapters, targetPages: book.rules.targetPages });
   const chapterOf = chapterIndex(plan);
   const result = paginate(
-    photos.map((a) => ({
-      id: a.id,
-      ratio: a.ratio,
-      takenAt: a.takenAt,
-      score: candidates.get(a.id)?.scores.composite,
-      chapterId: chapterOf.get(a.id)?.id,
-    })),
+    photos
+      .filter((a) => !onCustom.has(a.id))
+      .map((a) => ({
+        id: a.id,
+        ratio: a.ratio,
+        takenAt: a.takenAt,
+        score: candidates.get(a.id)?.scores.composite,
+        chapterId: chapterOf.get(a.id)?.id,
+      })),
     {
       format,
-      targetPages: book.rules.targetPages,
+      targetPages: Math.max(1, book.rules.targetPages - custom.length),
       chapters: plan.map((c) => ({ id: c.id, title: c.title, subtitle: c.subtitle })),
+      titlePage: !customTitle,
     },
   );
   warnings.push(...result.warnings);
 
   const faces = new Map<string, readonly FaceBox[]>();
   for (const c of candidates.values()) if (c.faces && c.faces.length > 0) faces.set(c.assetId, c.faces);
-  const pages =
+  const fresh =
     faces.size > 0
       ? applyFaceCrops(result.pages, format, faces, new Map(assets.map((a) => [a.id, a.ratio])))
       : result.pages;
+  const { pages, chapters } = custom.length > 0 ? mergeCustomPages(fresh, custom, format, result.chapters) : { pages: fresh, chapters: result.chapters };
+  if (custom.length > 0) warnings.push(`${custom.length} hand-designed page${custom.length === 1 ? ' was' : 's were'} kept as ${custom.length === 1 ? 'it is' : 'they are'}.`);
 
   // The cover is created once; later layouts keep the user's cover choices.
   const cover = book.cover ?? (formatHasCover(format) ? defaultCover(book, format, pages, assets, candidates) : undefined);
-  const saved = deps.store.save({ ...book, pages, chapters: result.chapters, status: 'editing', ...(cover ? { cover } : {}) });
+  const saved = deps.store.save({ ...book, pages, chapters, status: 'editing', ...(cover ? { cover } : {}) });
   return { book: saved, assets, warnings };
 }
 
