@@ -35,7 +35,7 @@ Default: **`0850X0850.FC.PRE.CW.080CW444.MXX`**
 | Trim | `0850X0850` | 8.5 x 8.5 in | `0750X0750`, `0850X1100`, `1100X0850`, `0900X0700`, `0827X1169` (from the preset) |
 | Ink | `FC` | Full colour | fixed |
 | Quality | `PRE` | Premium colour (photo quality) | `STD` standard colour |
-| Binding | `CW` | Hardcover casewrap | `LW` linen wrap with dust jacket, `PB` perfect bound (paperback), `CO` coil, `SS` saddle stitch |
+| Binding | `CW` | Hardcover casewrap | `PB` perfect bound (paperback), `CO` coil, `SS` saddle stitch. `LW` linen wrap with dust jacket is listed but not orderable yet: its SKUs end in linen and foil colour letters (`MNG` and the like) that the app does not model, and the plain `XX` finish would be refused |
 | Paper | `080CW444` | 80# coated white | `060UW444` 60# uncoated white, `060UC444` 60# uncoated cream |
 | Finish | `MXX` | Matte cover | `GXX` gloss |
 

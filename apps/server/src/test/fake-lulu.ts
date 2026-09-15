@@ -37,6 +37,8 @@ export interface FakeLuluJob {
   body: Record<string, unknown>;
   trackingUrl?: string;
   createdAt: string;
+  /** Interior page count per line item, from the downloaded PDFs (Lulu reports it read-only on the line item). */
+  pageCounts?: number[];
 }
 
 export interface FakeLuluBehaviour {
@@ -354,6 +356,8 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
         id: job.id * 10 + i,
         title: item['title'],
         quantity: item['quantity'],
+        // Read-only, on the line item itself (as in Lulu's schema): counted when the interior was downloaded.
+        page_count: job.pageCounts?.[i] ?? null,
         pod_package_id: (item['printable_normalization'] as Record<string, unknown> | undefined)?.['pod_package_id'],
         status: { name: job.status === 'SHIPPED' ? 'SHIPPED' : job.status === 'REJECTED' ? 'REJECTED' : job.status === 'IN_PRODUCTION' ? 'IN_PRODUCTION' : 'CREATED', messages: job.trackingUrl ? { tracking_urls: [job.trackingUrl], carrier_name: 'Fake Carrier' } : {} },
         ...(job.trackingUrl ? { tracking_id: `${job.id}_${i}`, tracking_urls: [job.trackingUrl] } : {}),
@@ -396,6 +400,7 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
           job.message = `${name}: ${dl.error}`;
           break;
         }
+        if (name === 'interior') (job.pageCounts ??= [])[items.indexOf(item)] = dl.pages;
         if (file.source_md5_sum && file.source_md5_sum.toLowerCase() !== dl.md5) {
           job.status = 'REJECTED';
           job.message = `${name}: source_md5_sum does not match the downloaded file`;
@@ -421,7 +426,8 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
 
   app.get('/webhooks/', async (req, reply) => {
     if (!authed(req, reply)) return;
-    return [...webhooks.values()];
+    const results = [...webhooks.values()];
+    return { count: results.length, results };
   });
   app.post<{ Body: { topics?: string[]; url?: string } }>('/webhooks/', async (req, reply) => {
     if (!authed(req, reply)) return;

@@ -32,6 +32,7 @@ import type { SettingsStore } from '../settings.js';
 import { LuluApiError, type LuluClient, type LuluCostCalculation, type LuluFileValidation, type LuluPrintJob, type LuluPrintJobStatus } from './client.js';
 import { ShippingLevel as ShippingLevelSchema } from '@bookbinder/shared';
 import { exportPath, type ExportStore } from './exports.js';
+import type { ExportRow } from '../db/schema.js';
 import { describeLuluError } from './status.js';
 import type { NotifyEvent } from '../notify/notifier.js';
 
@@ -44,6 +45,27 @@ export const LULU_PAY_URLS: Record<LuluEnv, string> = {
   sandbox: 'https://developers.sandbox.lulu.com/print-jobs',
   production: 'https://developers.lulu.com/print-jobs',
 };
+
+/**
+ * Where a Lulu status sits on the way to shipped; terminal statuses (REJECTED, ERROR, CANCELED)
+ * have no rank and always apply. Lets a late or replayed webhook not move an order backwards.
+ */
+export const LULU_STATUS_RANK: Readonly<Record<string, number>> = {
+  CREATED: 0,
+  UNPAID: 1,
+  PAYMENT_IN_PROGRESS: 2,
+  PRODUCTION_DELAYED: 3,
+  PRODUCTION_READY: 4,
+  IN_PRODUCTION: 5,
+  SHIPPED: 6,
+};
+
+/** Whether a status change from `from` to `to` goes backwards (a replayed or out-of-order webhook). */
+export function isStatusRegression(from: string | null | undefined, to: string): boolean {
+  const a = from ? LULU_STATUS_RANK[from] : undefined;
+  const b = LULU_STATUS_RANK[to];
+  return a !== undefined && b !== undefined && b < a;
+}
 
 /** Lulu's raw status -> the app's order status. */
 export function mapLuluStatus(name: string): OrderStatus | undefined {
@@ -89,6 +111,8 @@ export interface OrderServiceDeps {
   settings: SettingsStore;
   /** Client for the active environment, or undefined until credentials are saved. */
   client: () => LuluClient | undefined;
+  /** Client for a given environment (an order keeps talking to the one it was placed in), or undefined without credentials. */
+  clientFor?: (env: LuluEnv) => LuluClient | undefined;
   /** Configured public base without a trailing slash, or undefined. */
   publicBase: () => string | undefined;
   log: FastifyBaseLogger;
@@ -120,6 +144,12 @@ type ExtraLineItem = z.infer<typeof ExtraLineItem>;
 export function bookIdOfExternalId(externalId: string | null | undefined): string | undefined {
   const m = externalId ? /^([0-9a-f-]{36}):[0-9a-f-]{36}$/i.exec(externalId) : null;
   return m ? m[1] : undefined;
+}
+
+/** Interior page count of a line item: Lulu puts it on the line item itself (read-only); older shapes nested it. */
+function remotePageCount(li: LuluPrintJob['line_items'][number]): number | undefined {
+  const n = li.page_count ?? li.printable_normalization?.interior?.page_count;
+  return n === null || n === undefined || !Number.isFinite(n) ? undefined : Math.round(n);
 }
 
 function parseJson<T>(schema: z.ZodType<T>, json: string | null, fallback: T): T {
@@ -207,7 +237,9 @@ export class OrderService {
     }
     const tickerMs = deps.tickerMs ?? 10 * 60_000;
     if (tickerMs > 0) {
-      this.ticker = setInterval(() => void this.refreshActive(), tickerMs);
+      this.ticker = setInterval(() => {
+        this.refreshActive().catch((err) => this.deps.log.warn({ err }, 'background order refresh failed'));
+      }, tickerMs);
       this.ticker.unref();
     }
   }
@@ -324,6 +356,18 @@ export class OrderService {
     return client;
   }
 
+  /** The client of the environment an order was placed in, regardless of which one Settings has active now. */
+  private clientFor(env: LuluEnv): LuluClient | undefined {
+    if (this.deps.clientFor) return this.deps.clientFor(env);
+    return this.deps.settings.luluEnv() === env ? this.deps.client() : undefined;
+  }
+
+  private requireClientFor(env: LuluEnv): LuluClient {
+    const client = this.clientFor(env);
+    if (!client) throw new OrderError(409, `This order lives in Lulu's ${env} environment and no ${env} credentials are saved in Settings.`);
+    return client;
+  }
+
   /**
    * Creates an order in `validating` and, in the background, publishes the print and cover PDFs,
    * runs Lulu's validations, asks for shipping options and a cost calculation -> `quoted`.
@@ -373,17 +417,26 @@ export class OrderService {
       })
       .run();
     this.deps.settings.setLastAddress(input.shippingAddress);
-    const [interior, coverExport] = await Promise.all([
-      this.deps.exports.create({ bookId: book.id, renderId: print.id, filePath: printFile }),
-      this.deps.exports.create({ bookId: book.id, renderId: cover.id, filePath: coverFile }),
-    ]);
+    let interior: ExportRow;
+    let coverExport: ExportRow;
     const lineItems: ExtraLineItem[] = [];
-    for (const e of extras) {
-      const [i, c] = await Promise.all([
-        this.deps.exports.create({ bookId: e.book.id, renderId: e.files.print.id, filePath: e.files.printFile }),
-        this.deps.exports.create({ bookId: e.book.id, renderId: e.files.cover.id, filePath: e.files.coverFile }),
+    try {
+      [interior, coverExport] = await Promise.all([
+        this.deps.exports.create({ bookId: book.id, renderId: print.id, filePath: printFile }),
+        this.deps.exports.create({ bookId: book.id, renderId: cover.id, filePath: coverFile }),
       ]);
-      lineItems.push({ bookId: e.book.id, title: e.book.title, quantity: e.quantity, podPackageId: luluPodPackageId(e.files.format, e.book.luluProduct), pageCount: e.book.pages.length, interiorExportId: i.id, coverExportId: c.id });
+      for (const e of extras) {
+        const [i, c] = await Promise.all([
+          this.deps.exports.create({ bookId: e.book.id, renderId: e.files.print.id, filePath: e.files.printFile }),
+          this.deps.exports.create({ bookId: e.book.id, renderId: e.files.cover.id, filePath: e.files.coverFile }),
+        ]);
+        lineItems.push({ bookId: e.book.id, title: e.book.title, quantity: e.quantity, podPackageId: luluPodPackageId(e.files.format, e.book.luluProduct), pageCount: e.book.pages.length, interiorExportId: i.id, coverExportId: c.id });
+      }
+    } catch (err) {
+      // A row left in `draft` would block the order page until a restart; say what happened instead.
+      const text = err instanceof Error ? err.message : String(err);
+      this.say(id, 'error', 'app', `Could not publish the PDFs for Lulu: ${text}`, { status: 'error', error: text });
+      throw err instanceof OrderError ? err : new OrderError(500, `Could not publish the PDFs for Lulu: ${text}`);
     }
     this.say(id, 'info', 'app', `Published the print PDF (${print.pageCount ?? book.pages.length} pages) and the cover PDF for Lulu to download${lineItems.length > 0 ? `, plus ${lineItems.length} more book${lineItems.length === 1 ? '' : 's'}` : ''}.`, {
       status: 'validating',
@@ -397,6 +450,12 @@ export class OrderService {
 
   private async validateAndQuote(id: string, base: string, book: Book): Promise<void> {
     const log = this.deps.log.child({ orderId: id, bookId: book.id });
+    // The user may cancel while Lulu validates; a result that arrives afterwards must not revive the order.
+    const stillValidating = (): boolean => {
+      if (this.row(id)?.status === 'validating') return true;
+      log.info('order left validating meanwhile (canceled); the result is discarded');
+      return false;
+    };
     try {
       const client = this.requireClient();
       const row = this.row(id);
@@ -443,6 +502,7 @@ export class OrderService {
         }
         this.update(id, { validation: JSON.stringify(state) });
       }
+      if (!stillValidating()) return;
       if (pending()) {
         this.say(id, 'error', 'app', `Lulu did not finish validating within ${Math.round(this.pollTimeoutMs / 60_000)} minutes.`, { status: 'error', error: 'Validation timed out' });
         return;
@@ -489,6 +549,7 @@ export class OrderService {
       })).filter((o) => ShippingOption.safeParse(o).success);
       const orderCost = toOrderCost(cost);
       const copies = row.quantity + extras.reduce((n, li) => n + li.quantity, 0);
+      if (!stillValidating()) return;
       this.say(id, 'info', 'lulu', `Quoted ${orderCost.totalInclTax} ${orderCost.currency} for ${copies} ${copies === 1 ? 'copy' : 'copies'} (${row.shippingLevel} shipping).`, {
         status: 'quoted',
         cost: JSON.stringify(orderCost),
@@ -499,7 +560,33 @@ export class OrderService {
     } catch (err) {
       const text = describeLuluError(err);
       log.error({ err }, 'order preparation failed');
+      if (!stillValidating()) return;
       this.say(id, 'error', err instanceof LuluApiError ? 'lulu' : 'app', text, { status: 'error', error: text });
+    }
+  }
+
+  /**
+   * Refuses (409) to place an order whose quoted files no longer reflect the book: the book was
+   * edited or rendered again, its product or page count changed, or preflight now fails.
+   */
+  private assertQuoteCurrent(book: Book, row: OrderRow): void {
+    const fresh = this.readyFiles(book);
+    const interior = row.interiorExportId ? this.deps.exports.get(row.interiorExportId) : undefined;
+    const cover = row.coverExportId ? this.deps.exports.get(row.coverExportId) : undefined;
+    if (interior?.renderId !== fresh.print.id || cover?.renderId !== fresh.cover.id) {
+      throw new OrderError(409, `"${book.title}" was rendered again after the quote; validate and quote again so Lulu checks the new files.`);
+    }
+    if (luluPodPackageId(fresh.format, book.luluProduct) !== row.podPackageId || book.pages.length !== row.pageCount) {
+      throw new OrderError(409, `"${book.title}" changed its product or page count after the quote; validate and quote again.`);
+    }
+    for (const li of this.extras(row)) {
+      const other = this.deps.books.get(li.bookId);
+      if (!other) throw new OrderError(404, `Book "${li.title}" no longer exists; validate and quote again.`);
+      const files = this.readyFiles(other);
+      const ei = li.interiorExportId ? this.deps.exports.get(li.interiorExportId) : undefined;
+      const ec = li.coverExportId ? this.deps.exports.get(li.coverExportId) : undefined;
+      if (ei?.renderId !== files.print.id || ec?.renderId !== files.cover.id) throw new OrderError(409, `"${other.title}" was rendered again after the quote; validate and quote again.`);
+      if (luluPodPackageId(files.format, other.luluProduct) !== li.podPackageId || other.pages.length !== li.pageCount) throw new OrderError(409, `"${other.title}" changed its product or page count after the quote; validate and quote again.`);
     }
   }
 
@@ -517,6 +604,7 @@ export class OrderService {
     if (this.deps.exports.isExpired(interior) || this.deps.exports.isExpired(cover)) throw new OrderError(409, 'The export URLs have expired; validate and quote again.');
     const book = this.deps.books.get(row.bookId);
     if (!book) throw new OrderError(404, 'Book not found');
+    this.assertQuoteCurrent(book, row);
     const address = parseJson(ShippingAddress, row.shippingAddress, undefined as unknown as ShippingAddress);
     const extraItems = this.extras(row).map((li, i) => {
       const ei = this.deps.exports.get(li.interiorExportId ?? '');
@@ -560,6 +648,7 @@ export class OrderService {
       });
       if (job.status?.message && status === 'rejected') this.say(id, 'error', 'lulu', job.status.message, { error: job.status.message });
       this.deps.books.setStatus(book.id, 'ordered');
+      for (const li of this.extras(row)) this.deps.books.setStatus(li.bookId, 'ordered');
       this.deps.log.info({ orderId: id, bookId: book.id, luluJobId: job.id, env: row.env }, 'print job created');
     } catch (err) {
       if (err instanceof OrderError) throw err;
@@ -575,7 +664,7 @@ export class OrderService {
     const row = this.row(id);
     if (!row) throw new OrderError(404, 'Order not found');
     if (!row.luluJobId) return this.view(row);
-    const client = this.requireClient();
+    const client = this.requireClientFor(row.env as LuluEnv);
     try {
       const status = await client.getPrintJobStatus(row.luluJobId);
       let tracking = trackingFrom(status);
@@ -614,12 +703,19 @@ export class OrderService {
       return this.get(id)!;
     }
     if (status !== 'unpaid' && status !== 'submitted') throw new OrderError(409, `Only an unpaid print job can be canceled (this one is ${status}).`);
-    const client = this.requireClient();
+    const client = this.requireClientFor(row.env as LuluEnv);
     try {
       const res = await client.cancelPrintJob(row.luluJobId);
       this.say(id, 'info', 'lulu', `Print job ${row.luluJobId} canceled${res.message ? `: ${res.message}` : ''}.`, { status: 'canceled', luluStatus: res.name, error: null });
     } catch (err) {
       const text = describeLuluError(err);
+      // Lulu refuses once the job left UNPAID (paid a moment ago, say): show its real state instead of pretending it is canceled.
+      const now = await client.getPrintJobStatus(row.luluJobId).catch(() => undefined);
+      const mapped = now ? mapLuluStatus(now.name) : undefined;
+      if (now && mapped && mapped !== 'unpaid' && mapped !== 'submitted') {
+        this.say(id, 'warn', 'lulu', `Lulu refused the cancellation (${text}); the print job is ${now.name} now.`, { status: mapped, luluStatus: now.name, error: null });
+        throw new OrderError(409, `Lulu refused the cancellation: print job ${row.luluJobId} is ${now.name} now.`);
+      }
       this.say(id, 'warn', 'lulu', `Lulu refused the cancellation (${text}). The order is marked canceled here; cancel print job ${row.luluJobId} on lulu.com as well.`, {
         status: 'canceled',
       });
@@ -677,7 +773,7 @@ export class OrderService {
           title: li.title ?? 'Untitled',
           quantity: Math.max(0, Math.round(li.quantity ?? 0)),
           ...(li.pod_package_id ?? li.printable_normalization?.pod_package_id ? { podPackageId: (li.pod_package_id ?? li.printable_normalization?.pod_package_id)! } : {}),
-          ...(li.printable_normalization?.interior?.page_count ? { pageCount: Math.round(li.printable_normalization.interior.page_count) } : {}),
+          ...(remotePageCount(li) !== undefined ? { pageCount: remotePageCount(li)! } : {}),
         })),
         ...(order ? { orderId: order.id } : {}),
         ...(book ? { bookId: book.id, bookTitle: book.title } : {}),
@@ -726,14 +822,14 @@ export class OrderService {
         luluStatus,
         luluJobId: luluJobId,
         podPackageId: first?.pod_package_id ?? first?.printable_normalization?.pod_package_id ?? luluPodPackageId(FORMAT_PRESETS[book.formatId] ?? FORMAT_PRESETS['lulu-square-8.5']!, book.luluProduct),
-        pageCount: Math.round(first?.printable_normalization?.interior?.page_count ?? book.pages.length),
+        pageCount: (first && remotePageCount(first)) ?? book.pages.length,
         quantity: Math.max(1, Math.round(first?.quantity ?? 1)),
         shippingLevel,
         shippingAddress: JSON.stringify(address.success ? address.data : a),
         contactEmail: job.contact_email ?? (address.success ? address.data.email : 'unknown@example.com'),
         externalId: job.external_id ?? `lulu:${luluJobId}`,
         imported: true,
-        lineItems: JSON.stringify(job.line_items.slice(1).map((li) => ({ bookId: book.id, title: li.title ?? 'Untitled', quantity: Math.max(1, Math.round(li.quantity ?? 1)), podPackageId: li.pod_package_id ?? li.printable_normalization?.pod_package_id ?? '', pageCount: Math.round(li.printable_normalization?.interior?.page_count ?? 0) }))),
+        lineItems: JSON.stringify(job.line_items.slice(1).map((li) => ({ bookId: book.id, title: li.title ?? 'Untitled', quantity: Math.max(1, Math.round(li.quantity ?? 1)), podPackageId: li.pod_package_id ?? li.printable_normalization?.pod_package_id ?? '', pageCount: remotePageCount(li) ?? 0 }))),
         tracking: JSON.stringify(trackingFrom(undefined, job)),
         createdAt: job.date_created ?? now,
         updatedAt: now,
@@ -749,6 +845,10 @@ export class OrderService {
     const row = this.deps.db.select().from(orders).where(eq(orders.luluJobId, String(job.id))).all().find((o) => o.env === env);
     if (!row) return undefined;
     const name = job.status?.name ?? 'CREATED';
+    if (isStatusRegression(row.luluStatus, name)) {
+      this.deps.log.warn({ orderId: row.id, from: row.luluStatus, to: name }, 'lulu webhook ignored: it would move the order backwards (late or replayed submission)');
+      return this.get(row.id);
+    }
     const mapped = mapLuluStatus(name);
     const tracking = trackingFrom(undefined, job);
     const patch: Partial<typeof orders.$inferInsert> = { luluStatus: name, ...(mapped ? { status: mapped } : {}) };
@@ -764,11 +864,11 @@ export class OrderService {
 
   /** Refreshes every order that still moves on its own (the ticker, and Settings' manual refresh). */
   async refreshActive(): Promise<number> {
-    if (!this.deps.client()) return 0;
     const rows = this.deps.db.select().from(orders).where(inArray(orders.status, [...ACTIVE_ORDER_STATUSES])).all();
     let n = 0;
     for (const row of rows) {
-      if (!row.luluJobId) continue;
+      // Each order is asked in the environment it was placed in; one without credentials waits.
+      if (!row.luluJobId || !this.clientFor(row.env as LuluEnv)) continue;
       await this.refresh(row.id).catch((err) => this.deps.log.warn({ err, orderId: row.id }, 'background refresh failed'));
       n += 1;
     }

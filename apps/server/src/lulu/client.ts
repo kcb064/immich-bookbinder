@@ -146,6 +146,8 @@ export const LuluPrintJob = z.object({
         quantity: z.number().nullish(),
         external_id: z.string().nullish(),
         pod_package_id: z.string().nullish(),
+        /** Read-only interior page count, on the line item itself in Lulu's schema. */
+        page_count: z.number().nullish(),
         printable_normalization: z.object({ pod_package_id: z.string().nullish(), interior: z.object({ page_count: z.number().nullish() }).loose().nullish() }).loose().nullish(),
         status: z.object({ name: z.string(), messages: LineItemMessages.nullish() }).optional(),
         tracking_id: z.string().nullish(),
@@ -219,6 +221,8 @@ export function createLuluClient(opts: LuluClientOptions) {
   const api = createClient<paths>({ baseUrl, headers: { accept: 'application/json' }, fetch: (request) => fetchImpl(request) });
 
   let token: { value: string; expiresAt: number } | undefined;
+  /** One token exchange at a time: parallel first calls share it instead of each asking Keycloak. */
+  let tokenPromise: Promise<{ value: string; expiresAt: number }> | undefined;
 
   async function fetchToken(): Promise<{ value: string; expiresAt: number }> {
     const basic = Buffer.from(`${opts.clientKey}:${opts.clientSecret}`, 'utf8').toString('base64');
@@ -236,7 +240,14 @@ export function createLuluClient(opts: LuluClientOptions) {
   }
 
   async function bearer(force = false): Promise<string> {
-    if (force || !token || Date.now() >= token.expiresAt - TOKEN_SAFETY_MS) token = await fetchToken();
+    if (force || !token || Date.now() >= token.expiresAt - TOKEN_SAFETY_MS) {
+      if (!tokenPromise) {
+        tokenPromise = fetchToken().finally(() => {
+          tokenPromise = undefined;
+        });
+      }
+      token = await tokenPromise;
+    }
     return `Bearer ${token.value}`;
   }
 
@@ -328,7 +339,8 @@ export function createLuluClient(opts: LuluClientOptions) {
               postcode: a.postcode,
               street1: a.street1,
               ...(a.street2 ? { street2: a.street2 } : {}),
-              ...(a.state_code ? { state: a.state_code } : {}),
+              // The schema names the field `state`; Lulu's own example sends `state_code`. Both, so US/CA/AU quotes get the state either way.
+              ...(a.state_code ? { state: a.state_code, state_code: a.state_code } : {}),
               phone_number: a.phone_number,
               name: a.name,
             },

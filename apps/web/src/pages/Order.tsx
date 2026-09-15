@@ -11,9 +11,10 @@ import { useBook, useCancelOrder, useOrders, usePreflight, usePrepareOrder, useR
 import { errorMessage, isApiError } from '../lib/api.ts';
 import { formatMoney } from '../lib/format.ts';
 
-const BINDINGS: Array<{ value: LuluBinding; label: string; hint: string }> = [
+const BINDINGS: Array<{ value: LuluBinding; label: string; hint: string; disabled?: boolean }> = [
   { value: 'CW', label: 'Hardcover, casewrap', hint: 'Photo printed on the boards. 24 to 800 pages.' },
-  { value: 'LW', label: 'Hardcover, linen with dust jacket', hint: 'Cloth boards, the cover on the jacket.' },
+  // Lulu's linen-wrap SKUs end in linen and foil colour letters the app does not model yet; the plain `XX` finish would be refused.
+  { value: 'LW', label: 'Hardcover, linen with dust jacket (not yet orderable)', hint: 'Cloth boards, the cover on the jacket. Needs linen and foil colour codes that are not supported yet.', disabled: true },
   { value: 'PB', label: 'Softcover, perfect bound', hint: 'Glued paperback.' },
   { value: 'CO', label: 'Coil bound', hint: 'Lies flat; the spine is a coil.' },
   { value: 'SS', label: 'Saddle stitch', hint: 'Stapled booklet; short books only.' },
@@ -70,7 +71,7 @@ function ProductPicker({ book }: { book: Book }) {
           {({ id }) => (
             <Select id={id} value={product.binding} onChange={(e) => setProduct({ ...product, binding: e.target.value as LuluBinding })}>
               {BINDINGS.map((b) => (
-                <option key={b.value} value={b.value}>
+                <option key={b.value} value={b.value} disabled={b.disabled && product.binding !== b.value}>
                   {b.label}
                 </option>
               ))}

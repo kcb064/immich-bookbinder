@@ -338,6 +338,68 @@ describe('Lulu ordering', () => {
     expect(await t.app.orders.refreshActive()).toBe(0);
   });
 
+  it('refuses to place a quote whose files no longer reflect the book', async () => {
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS } });
+    const quoted = await waitForOrder(OrderView.parse(res.json()).id);
+    expect(quoted.status).toBe('quoted');
+    // The print PDF was rendered again after the quote: Lulu validated the old file.
+    await fakeRender('print', 24);
+    const rerendered = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/submit`, headers: { cookie } });
+    expect(rerendered.statusCode).toBe(409);
+    expect(rerendered.json().message).toMatch(/rendered again after the quote/);
+    // The book itself changed: the renders behind the quote are stale.
+    t.app.books.touch(bookId);
+    const edited = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/submit`, headers: { cookie } });
+    expect(edited.statusCode).toBe(409);
+    expect(edited.json().message).toMatch(/render the print PDF first/);
+    expect(OrderView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/orders/${quoted.id}`, headers: { cookie } })).json()).status).toBe('quoted');
+    await fakeRender('print', 24);
+    await fakeRender('cover', 1);
+  });
+
+  it('lets a cancel during validation stand', async () => {
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS } });
+    expect(res.statusCode, res.body).toBe(202);
+    const id = OrderView.parse(res.json()).id;
+    const canceled = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${id}/cancel`, headers: { cookie } });
+    expect(canceled.statusCode, canceled.body).toBe(200);
+    expect(OrderView.parse(canceled.json()).status).toBe('canceled');
+    // The background validation finishes afterwards and must not turn the order into a quote.
+    const after = await waitForOrder(id);
+    expect(after.status).toBe('canceled');
+    expect(after.cost).toBeUndefined();
+  });
+
+  it("keeps talking to the environment an order was placed in, shows Lulu's real state when a cancel is refused, and ignores a late webhook", async () => {
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS } });
+    const quoted = await waitForOrder(OrderView.parse(res.json()).id);
+    const submitted = OrderView.parse((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/submit`, headers: { cookie } })).json());
+    expect(submitted.status).toBe('unpaid');
+    const jobId = Number(submitted.luluJobId);
+    // Settings switches to production, where no credentials exist: the sandbox order is still followed with the sandbox client.
+    await t.app.inject({ method: 'PUT', url: '/api/settings/lulu/sandbox', headers: { cookie }, payload: { sandbox: false } });
+    expect(t.app.luluClient()).toBeUndefined();
+    expect(await t.app.orders.refreshActive()).toBe(1);
+    const followed = OrderView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/orders/${quoted.id}`, headers: { cookie } })).json());
+    expect(followed.luluStatus).toBe('PAYMENT_IN_PROGRESS');
+    expect(followed.status).toBe('unpaid');
+    // Lulu refuses to cancel once the job moved on: the order shows the job's real state instead of "canceled".
+    lulu.behaviour.advanceOnPoll = false;
+    lulu.jobs.get(jobId)!.status = 'IN_PRODUCTION';
+    const refused = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders/${quoted.id}/cancel`, headers: { cookie } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().message).toMatch(/IN_PRODUCTION now/);
+    const real = OrderView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/orders/${quoted.id}`, headers: { cookie } })).json());
+    expect(real.status).toBe('in-production');
+    expect(real.luluStatus).toBe('IN_PRODUCTION');
+    // A late or replayed webhook cannot move the order backwards; a terminal status always applies.
+    expect(t.app.orders.applyWebhook('sandbox', { id: jobId, status: { name: 'UNPAID' }, line_items: [] })?.status).toBe('in-production');
+    expect(t.app.orders.applyWebhook('sandbox', { id: jobId, status: { name: 'SHIPPED' }, line_items: [] })?.status).toBe('shipped');
+    expect(t.app.orders.applyWebhook('sandbox', { id: jobId, status: { name: 'CANCELED' }, line_items: [] })?.status).toBe('canceled');
+    lulu.behaviour.advanceOnPoll = true;
+    await t.app.inject({ method: 'PUT', url: '/api/settings/lulu/sandbox', headers: { cookie }, payload: { sandbox: true } });
+  });
+
   /* ---------- Webhooks, job import, several books per order (M7) ---------- */
 
   it('subscribes a webhook on Lulu, applies signed status submissions, and rejects bad signatures', async () => {
@@ -400,7 +462,7 @@ describe('Lulu ordering', () => {
     const tracked = jobs.find((j) => j.orderId);
     expect(tracked).toBeDefined();
     expect(tracked!.bookId).toBe(bookId);
-    expect(tracked!.lineItems[0]).toMatchObject({ title: 'Douro weekend', quantity: 1 });
+    expect(tracked!.lineItems[0]).toMatchObject({ title: 'Douro weekend', quantity: 1, pageCount: 24 });
     // Forget the local order, then import it back from Lulu.
     const { orders: ordersTable } = await import('../db/schema.js');
     const { eq } = await import('drizzle-orm');
@@ -462,7 +524,8 @@ describe('Lulu ordering', () => {
     const items = job.body['line_items'] as Array<Record<string, unknown>>;
     expect(items.map((li) => li['title'])).toEqual(['Douro weekend', 'Sintra day']);
     expect(items[1]!['external_id']).toBe(`${quoted.externalId}:2`);
-    expect(t.app.books.get(otherId)?.status).toBe('editing');
+    // Every book in the parcel is ordered.
+    expect(t.app.books.get(otherId)?.status).toBe('ordered');
     expect(t.app.books.get(bookId)?.status).toBe('ordered');
     // Duplicates and self-references are refused.
     expect((await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/orders`, headers: { cookie }, payload: { shippingAddress: ADDRESS, extraBooks: [{ bookId }] } })).statusCode).toBe(400);

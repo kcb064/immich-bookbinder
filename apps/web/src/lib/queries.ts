@@ -597,11 +597,19 @@ export function useTestLulu() {
   });
 }
 
+/** Anything read from Lulu (webhook, job list) belongs to the active environment: refetch after a credential or environment change. */
+function forgetLulu(qc: ReturnType<typeof useQueryClient>): void {
+  void qc.invalidateQueries({ queryKey: ['lulu'] });
+}
+
 export function useSaveLulu() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: LuluConnectionInput) => put('/api/settings/lulu', input, SettingsView),
-    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+    onSuccess: (view) => {
+      qc.setQueryData(keys.settings, view);
+      forgetLulu(qc);
+    },
   });
 }
 
@@ -609,7 +617,10 @@ export function useClearLulu() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (env: LuluEnv) => del(`/api/settings/lulu?env=${env}`, SettingsView),
-    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+    onSuccess: (view) => {
+      qc.setQueryData(keys.settings, view);
+      forgetLulu(qc);
+    },
   });
 }
 
@@ -617,7 +628,10 @@ export function useSetLuluSandbox() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (sandbox: boolean) => put('/api/settings/lulu/sandbox', { sandbox }, SettingsView),
-    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+    onSuccess: (view) => {
+      qc.setQueryData(keys.settings, view);
+      forgetLulu(qc);
+    },
   });
 }
 

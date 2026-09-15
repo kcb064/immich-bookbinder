@@ -20,6 +20,14 @@ export const AI_MODELS: readonly AiModel[] = [
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', inputPerMTok: 1, outputPerMTok: 5 },
 ];
 
+/**
+ * Whether a model takes `output_config.effort`. The 4.5 generation (Haiku 4.5, Sonnet 4.5) rejects
+ * it with a 400; every current Opus and Sonnet model, and Haiku models after 4.5, accept it.
+ */
+export function supportsEffort(model: string): boolean {
+  return !/^claude-(haiku|sonnet)-4-5/.test(model);
+}
+
 /** The current Claude model at build time; configurable in Settings. */
 export const DEFAULT_AI_MODEL = 'claude-opus-5';
 

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { z } from 'zod';
+import { supportsEffort } from '@bookbinder/shared';
 
 /** What one call cost, straight from the API's usage block. */
 export interface AiCallUsage {
@@ -88,7 +89,8 @@ export class AiClient {
         max_tokens: opts.maxTokens ?? 4096,
         system: opts.system,
         messages: [{ role: 'user', content }],
-        output_config: { effort: 'low', format: zodOutputFormat(opts.schema) },
+        // Low effort keeps captions cheap; models that reject the field (Haiku 4.5) run at their default.
+        output_config: { ...(supportsEffort(this.model) ? { effort: 'low' as const } : {}), format: zodOutputFormat(opts.schema) },
       });
     } catch (err) {
       throw new AiError(describeAiError(err), err instanceof Anthropic.APIError ? err.status : undefined);

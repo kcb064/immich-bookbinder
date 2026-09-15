@@ -47,7 +47,8 @@ by a restart are marked failed.
 ## Requests
 
 The server uses the official `@anthropic-ai/sdk` with structured outputs (`output_config.format`)
-so answers are validated JSON, adaptive thinking at low effort, a two-minute timeout and two
+so answers are validated JSON, adaptive thinking at low effort (Haiku 4.5 does not take the effort
+setting and runs at its default), a two-minute timeout and two
 retries. Errors are reported on the job (401 = bad key, 429 = rate limited, 529 = overloaded).
 
 For development without a key, `apps/server/src/test/fake-claude.ts` answers `POST /v1/messages`

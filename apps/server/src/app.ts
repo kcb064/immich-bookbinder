@@ -3,6 +3,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifySensible from '@fastify/sensible';
+import type { LuluEnv } from '@bookbinder/shared';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { mkdirSync } from 'node:fs';
 import { registerAuth } from './auth.js';
@@ -83,18 +84,22 @@ ${conn.apiKey}`;
     if (cachedClient?.key !== key) cachedClient = { key, client: createImmichClient(conn) };
     return cachedClient.client;
   };
-  // Same idea for Lulu: the token cache lives in the client, so keep one per credential pair.
-  let cachedLulu: { key: string; client: LuluClient } | undefined;
-  const luluClient = (): LuluClient | undefined => {
-    const creds = settings.getLuluCredentials();
+  // Same idea for Lulu: the token cache lives in the client, so keep one per environment and credential pair.
+  // Orders keep talking to the environment they were placed in, whichever one Settings has active.
+  const luluClients = new Map<LuluEnv, { key: string; client: LuluClient }>();
+  const luluClientFor = (env: LuluEnv): LuluClient | undefined => {
+    const creds = settings.getLuluCredentials(env);
     if (!creds) return undefined;
-    const key = `${creds.env}
-${creds.clientKey}
+    const key = `${creds.clientKey}
 ${creds.clientSecret}
 ${config.LULU_BASE_URL ?? ''}`;
-    if (cachedLulu?.key !== key) cachedLulu = { key, client: createLuluClient({ ...creds, baseUrl: config.LULU_BASE_URL }) };
-    return cachedLulu.client;
+    const cached = luluClients.get(env);
+    if (cached?.key === key) return cached.client;
+    const client = createLuluClient({ ...creds, baseUrl: config.LULU_BASE_URL });
+    luluClients.set(env, { key, client });
+    return client;
   };
+  const luluClient = (): LuluClient | undefined => luluClientFor(settings.luluEnv());
   const renderer = new ChromiumRenderer();
   // ntfy / Gotify / webhook (M7): the target is read per event so Settings changes apply at once.
   const notifier = new Notifier({
@@ -184,6 +189,7 @@ ${config.LULU_BASE_URL ?? ''}`;
     exports: exportStore,
     settings,
     client: luluClient,
+    clientFor: luluClientFor,
     publicBase: () => configuredPublicBase(app),
     log: app.log,
     notify: (event) => notifier.notify(event),
