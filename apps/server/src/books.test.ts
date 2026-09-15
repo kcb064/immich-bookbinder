@@ -89,6 +89,15 @@ describe('books CRUD', () => {
     });
     expect(mismatch.statusCode).toBe(400);
 
+    // A save built on the copy from before the update is refused: the server's copy is newer.
+    const stale = await t.app.inject({ method: 'PUT', url: `/api/books/${book.id}`, headers: { cookie }, payload: { ...updatedBody, title: 'From an old tab' } });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ code: 'stale', updatedAt: after.updatedAt });
+    expect(Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${book.id}`, headers: { cookie } })).json()).title).toBe('Portugal, May 2026');
+    // The same edit on the current copy goes through.
+    const fresh = await t.app.inject({ method: 'PUT', url: `/api/books/${book.id}`, headers: { cookie }, payload: { ...after, title: 'From the current tab' } });
+    expect(fresh.statusCode).toBe(200);
+
     const invalid = await t.app.inject({
       method: 'PUT',
       url: `/api/books/${book.id}`,

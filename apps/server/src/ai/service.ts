@@ -235,8 +235,10 @@ export class AiService {
     });
     const chapterPages = book.pages.filter((p) => p.templateId === CHAPTER_TITLE_TEMPLATE_ID && p.chapterId && p.slots.find((s) => s.slotId === 'title')?.text === undefined);
     const chapters = book.chapters.filter((c) => chapterPages.some((p) => p.chapterId === c.id));
-    const skipped = book.pages.filter((p) => captionSlotOf(p) && !targets.includes(p) && p.slots.some((s) => s.slotId === captionSlotOf(p) && s.text !== undefined)).length;
-    let pages = book.pages;
+    // Typed captions and typed chapter titles are kept and counted as skipped.
+    const skipped =
+      book.pages.filter((p) => captionSlotOf(p) && !targets.includes(p) && p.slots.some((s) => s.slotId === captionSlotOf(p) && s.text !== undefined)).length +
+      book.pages.filter((p) => p.templateId === CHAPTER_TITLE_TEMPLATE_ID && p.chapterId && p.slots.find((s) => s.slotId === 'title')?.text !== undefined).length;
     let written = 0;
     let titles = 0;
     ctx.progress(0, targets.length);
@@ -254,35 +256,38 @@ export class AiService {
       }
       if (i === 0) {
         for (const c of chapters) {
-          const count = pages.filter((p) => p.chapterId === c.id).reduce((n, p) => n + p.slots.filter((s) => s.assetId).length, 0);
+          const count = book.pages.filter((p) => p.chapterId === c.id).reduce((n, p) => n + p.slots.filter((s) => s.assetId).length, 0);
           lines.push(`Chapter ${c.id}: currently "${c.title}"${c.subtitle ? ` (${c.subtitle})` : ''}, ${count} photographs`);
         }
       }
       if (lines.length === 0) break;
       const { data, usage } = await ai.ask({ system: CAPTION_SYSTEM, text: `Book: ${book.title}\n${lines.join('\n')}`, images: imgs, schema: CaptionAnswer, maxTokens: 2048 });
       ctx.account(usage);
+      // Only what Claude wrote in this batch goes onto the book (by page id and slot id); the
+      // snapshot itself is never written back, so edits the user makes while the job runs survive.
+      const batchWritten: Page[] = [];
       const byPage = new Map(data.captions.map((c) => [c.page, c.caption.trim()]));
-      pages = pages.map((p) => {
-        const slotId = batch.includes(p) ? captionSlotOf(p) : undefined;
+      for (const p of batch) {
+        const slotId = captionSlotOf(p);
         const text = slotId ? byPage.get(p.index) : undefined;
-        if (!slotId || !text) return p;
+        if (!slotId || !text) continue;
         written++;
-        return { ...p, slots: withSlotText(p.slots, slotId, text) };
-      });
+        batchWritten.push({ id: p.id, index: p.index, templateId: p.templateId, slots: [{ slotId, text }] });
+      }
       if (i === 0) {
         const byChapter = new Map(data.chapters.map((c) => [c.id, c.title.trim()]));
-        pages = pages.map((p) => {
-          const title = p.templateId === CHAPTER_TITLE_TEMPLATE_ID && p.chapterId && chapterPages.includes(p) ? byChapter.get(p.chapterId) : undefined;
-          if (!title) return p;
+        for (const p of chapterPages) {
+          const title = p.chapterId ? byChapter.get(p.chapterId) : undefined;
+          if (!title) continue;
           titles++;
-          return { ...p, slots: withSlotText(p.slots, 'title', title) };
-        });
+          batchWritten.push({ id: p.id, index: p.index, templateId: p.templateId, slots: [{ slotId: 'title', text: title }] });
+        }
       }
       ctx.progress(Math.min(targets.length, i + batch.length), targets.length);
       // Save after every batch so a failure half-way keeps what was written.
       const latest = this.deps.books.get(book.id);
       if (!latest) throw new Error('Book was deleted');
-      this.deps.books.save({ ...latest, pages: mergeSlotTexts(latest.pages, pages) });
+      if (batchWritten.length > 0) this.deps.books.save({ ...latest, pages: mergeSlotTexts(latest.pages, batchWritten) });
     }
     return { captions: written, chapterTitles: titles, skipped };
   }
@@ -301,6 +306,7 @@ export class AiService {
       .map((members) => [...members].sort((a, b) => a.clusterRank - b.clusterRank));
     ctx.progress(0, eligible.length);
     let changed = 0;
+    let skipped = 0;
     for (const [n, members] of eligible.entries()) {
       const imgs: AiImage[] = [];
       for (const [k, m] of members.entries()) {
@@ -311,13 +317,25 @@ export class AiService {
       ctx.account(usage);
       const winner = members[0]!;
       const chosen = members[Math.min(members.length - 1, Math.max(0, data.best))]!;
-      if (chosen.assetId !== winner.assetId) {
-        changed++;
-        this.deps.candidates.update(book.id, swapWinner(winner, chosen, data.reason));
+      if (chosen.assetId === winner.assetId) {
+        ctx.progress(n + 1, eligible.length);
+        continue;
       }
+      // The review page may have decided this burst while Claude was looking at it: the user wins.
+      const fresh = this.deps.candidates.getMany(
+        book.id,
+        members.map((m) => m.assetId),
+      );
+      if (!burstUnchanged(members, fresh)) {
+        skipped++;
+        ctx.progress(n + 1, eligible.length);
+        continue;
+      }
+      changed++;
+      this.deps.candidates.update(book.id, swapWinner(fresh.get(winner.assetId) ?? winner, fresh.get(chosen.assetId) ?? chosen, data.reason));
       ctx.progress(n + 1, eligible.length);
     }
-    return { clusters: eligible.length, changed };
+    return { clusters: eligible.length, changed, ...(skipped > 0 ? { skipped } : {}) };
   }
 
   /** One click undoes a Claude pick: the frames swap back and the `ai` reasons go. */
@@ -358,6 +376,12 @@ export class AiService {
     const text = data.foreword.trim();
     const latest = this.deps.books.get(book.id);
     if (!latest) throw new Error('Book was deleted');
+    // A foreword typed while Claude was writing is the user's; only an explicit overwrite replaces it.
+    const typedMeanwhile = latest.pages.find((p) => p.templateId === TITLE_TEMPLATE_ID)?.slots.find((s) => s.slotId === 'foreword')?.text;
+    if (typedMeanwhile && !overwrite) {
+      ctx.progress(1, 1);
+      return { text: typedMeanwhile, skipped: 1 };
+    }
     this.deps.books.save({ ...latest, pages: latest.pages.map((p) => (p.templateId === TITLE_TEMPLATE_ID ? { ...p, slots: withSlotText(p.slots, 'foreword', text) } : p)) });
     ctx.progress(1, 1);
     return { text };
@@ -371,6 +395,17 @@ interface JobContext {
   account: (u: { inputTokens: number; outputTokens: number }) => void;
   progress: (done: number, total: number) => void;
   log: FastifyBaseLogger;
+}
+
+/**
+ * Whether a burst is still exactly as the job saw it: same ranks, decisions and cluster, and no
+ * `ai` reason yet. Anything else means the user (or another job) touched it meanwhile.
+ */
+export function burstUnchanged(seen: readonly Candidate[], fresh: ReadonlyMap<string, Candidate>): boolean {
+  return seen.every((m) => {
+    const f = fresh.get(m.assetId);
+    return f !== undefined && f.decision === m.decision && f.clusterRank === m.clusterRank && f.clusterId === m.clusterId && !f.reasons.some((r) => r.kind === 'ai');
+  });
 }
 
 /** The candidates of a burst after Claude chose `chosen` over the engine's `winner`: ranks and decisions swap, each carries an `ai` reason pointing at the other. */

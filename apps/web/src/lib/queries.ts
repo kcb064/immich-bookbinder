@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { AiJob, AiTest, Book, BookAsset, ImmichStatus, LuluRemoteJob, LuluStatus, LuluWebhookView, NotificationTest, OrderView, Preflight, ReachabilityReport, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
 import type { AiJobKind, AiSettingsInput, CreateShareInput, DecisionChoice, ImmichConnectionInput, LuluConnectionInput, LuluEnv, NotificationSettingsInput, PrepareOrderInput, RenderKind, SavedPet, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
-import { del, get, post, put } from './api.ts';
+import { del, get, isApiError, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
 
@@ -432,6 +432,11 @@ export function useSaveBook(id: string) {
     onSuccess: async (book) => {
       qc.setQueryData(keys.book(id), book);
       await Promise.all([qc.invalidateQueries({ queryKey: keys.books, exact: true }), qc.invalidateQueries({ queryKey: keys.preflight(id) })]);
+    },
+    // 409: the copy this save was built on is older than the server's (another tab, a Claude job).
+    // Refetch so the page shows the current document; the caller reports the error and the user applies the change again.
+    onError: async (err) => {
+      if (isApiError(err) && err.status === 409) await qc.invalidateQueries({ queryKey: keys.book(id), exact: true });
     },
   });
 }

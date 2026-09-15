@@ -72,6 +72,14 @@
 .savestate--saved {
   color: var(--text-faint);
 }
+.savestate--conflict {
+  color: var(--amber);
+  font-weight: 600;
+}
+.editor__banner {
+  flex: none;
+  padding: 10px 20px 0;
+}
 
 .editor__body {
   flex: 1;

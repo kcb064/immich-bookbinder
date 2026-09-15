@@ -69,6 +69,17 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     const parsed = Book.safeParse(request.body);
     if (!parsed.success) return reply.badRequest(zodMessage(parsed.error));
     if (parsed.data.id !== params.data.id) return reply.badRequest('Body id does not match URL id');
+    // Optimistic concurrency: a document saved from an older copy (another tab, the book page while
+    // the editor is open, a Claude job that wrote captions meanwhile) would silently drop those changes.
+    if (parsed.data.updatedAt < existing.updatedAt) {
+      return reply.code(409).send({
+        statusCode: 409,
+        error: 'Conflict',
+        code: 'stale',
+        message: 'The book changed since this copy was loaded (another tab, the book page, or a Claude job). It has been reloaded; apply your change again.',
+        updatedAt: existing.updatedAt,
+      });
+    }
     // Every asset may sit on at most one slot; slots must name the template they belong to.
     const seen = new Set<string>();
     for (const page of parsed.data.pages) {

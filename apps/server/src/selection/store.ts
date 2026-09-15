@@ -43,6 +43,17 @@ export class CandidateStore {
     });
   }
 
+  /** The named candidates as stored now (a burst re-read before a job writes it). */
+  getMany(bookId: string, assetIds: readonly string[]): Map<string, Candidate> {
+    if (assetIds.length === 0) return new Map();
+    const rows = this.db
+      .select()
+      .from(candidates)
+      .where(and(eq(candidates.bookId, bookId), inArray(candidates.assetId, [...assetIds])))
+      .all();
+    return new Map(rows.map((r) => [r.assetId, Candidate.parse(JSON.parse(r.data))]));
+  }
+
   /** Rewrites the given candidates in place (rank, decision, reasons); rows that do not exist are ignored. */
   update(bookId: string, items: readonly Candidate[]): void {
     const updatedAt = new Date().toISOString();

@@ -1,7 +1,8 @@
 # Claude features (optional)
 
 Everything here is off until you turn it on in **Settings -> Claude** and paste your own Anthropic
-API key. With the switch off the app never contacts Anthropic. With it on, nothing runs by itself:
+API key. With the switch off the app never contacts Anthropic on its own (the **Test key** button in
+Settings is the one request you can still send by hand). With it on, nothing runs by itself:
 each feature is a button on the book page that starts one job.
 
 ## What is sent, and when

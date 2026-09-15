@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { FORMAT_PRESETS, PX_PER_IN, type Book, type BookAsset, type BookCover, type BookFormat, type Page, type SlotContent, type SlotSpec, type Theme } from '@bookbinder/shared';
 import {
   NO_FOLIO_TEMPLATE_IDS,
@@ -23,7 +24,7 @@ import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, isActiveRender } from '../components/Renders.tsx';
 import { DesignOverlay, DesignPanel, ShortcutHelp, useDesignDrag, type DesignSurface, type FramePatch, type SurfaceBox } from '../components/Designer.tsx';
-import { useBook, useBookAssets, useLayoutBook, useRenders, useSaveBook, useShares } from '../lib/queries.ts';
+import { keys, useAiJobs, useBook, useBookAssets, useLayoutBook, useRenders, useSaveBook, useShares } from '../lib/queries.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { themeFor } from '../lib/format.ts';
 import {
@@ -141,6 +142,11 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const layout = useLayoutBook(book.id);
   const renders = useRenders(book.id);
   const shares = useShares(book.id);
+  const qc = useQueryClient();
+  // Claude jobs (M7) write captions, titles and the foreword into the same document: watching them
+  // here refreshes the working copy when one finishes, and warns while one runs.
+  const aiJobs = useAiJobs(book.id);
+  const aiActive = aiJobs.data?.find((j) => j.status === 'queued' || j.status === 'running');
   /** The colophon prints the newest active share as a QR code (M7), on screen as in the PDF. */
   const shareUrl = shares.data?.find((s) => s.status === 'active')?.url;
 
@@ -154,17 +160,34 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const savedRef = useRef<Doc>(docOf(book));
   /** Serialized server document we already account for, so a save echo or refetch is not a "new layout". */
   const knownServerDoc = useRef<string>(docKey(docOf(book)));
+  /**
+   * `updatedAt` of the server document the working copy is based on. Every save sends it, so the
+   * server refuses (409) a save built on a copy something else has since replaced (another tab,
+   * the book page, a Claude job) instead of silently dropping those changes.
+   */
+  const baseUpdatedAt = useRef(book.updatedAt);
+  /** Set when a save was refused as stale: autosave pauses until the user reloads or overwrites. */
+  const [conflict, setConflict] = useState(false);
+  /** "Load the newer version" adopts the next server document even over unsaved edits. */
+  const forceAdopt = useRef(false);
   const dirty = doc !== savedRef.current;
 
   // Server document changed by something other than our own save (a re-layout elsewhere, the cover
-  // card): replace the working copy and the undo stack, unless there are unsaved edits to protect.
+  // card, a Claude job): replace the working copy and the undo stack, unless there are unsaved edits
+  // to protect; those get a conflict on their next save and a choice.
   useEffect(() => {
     const next = docOf(book);
     const json = docKey(next);
-    if (json === knownServerDoc.current) return;
-    knownServerDoc.current = json;
-    if (!dirty) {
+    if (json === knownServerDoc.current && !forceAdopt.current) {
+      if (!dirty) baseUpdatedAt.current = book.updatedAt;
+      return;
+    }
+    if (!dirty || forceAdopt.current) {
+      forceAdopt.current = false;
+      knownServerDoc.current = json;
       savedRef.current = next;
+      baseUpdatedAt.current = book.updatedAt;
+      setConflict(false);
       setHistory({ present: next, past: [], future: [] });
     }
   }, [book, dirty]);
@@ -178,26 +201,59 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   // effect keyed on the document alone, so a server response does not restart the timer.
   const latest = useRef({ book, save });
   latest.current = { book, save };
-  useEffect(() => {
-    if (!dirty) return;
-    const snapshot = doc;
-    const t = setTimeout(() => {
-      const { book: b, save: s } = latest.current;
-      const next: Book = { ...b, pages: snapshot.pages, status: b.status === 'draft' ? 'editing' : b.status };
-      if (snapshot.cover) next.cover = snapshot.cover;
-      else delete next.cover;
-      s.mutate(
-        next,
-        {
-          onSuccess: (saved) => {
-            savedRef.current = snapshot;
-            knownServerDoc.current = docKey(docOf(saved));
-          },
+  /** The book as it should be saved: the server's row with our pages and cover, based on `updatedAt`. */
+  const bookToSave = useCallback((snapshot: Doc, updatedAt: string): Book => {
+    const b = latest.current.book;
+    const next: Book = { ...b, pages: snapshot.pages, status: b.status === 'draft' ? 'editing' : b.status, updatedAt };
+    if (snapshot.cover) next.cover = snapshot.cover;
+    else delete next.cover;
+    return next;
+  }, []);
+  const saveDoc = useCallback(
+    (snapshot: Doc, updatedAt: string) => {
+      latest.current.save.mutate(bookToSave(snapshot, updatedAt), {
+        onSuccess: (saved) => {
+          savedRef.current = snapshot;
+          knownServerDoc.current = docKey(docOf(saved));
+          baseUpdatedAt.current = saved.updatedAt;
+          setConflict(false);
         },
-      );
-    }, AUTOSAVE_MS);
+        onError: (err) => {
+          if (isApiError(err) && err.status === 409) setConflict(true);
+        },
+      });
+    },
+    [bookToSave],
+  );
+  useEffect(() => {
+    if (!dirty || conflict) return;
+    const snapshot = doc;
+    const t = setTimeout(() => saveDoc(snapshot, baseUpdatedAt.current), AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [doc, dirty]);
+  }, [doc, dirty, conflict, saveDoc]);
+
+  /** Conflict: throw the local edits away and take the server's document. */
+  const loadNewer = useCallback(async () => {
+    forceAdopt.current = true;
+    await qc.invalidateQueries({ queryKey: keys.book(book.id), exact: true });
+    const fresh = qc.getQueryData<Book>(keys.book(book.id));
+    if (fresh && forceAdopt.current) {
+      forceAdopt.current = false;
+      const next = docOf(fresh);
+      knownServerDoc.current = docKey(next);
+      savedRef.current = next;
+      baseUpdatedAt.current = fresh.updatedAt;
+      setConflict(false);
+      setHistory({ present: next, past: [], future: [] });
+    }
+  }, [book.id, qc]);
+  /** Conflict: keep the local edits, replacing whatever changed on the server. */
+  const overwrite = useCallback(() => {
+    // The refused save already refetched the book, so the cached row carries the server's updatedAt.
+    const current = qc.getQueryData<Book>(keys.book(book.id))?.updatedAt ?? latest.current.book.updatedAt;
+    setConflict(false);
+    saveDoc(doc, current);
+  }, [book.id, doc, qc, saveDoc]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -749,7 +805,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
 
   const latestRender = renders.data?.[0];
   const activeRender = renders.data?.find(isActiveRender);
-  const saveState = save.isError ? 'error' : save.isPending ? 'saving' : dirty ? 'dirty' : 'saved';
+  const saveState = conflict ? 'conflict' : save.isError ? 'error' : save.isPending ? 'saving' : dirty ? 'dirty' : 'saved';
   const customCount = pages.filter((p) => p.custom).length;
 
   const relayout = () => {
@@ -825,7 +881,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         </div>
         <div className="row" style={{ gap: 10 }}>
           <span className={`savestate savestate--${saveState}`} role="status">
-            {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : saveState === 'error' ? `Save failed: ${errorMessage(save.error)}` : 'Saved'}
+            {saveState === 'saving' ? 'Saving…' : saveState === 'dirty' ? 'Unsaved changes' : saveState === 'conflict' ? 'Not saved: changed elsewhere' : saveState === 'error' ? `Save failed: ${errorMessage(save.error)}` : 'Saved'}
           </span>
           <Button variant="ghost" icon="undo" aria-label="Undo" title="Undo (Ctrl+Z)" onClick={undo} disabled={history.past.length === 0} />
           <Button variant="ghost" icon="redo" aria-label="Redo" title="Redo (Ctrl+Y)" onClick={redo} disabled={history.future.length === 0} />
@@ -849,6 +905,30 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           <RenderButtons bookId={book.id} disabled={dirty || save.isPending} disabledReason={dirty ? 'Wait for the save to finish' : undefined} />
         </div>
       </header>
+
+      {conflict ? (
+        <div className="editor__banner">
+          <Note tone="amber" role="alert">
+            <div className="row row--between" style={{ gap: 12, flexWrap: 'wrap' }}>
+              <span>This book was changed elsewhere while you were editing (another tab, the book page, or a Claude job). Your edits here are not saved.</span>
+              <span className="row" style={{ gap: 6 }}>
+                <Button size="sm" onClick={() => void loadNewer()} title="Discard the edits made here and show the version on the server">
+                  Load the newer version
+                </Button>
+                <Button size="sm" variant="primary" onClick={overwrite} loading={save.isPending} title="Save this version over the one on the server">
+                  Keep mine and overwrite
+                </Button>
+              </span>
+            </div>
+          </Note>
+        </div>
+      ) : aiActive ? (
+        <div className="editor__banner">
+          <Note tone="accent" role="status">
+            Claude is {aiActive.kind === 'captions' ? 'writing captions and chapter titles' : aiActive.kind === 'foreword' ? 'writing the foreword' : 'judging bursts'} for this book; the pages refresh when it finishes. Edits made now will ask you to reload or overwrite.
+          </Note>
+        </div>
+      ) : null}
 
       <div className="editor__body">
         <nav className="filmstrip" aria-label="Spreads">

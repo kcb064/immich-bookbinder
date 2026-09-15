@@ -1,11 +1,11 @@
-import { AiJob, Book, SelectionView } from '@bookbinder/shared';
+import { AiJob, Book, SelectionView, type Candidate } from '@bookbinder/shared';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, loginCookie, type TestApp } from '../test/helpers.js';
 import { startFakeClaude, type FakeClaude } from '../test/fake-claude.js';
 import { startFakeImmich, type FakeImmich } from '../test/fake-immich.js';
 import { parseLooseJson } from './client.js';
-import { mergeSlotTexts, swapWinner } from './service.js';
+import { burstUnchanged, mergeSlotTexts, swapWinner } from './service.js';
 
 describe('ai helpers', () => {
   it('parses fenced and prefixed JSON', () => {
@@ -26,6 +26,19 @@ describe('ai helpers', () => {
     const merged = mergeSlotTexts(current, written);
     expect(merged[0]!.slots.find((s) => s.slotId === 'cap')?.text).toBe('Mine');
     expect(merged[1]!.slots).toEqual([{ slotId: 'p1', assetId: 'b', frame: { x: 0, y: 0, w: 1, h: 1 } }, { slotId: 'cap', text: 'Robot 2' }]);
+  });
+
+  it('leaves a burst alone once the user or another job touched it', () => {
+    const base = { scores: { sharpness: 1, exposure: 1, aesthetic: 1, people: 0, composite: 0.8 }, clusterId: 'c', clusterSize: 3, blurry: false, autoDecision: 'auto-in' as const };
+    const seen: Candidate[] = [
+      { ...base, assetId: 'w', clusterRank: 0, decision: 'auto-in', reasons: [] },
+      { ...base, assetId: 'o', clusterRank: 1, decision: 'auto-out', reasons: [] },
+    ];
+    const fresh = new Map<string, Candidate>(seen.map((c) => [c.assetId, c]));
+    expect(burstUnchanged(seen, fresh)).toBe(true);
+    expect(burstUnchanged(seen, new Map([...fresh, ['o', { ...seen[1]!, decision: 'user-in' as const }]]))).toBe(false);
+    expect(burstUnchanged(seen, new Map([...fresh, ['w', { ...seen[0]!, reasons: [{ kind: 'ai' as const, text: 'picked', assetId: 'o' }] }]]))).toBe(false);
+    expect(burstUnchanged(seen, new Map([['w', seen[0]!]]))).toBe(false);
   });
 
   it('swaps a burst winner and keeps a way back', () => {
@@ -119,7 +132,7 @@ describe('Claude features against the fakes', () => {
     const [done] = await jobs();
     expect(done).toMatchObject({ kind: 'captions', status: 'done', model: 'claude-sonnet-5' });
     expect(done!.result!.captions).toBeGreaterThan(0);
-    expect(done!.result!.skipped).toBe(1);
+    expect(done!.result!.skipped).toBe(2); // the typed caption and the typed chapter title
     expect(done!.usage!.requests).toBeGreaterThan(0);
     expect(done!.usage!.costUsd).toBeGreaterThan(0);
     // Thumbnails only: every image is small.

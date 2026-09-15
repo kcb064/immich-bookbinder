@@ -52,7 +52,7 @@ export const AiJobResult = z.object({
   captions: z.number().int().nonnegative().optional(),
   chapterTitles: z.number().int().nonnegative().optional(),
   skipped: z.number().int().nonnegative().optional(),
-  /** bursts: clusters asked about / winners changed. */
+  /** bursts: clusters asked about / winners changed; `skipped` counts bursts the user decided while the job ran. */
   clusters: z.number().int().nonnegative().optional(),
   changed: z.number().int().nonnegative().optional(),
   /** foreword: the paragraph written to the title page. */

@@ -21,7 +21,7 @@ function describe(job: AiJob): string {
     case 'captions':
       return `${formatNumber(r.captions)} caption${r.captions === 1 ? '' : 's'}, ${formatNumber(r.chapterTitles)} chapter title${r.chapterTitles === 1 ? '' : 's'}${r.skipped ? `, ${r.skipped} skipped (typed by you)` : ''}`;
     case 'bursts':
-      return `${formatNumber(r.clusters)} burst${r.clusters === 1 ? '' : 's'} judged, ${formatNumber(r.changed)} changed`;
+      return `${formatNumber(r.clusters)} burst${r.clusters === 1 ? '' : 's'} judged, ${formatNumber(r.changed)} changed${r.skipped ? `, ${r.skipped} left alone (you decided ${r.skipped === 1 ? 'it' : 'them'} meanwhile)` : ''}`;
     default:
       return r.skipped ? 'kept the foreword you typed' : r.text ? `“${r.text.slice(0, 80)}${r.text.length > 80 ? '…' : ''}”` : 'done';
   }
