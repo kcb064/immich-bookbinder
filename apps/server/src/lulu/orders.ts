@@ -19,7 +19,7 @@ import {
   type RenderJob,
   type ShippingLevel,
 } from '@bookbinder/shared';
-import { preflightBook } from '@bookbinder/layout';
+import { isCurrentRender, preflightBook } from '@bookbinder/layout';
 import { desc, eq, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -641,7 +641,7 @@ export class OrderService {
       throw new OrderError(409, `"${book.title}": preflight has ${errors.length} error${errors.length === 1 ? '' : 's'}: ${shown.join(' ')}${more}`);
     }
     const current = (kind: 'print' | 'cover'): RenderJob | undefined =>
-      renders.find((r) => r.kind === kind && r.status === 'done' && r.finishedAt !== undefined && r.finishedAt >= book.updatedAt);
+      renders.find((r) => r.kind === kind && isCurrentRender(r, book.updatedAt));
     const print = current('print');
     const cover = current('cover');
     if (!print) throw new OrderError(409, `"${book.title}": render the print PDF first (it must be newer than the last change to the book).`);

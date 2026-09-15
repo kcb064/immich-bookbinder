@@ -139,6 +139,17 @@ describe('designer overrides (M6)', () => {
     expect(pageOnly(doc)).toBe(pageOnly(editor));
     expect(pageOnly(doc)).toContain('left:94px;top:94px;width:326px;height:245px');
   });
+
+  it('keeps a slot sent behind everything above the paper at print scale (own stacking context)', () => {
+    const { assets } = fixtures(2);
+    const page: Page = { id: 'x', index: 0, templateId: 'two-up', custom: true, slots: [{ slotId: 'p1', assetId: 'a0', frame: { x: 0.1, y: 0.1, w: 0.4, h: 0.3, z: -1 } }] };
+    const html = renderToStaticMarkup(<PageView page={page} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(html).toContain('z-index:-1');
+    // Without `isolation` the negative z-index box paints under the page background once no transform applies.
+    expect(html).toMatch(/class="bb-page__inner" style="[^"]*isolation:isolate/);
+    const cover = renderToStaticMarkup(<CoverView cover={{ templateId: 'cover-editorial', slots: [] }} geometry={coverGeometry(format, LuluProduct.parse({}), 24)} format={format} theme={theme} assets={assets} imageSrc={imageSrc} meta={meta} />);
+    expect(cover).toMatch(/class="bb-cover__inner" style="[^"]*isolation:isolate/);
+  });
 });
 
 describe('themes and overrides (M7)', () => {

@@ -311,6 +311,9 @@ export function PageView({
     height: size.h,
     transform: scale === 1 ? undefined : `scale(${scale})`,
     transformOrigin: '0 0',
+    // Own stacking context at every scale: a slot sent behind everything (negative z, M6) must stay
+    // above the paper; without this, print (scale 1, no transform) painted it under the page background.
+    isolation: 'isolate',
     fontFamily: theme.bodyFont,
   };
 

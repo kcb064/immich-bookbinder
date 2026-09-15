@@ -1,7 +1,7 @@
 import { FORMAT_PRESETS, type Book, type BookAsset, type CoverGeometry, type Page } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
 import { paginate } from './paginate.js';
-import { preflightBook, type PreflightRender } from './preflight.js';
+import { isCurrentRender, preflightBook, type PreflightRender } from './preflight.js';
 
 const square = FORMAT_PRESETS['lulu-square-8.5']!;
 const geometry: CoverGeometry = { widthIn: 18.86, heightIn: 10, spineIn: 0.36, wrapIn: 0.75, frontLeftIn: 9.61, source: 'estimate' };
@@ -140,5 +140,18 @@ describe('preflightBook', () => {
     expect(old.items.find((i) => i.code === 'render-missing')?.message).toMatch(/changed after/);
     const failed = preflightBook({ book, format: square, assets, renders: [{ kind: 'print', status: 'error' }, coverRender(N)] });
     expect(failed.items.some((i) => i.code === 'render-missing')).toBe(true);
+  });
+
+  it('treats a render that started before the last edit as stale even when it finished after it', () => {
+    const { book, assets } = fixture();
+    // The book was saved at 10:00 while a print render that started at 09:30 was still running until 10:30.
+    const during = { ...printRender('2026-09-14T10:30:00.000Z'), startedAt: '2026-09-14T09:30:00.000Z' };
+    const p = preflightBook({ book, format: square, assets, renders: [during, { ...coverRender(N, '2026-09-14T10:30:00.000Z'), startedAt: '2026-09-14T09:30:00.000Z' }] });
+    expect(p.items.find((i) => i.code === 'render-missing')?.message).toMatch(/changed after/);
+    expect(p.items.find((i) => i.code === 'cover-stale')?.message).toMatch(/changed after/);
+    expect(isCurrentRender(during, book.updatedAt)).toBe(false);
+    expect(isCurrentRender({ ...during, startedAt: '2026-09-14T10:00:00.000Z' }, book.updatedAt)).toBe(true);
+    expect(isCurrentRender({ status: 'done', finishedAt: '2026-09-14T11:00:00.000Z' }, book.updatedAt)).toBe(true);
+    expect(isCurrentRender({ status: 'queued' }, book.updatedAt)).toBe(false);
   });
 });

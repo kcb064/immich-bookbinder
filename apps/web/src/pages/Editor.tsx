@@ -353,7 +353,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       const boxes: SurfaceBox[] = effectiveSlots(coverNow.templateId, coverNow.slots)
         .filter((s) => s.spec.id !== 'spine' && s.spec.role !== 'map' && s.spec.role !== 'qr')
         .map((s) => {
-          const rect = coverSlotPx(s.spec, format, geometry);
+          const rect = coverSlotPx(s.spec, format, geometry, PX_PER_IN, s.adHoc || s.content?.frame !== undefined);
           return {
             id: s.spec.id,
             rect,
@@ -455,8 +455,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       ? effectivePpi(
           selectedAsset.width,
           selectedAsset.height,
-          selected?.pageIndex === COVER ? coverSlotPx(selectedSlot.spec, format, geometry).w / PX_PER_IN : selectedSlot.spec.w * format.trimWidthIn,
-          selected?.pageIndex === COVER ? coverSlotPx(selectedSlot.spec, format, geometry).h / PX_PER_IN : selectedSlot.spec.h * format.trimHeightIn,
+          selected?.pageIndex === COVER ? coverSlotPx(selectedSlot.spec, format, geometry, PX_PER_IN, selectedSlot.adHoc || selectedSlot.content?.frame !== undefined).w / PX_PER_IN : selectedSlot.spec.w * format.trimWidthIn,
+          selected?.pageIndex === COVER ? coverSlotPx(selectedSlot.spec, format, geometry, PX_PER_IN, selectedSlot.adHoc || selectedSlot.content?.frame !== undefined).h / PX_PER_IN : selectedSlot.spec.h * format.trimHeightIn,
           selectedContent?.crop,
         )
       : undefined;

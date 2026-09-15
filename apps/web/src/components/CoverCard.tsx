@@ -5,6 +5,7 @@ import { CoverView, bookMetaFor, coverText } from '@bookbinder/pages';
 import { Button, Field, LinkButton, Note, TextInput } from './ui.tsx';
 import { useRenders, useSaveBook } from '../lib/queries.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
+import { omitKeys } from '../lib/designer.ts';
 import { themeFor } from '../lib/format.ts';
 import { editorImageSrc } from '../pages/Editor.tsx';
 
@@ -66,7 +67,9 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
   const update = (next: BookCover) => setDraft(next);
   const setHero = (assetId: string) => {
     const base = cover ?? fallbackCover(book);
-    update({ ...base, slots: [...base.slots.filter((s) => s.slotId !== 'p1'), { slotId: 'p1', assetId }] });
+    // Keep a hand-placed frame (M6) and everything else on the slot; only the photo and its crop change.
+    const existing = base.slots.find((s) => s.slotId === 'p1') ?? { slotId: 'p1' };
+    update({ ...base, slots: [...base.slots.filter((s) => s.slotId !== 'p1'), { ...omitKeys(existing, 'assetId', 'crop'), assetId }] });
     setPicking(false);
   };
 

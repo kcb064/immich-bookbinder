@@ -1,6 +1,6 @@
 import type { Book, BookAsset, BookCover, BookFormat, Candidate, FaceBox } from '@bookbinder/shared';
 import { FORMAT_PRESETS, chapterIndex, isPicked, planChapters } from '@bookbinder/shared';
-import { COLOPHON_TEMPLATE_ID, TITLE_TEMPLATE_ID, applyFaceCrops, coverGeometry, faceFocal, getTemplate, mergeCustomPages, paginate, placedAssetIds } from '@bookbinder/layout';
+import { COLOPHON_TEMPLATE_ID, TITLE_TEMPLATE_ID, applyFaceCrops, coverGeometry, faceFocal, getTemplate, isOpenerTemplate, mergeCustomPages, paginate, placedAssetIds } from '@bookbinder/layout';
 import { formatHasCover } from '../render/service.js';
 import type { ImmichClient } from '../immich/client.js';
 import { gatherAssets } from '../immich/gather.js';
@@ -86,6 +86,8 @@ export async function layoutBook(
   const onCustom = new Set(placedAssetIds(custom));
   const customTitle = custom.some((p) => p.templateId === TITLE_TEMPLATE_ID);
   const customColophon = custom.some((p) => p.templateId === COLOPHON_TEMPLATE_ID);
+  // A hand-designed opener page (photo or title half) keeps its chapter open: the paginator must not add a second spread.
+  const openedByHand = new Set(custom.filter((p) => p.chapterId && isOpenerTemplate(p.templateId)).map((p) => p.chapterId!));
 
   // Chapters are planned over every gathered photo (as the picker did), then only picked photos keep them.
   const plan = planChapters(assets, { mode: book.rules.chapters, targetPages: book.rules.targetPages });
@@ -103,7 +105,7 @@ export async function layoutBook(
     {
       format,
       targetPages: Math.max(1, book.rules.targetPages - custom.length),
-      chapters: plan.map((c) => ({ id: c.id, title: c.title, subtitle: c.subtitle })),
+      chapters: plan.map((c) => ({ id: c.id, title: c.title, subtitle: c.subtitle, opener: !openedByHand.has(c.id) })),
       titlePage: !customTitle,
       colophon: !customColophon,
     },
@@ -116,7 +118,13 @@ export async function layoutBook(
     faces.size > 0
       ? applyFaceCrops(result.pages, format, faces, new Map(assets.map((a) => [a.id, a.ratio])))
       : result.pages;
-  const { pages, chapters } = custom.length > 0 ? mergeCustomPages(fresh, custom, format, result.chapters) : { pages: fresh, chapters: result.chapters };
+  // Chapters opened by a hand-designed page stay in the book: the merge below places their opener again.
+  const byHand = plan
+    .filter((c) => openedByHand.has(c.id))
+    .map((c) => book.chapters.find((existing) => existing.id === c.id) ?? { id: c.id, title: c.title, ...(c.subtitle ? { subtitle: c.subtitle } : {}), startsAtPage: 0 });
+  const merged = custom.length > 0 ? mergeCustomPages(fresh, custom, format, [...result.chapters, ...byHand]) : { pages: fresh, chapters: result.chapters };
+  const pages = merged.pages;
+  const chapters = [...merged.chapters].sort((a, b) => a.startsAtPage - b.startsAtPage);
   if (custom.length > 0) warnings.push(`${custom.length} hand-designed page${custom.length === 1 ? ' was' : 's were'} kept as ${custom.length === 1 ? 'it is' : 'they are'}.`);
 
   // The cover is created once; later layouts keep the user's cover choices.

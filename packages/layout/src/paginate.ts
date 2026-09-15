@@ -19,6 +19,12 @@ export interface PaginateChapter {
   id: string;
   title: string;
   subtitle?: string | undefined;
+  /**
+   * False when the opener spread already exists outside the paginator (a hand-designed opener page
+   * kept through a re-layout, M6): the chapter's photos are still laid out as one run carrying the
+   * chapter id, but no photo + title spread is added and the chapter is not reported as opened.
+   */
+  opener?: boolean | undefined;
 }
 
 export interface PaginateOptions {
@@ -235,7 +241,7 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
   if (withTitle) push(TITLE_TEMPLATE_ID, []);
 
   const groups = groupByChapter(photos, opts.chapters ?? []);
-  const openers = groups.filter((g) => g.chapter && g.photos.length > 0).length;
+  const openers = groups.filter((g) => g.chapter && g.chapter.opener !== false && g.photos.length > 0).length;
   const target = normalizePageCount(Math.max(opts.targetPages, 1), opts.format);
   // Body pages we aim for: total minus front matter, opener spreads, and the colophon (or one trailing blank).
   const bodyTarget = Math.max(1, target - (withTitle ? 1 : 0) - 1 - 2 * openers);
@@ -247,7 +253,7 @@ export function paginate(photos: readonly PhotoInput[], opts: PaginateOptions): 
   for (const group of groups) {
     let run = group.photos;
     const chapterId = group.chapter?.id;
-    if (group.chapter && run.length > 0) {
+    if (group.chapter && group.chapter.opener !== false && run.length > 0) {
       // The opener photo must sit on a verso (odd index) so the title faces it on the recto.
       if (pages.length % 2 === 0) push(BLANK_TEMPLATE_ID, []);
       const hero = chooseChapterHero(run);
@@ -410,7 +416,8 @@ export function mergeCustomPages(fresh: readonly Page[], custom: readonly Page[]
   if (colophon) moveColophonLast(merged);
   const pages = reindexPages(merged);
   const openerOf = new Map<string, number>();
-  for (const p of pages) if (p.templateId === CHAPTER_PHOTO_TEMPLATE_ID && p.chapterId && !openerOf.has(p.chapterId)) openerOf.set(p.chapterId, p.index);
+  // The photo half comes first; a chapter whose only remaining opener page is a hand-designed title page starts there.
+  for (const p of pages) if ((p.templateId === CHAPTER_PHOTO_TEMPLATE_ID || p.templateId === CHAPTER_TITLE_TEMPLATE_ID) && p.chapterId && !openerOf.has(p.chapterId)) openerOf.set(p.chapterId, p.index);
   return {
     pages,
     chapters: chapters.map((c) => (openerOf.has(c.id) ? { ...c, startsAtPage: openerOf.get(c.id)! } : c)),

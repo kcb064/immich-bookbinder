@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Book, RenderJob, ShareView } from '@bookbinder/shared';
+import { isCurrentRender } from '@bookbinder/layout';
 import { Button, Chip, Field, Note, PasswordInput, Select, Skeleton } from './ui.tsx';
 import { Icon } from './Icon.tsx';
 import { isActiveRender } from './Renders.tsx';
@@ -21,7 +22,7 @@ export function previewState(book: Pick<Book, 'updatedAt'>, renders: RenderJob[]
   const previews = (renders ?? []).filter((r) => r.kind === 'preview');
   const latest = previews.find((r) => r.status === 'done');
   const running = previews.some(isActiveRender);
-  const current = Boolean(latest && latest.finishedAt && latest.finishedAt >= book.updatedAt);
+  const current = Boolean(latest && isCurrentRender(latest, book.updatedAt));
   return { latest, current, running };
 }
 

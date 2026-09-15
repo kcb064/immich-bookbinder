@@ -16,6 +16,15 @@ export const RENDER_ORIGIN = 'https://render.bookbinder.local';
 /** Longest edge of a preview PNG, in pixels. */
 export const PREVIEW_LONG_EDGE_PX = 1600;
 
+/** Start of the warning a render gets when its theme's web fonts did not load (system fonts were used instead). */
+export const FONTS_WARNING_PREFIX = 'Web fonts could not be loaded';
+
+/** First family of each CSS font stack the theme uses, without quotes: what the print document needs from Google Fonts. */
+export function themeFontFamilies(theme: Pick<Theme, 'displayFont' | 'bodyFont'>): string[] {
+  const first = (stack: string) => stack.split(',')[0]!.trim().replace(/^["']|["']$/g, '');
+  return [...new Set([first(theme.displayFont), first(theme.bodyFont)])].filter(Boolean);
+}
+
 export interface RenderInput {
   book: Book;
   format: BookFormat;
@@ -144,12 +153,23 @@ export class ChromiumRenderer {
     return context;
   }
 
-  /** Loads one print document and waits for fonts and every image before handing the page back. */
-  private async loadDocument(context: BrowserContext, html: string): Promise<BrowserPage> {
+  /**
+   * Loads one print document and waits for fonts and every image before handing the page back.
+   * `fontFamilies` are the faces the theme needs from the web; when none of a family's faces loaded
+   * (no network to Google Fonts, a blocked host) one warning names them: the PDF fell back to system fonts.
+   */
+  private async loadDocument(context: BrowserContext, html: string, fontFamilies: readonly string[], warnings: string[]): Promise<BrowserPage> {
     const page = await context.newPage();
     await page.emulateMedia({ media: 'print' });
     await page.setContent(html, { waitUntil: 'load', timeout: 120_000 });
     await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 8000))]));
+    if (fontFamilies.length > 0 && !warnings.some((w) => w.startsWith(FONTS_WARNING_PREFIX))) {
+      const missing = await page.evaluate((families: readonly string[]) => {
+        const faces = Array.from(document.fonts);
+        return families.filter((f) => !faces.some((face) => face.family.replace(/^["']|["']$/g, '') === f && face.status === 'loaded'));
+      }, fontFamilies);
+      if (missing.length > 0) warnings.push(`${FONTS_WARNING_PREFIX} (${missing.join(', ')}); the PDF uses fallback fonts. Check the server's access to fonts.googleapis.com.`);
+    }
     await page.evaluate(() =>
       Promise.all(
         Array.from(document.images).map((img) =>
@@ -185,6 +205,7 @@ export class ChromiumRenderer {
     if (isCover && !input.cover) throw new Error('A cover render needs the book cover and its geometry');
     const pages = isCover ? [] : [...book.pages].sort((a, b) => a.index - b.index);
     const warnings: string[] = [];
+    const fontFamilies = input.webFonts === false ? [] : themeFontFamilies(input.theme);
     const total = isCover ? 1 : pages.length;
 
     const context = await this.openContext(input, warnings);
@@ -196,7 +217,7 @@ export class ChromiumRenderer {
       for (let b = 0; b < batches.length; b++) {
         const batch = batches[b]!;
         const html = this.documentFor(input, batch, b * batchSize, isCover);
-        const page = await this.loadDocument(context, html);
+        const page = await this.loadDocument(context, html, fontFamilies, warnings);
         try {
           const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 } });
           const doc = await PDFDocument.load(pdf);
@@ -244,6 +265,7 @@ export class ChromiumRenderer {
     const batchSize = Math.max(1, input.batchSize ?? 12);
     const pages = [...book.pages].sort((a, b) => a.index - b.index);
     const warnings: string[] = [];
+    const fontFamilies = input.webFonts === false ? [] : themeFontFamilies(input.theme);
     const total = pages.length + (input.cover ? 1 : 0);
     await mkdir(outDir, { recursive: true });
     let bytes = 0;
@@ -256,7 +278,7 @@ export class ChromiumRenderer {
       const batches = chunk(pages, batchSize);
       for (let b = 0; b < batches.length; b++) {
         const batch = batches[b]!;
-        const page = await this.loadDocument(pageContext, this.documentFor(input, batch, b * batchSize, false));
+        const page = await this.loadDocument(pageContext, this.documentFor(input, batch, b * batchSize, false), fontFamilies, warnings);
         try {
           const sheets = page.locator('.bb-sheet');
           for (let i = 0; i < batch.length; i++) {
@@ -279,7 +301,7 @@ export class ChromiumRenderer {
       const g = input.cover.geometry;
       const coverContext = await this.openContext(input, warnings, PREVIEW_LONG_EDGE_PX / Math.max(g.widthIn * PX_PER_IN, g.heightIn * PX_PER_IN));
       try {
-        const page = await this.loadDocument(coverContext, this.documentFor(input, [], 0, true));
+        const page = await this.loadDocument(coverContext, this.documentFor(input, [], 0, true), fontFamilies, warnings);
         try {
           const png = await page.locator('.bb-sheet--cover').screenshot({ type: 'png', animations: 'disabled' });
           await writeFile(join(outDir, PREVIEW_COVER_FILE), png);

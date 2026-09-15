@@ -1,6 +1,7 @@
 import { CreateShareInput, Id, UpdateShareInput, type ShareView } from '@bookbinder/shared';
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { isCurrentRender } from '@bookbinder/layout';
 import { SettingKeys } from '../settings.js';
 
 const IdParams = z.object({ id: Id });
@@ -52,7 +53,7 @@ export const shareRoutes: FastifyPluginAsync = async (app) => {
     if (!hadActive) app.books.touch(book.id);
     // A link with nothing behind it is useless: queue the web preview when none is current (M7).
     const renders = app.renders.list(book.id).filter((r) => r.kind === 'preview');
-    const current = renders.some((r) => r.status === 'done' && (r.finishedAt ?? '') >= book.updatedAt);
+    const current = renders.some((r) => isCurrentRender(r, book.updatedAt));
     const pending = renders.some((r) => r.status === 'queued' || r.status === 'running');
     let previewQueued = false;
     if (!current && !pending && app.immichClient()) {

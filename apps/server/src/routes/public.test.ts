@@ -76,7 +76,8 @@ describe('shares and the public viewer', () => {
     expect(again.previewQueued).toBeUndefined();
     await t.app.renders.idle();
     for (const s of [made, again]) await t.app.inject({ method: 'DELETE', url: `/api/books/${bookId}/shares/${s.id}`, headers: { cookie } });
-  });
+    // Two Chromium preview renders run inside this test; under the full parallel suite they need well over the default 20 s.
+  }, 120_000);
 
   it('marks the book changed when its first share appears (the colophon gains a QR code, M7)', async () => {
     const before = Book.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}`, headers: { cookie } })).json());

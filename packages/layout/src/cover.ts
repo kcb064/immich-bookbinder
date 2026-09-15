@@ -2,12 +2,12 @@ import type { BookFormat, CoverGeometry, LuluBinding, LuluPaper, LuluProduct } f
 
 /**
  * Sheet thickness per interior page, inches. ESTIMATE, verified against Lulu /cover-dimensions/ in M5:
- * Lulu publishes 444 ppi (pages per inch) figures per paper; these are their reciprocals.
+ * the trailing "444" of every paper code is Lulu's pages-per-inch figure, so all three share 1/444.
  */
 export const PAPER_CALIPER_IN: Record<LuluPaper, number> = {
-  '080CW444': 0.002252, // 80# coated white
-  '060UW444': 0.0025, // 60# uncoated white
-  '060UC444': 0.0025, // 60# uncoated cream
+  '080CW444': 1 / 444, // 80# coated white
+  '060UW444': 1 / 444, // 60# uncoated white
+  '060UC444': 1 / 444, // 60# uncoated cream
 };
 
 /** Bindings whose cover wraps around board (hardcovers); the rest are soft covers. */
@@ -86,6 +86,18 @@ export function coverSlotIn(slot: { id: string; x: number; y: number; w: number;
   const y0 = mapY(slot.y);
   const y1 = mapY(slot.y + slot.h);
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/**
+ * Box of a hand-placed cover frame (M6), in inches from the sheet's top-left. Unlike {@link coverSlotIn}
+ * nothing is clamped or stretched: the corner follows the back/front convention (x < 0 back, x >= 0
+ * front, the spine inserted between them) and the size is the frame's own, so the editor's inverse
+ * (`coverPxToUnits` plus the plain size ratio) round-trips exactly and a box near an edge keeps its size.
+ */
+export function coverFrameIn(frame: { x: number; y: number; w: number; h: number }, format: BookFormat, g: CoverGeometry): { x: number; y: number; w: number; h: number } {
+  const trimW = format.trimWidthIn;
+  const x = frame.x < 0 ? g.wrapIn + (frame.x + 1) * trimW : g.wrapIn + trimW + g.spineIn + frame.x * trimW;
+  return { x, y: g.wrapIn + frame.y * format.trimHeightIn, w: frame.w * trimW, h: frame.h * format.trimHeightIn };
 }
 
 function round4(v: number): number {

@@ -103,6 +103,35 @@ describe('free-form designer (M6): overrides round-trip, survive re-layout and r
     expect(book.pages[0]!.templateId).toBe('title-page');
   });
 
+  it('does not open a chapter twice when its opener page was designed by hand', async () => {
+    const before = await getBook();
+    const opener = before.pages.find((p) => p.templateId === 'chapter-photo' && p.chapterId);
+    expect(opener, 'the fixture album yields place chapters').toBeDefined();
+    const chapterId = opener!.chapterId!;
+    // Nudge the hero: any hand placement marks the page custom (M6).
+    const nudged = { ...opener!, custom: true as const, slots: opener!.slots.map((s) => (s.slotId === 'p1' ? { ...s, frame: { x: -0.02, y: -0.02, w: 1.04, h: 1.04 } } : s)) };
+    const put = await t.app.inject({ method: 'PUT', url: `/api/books/${bookId}`, headers: { cookie }, payload: { ...before, pages: before.pages.map((p) => (p.id === opener!.id ? nudged : p)) } });
+    expect(put.statusCode, put.body).toBe(200);
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/layout`, headers: { cookie }, payload: {} });
+    expect(res.statusCode, res.body).toBe(200);
+    const { book } = LayoutResponse.parse(res.json());
+    const openers = book.pages.filter((p) => p.chapterId === chapterId && (p.templateId === 'chapter-photo' || p.templateId === 'chapter-title'));
+    expect(openers.map((p) => p.templateId)).toEqual(['chapter-photo']);
+    expect(openers[0]!.id).toBe(opener!.id);
+    expect(openers[0]!.custom).toBe(true);
+    const chapter = book.chapters.find((c) => c.id === chapterId);
+    expect(chapter?.startsAtPage).toBe(openers[0]!.index);
+    expect(book.chapters.map((c) => c.startsAtPage)).toEqual([...book.chapters.map((c) => c.startsAtPage)].sort((a, b) => a - b));
+    // Every other chapter still opens exactly once; every photo is placed once.
+    for (const c of book.chapters) expect(book.pages.filter((p) => p.chapterId === c.id && p.templateId === 'chapter-photo')).toHaveLength(1);
+    const placed = placedAssetIds(book.pages);
+    expect(new Set(placed).size).toBe(placed.length);
+    // Undo the hand placement so the render tests below see the plain custom page only.
+    const after = await getBook();
+    const restore = await t.app.inject({ method: 'PUT', url: `/api/books/${bookId}`, headers: { cookie }, payload: { ...after, pages: after.pages.map((p) => (p.id === opener!.id ? { ...p, custom: undefined, slots: p.slots.map((s) => ({ slotId: s.slotId, ...(s.assetId ? { assetId: s.assetId } : {}), ...(s.crop ? { crop: s.crop } : {}) })) } : p)) } });
+    expect(restore.statusCode, restore.body).toBe(200);
+  });
+
   it.skipIf(!hasChromium)('renders the framed photo where the frame says in the preview PNG and the print PDF', async () => {
     const queued = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/renders`, headers: { cookie }, payload: { kind: 'preview' } });
     expect(queued.statusCode, queued.body).toBe(202);

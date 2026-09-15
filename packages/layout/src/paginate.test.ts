@@ -268,6 +268,16 @@ describe('chapters', () => {
     expect(result.pages.filter((p) => p.templateId === 'chapter-photo')).toHaveLength(2);
     expect(placedAssetIds(result.pages).sort()).toEqual(['a', 'b', 'c']);
   });
+
+  it('adds no opener spread for a chapter marked opener: false but keeps its photos in one run with the chapter id', () => {
+    const { photos, chapters } = chaptered();
+    const result = paginate(photos, { format: square, targetPages: 48, chapters: chapters.map((c) => (c.id === 'ch2' ? { ...c, opener: false } : c)), makeId: ids });
+    expect(result.chapters.map((c) => c.id)).toEqual(['ch1', 'ch3']);
+    expect(result.pages.filter((p) => p.templateId === 'chapter-photo' && p.chapterId === 'ch2')).toEqual([]);
+    expect(result.pages.filter((p) => p.templateId === 'chapter-title' && p.chapterId === 'ch2')).toEqual([]);
+    expect(result.pages.filter((p) => p.chapterId === 'ch2' && p.slots.some((s) => s.assetId)).length).toBeGreaterThan(1);
+    expect(placedAssetIds(result.pages)).toHaveLength(photos.length);
+  });
 });
 
 describe('face-aware crops', () => {

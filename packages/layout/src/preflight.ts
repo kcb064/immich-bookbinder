@@ -1,6 +1,6 @@
 import type { Book, BookAsset, BookFormat, Preflight, PreflightItem, RenderData, RenderKind } from '@bookbinder/shared';
 import { LuluProduct } from '@bookbinder/shared';
-import { coverGeometry, coverSlotIn } from './cover.js';
+import { coverFrameIn, coverGeometry, coverSlotIn } from './cover.js';
 import { effectiveSlots } from './design.js';
 import { effectivePpi } from './crop.js';
 import { pageSlots } from './design.js';
@@ -13,9 +13,19 @@ export const PPI_ERROR = 150;
 export interface PreflightRender {
   kind: RenderKind;
   status: string;
+  startedAt?: string | undefined;
   finishedAt?: string | undefined;
   pageCount?: number | undefined;
   data?: RenderData | undefined;
+}
+
+/**
+ * Whether a done render still reflects the book: it read the document when it started, so an edit
+ * saved while it ran (before it finished) already makes it stale. Compares ISO timestamps as strings.
+ */
+export function isCurrentRender(render: Pick<PreflightRender, 'status' | 'startedAt' | 'finishedAt'>, updatedAt: string): boolean {
+  const madeAt = render.startedAt ?? render.finishedAt;
+  return render.status === 'done' && madeAt !== undefined && madeAt >= updatedAt;
 }
 
 export interface PreflightInput {
@@ -94,7 +104,8 @@ export function preflightBook(input: PreflightInput): Preflight {
       if (isPhoto && (!adHoc || !content?.assetId)) continue;
       // Text slots with nothing to print are ignored: an ad-hoc box needs text, the back blurb needs a blurb, an emptied slot is hidden.
       if (!isPhoto && ((adHoc && !content?.text) || (spec.id === 'back-blurb' && !content?.text && !book.cover.blurb) || content?.text === '')) continue;
-      const r = coverSlotIn(spec, format, g);
+      // Hand-placed frames draw linearly (their own size, no clamping); template slots through the cover map.
+      const r = adHoc || content?.frame ? coverFrameIn(spec, format, g) : coverSlotIn(spec, format, g);
       if (!insideCoverSafety(r, format, g)) {
         const what = isPhoto ? 'A photo box' : spec.id === 'title' ? 'The title' : spec.id === 'subtitle' ? 'The subtitle' : spec.id === 'back-blurb' ? 'The back-cover text' : 'A text box';
         items.push({ level: 'warn', code: 'cover-safety', message: `${what} on the cover reaches the ${format.safetyIn} in safety band, the spine or the wrap and may be trimmed or folded.`, slotId: spec.id });
@@ -114,7 +125,7 @@ export function preflightBook(input: PreflightInput): Preflight {
           code: 'cover-stale',
           message: `The cover PDF was sized for ${cover.data.cover.pageCount} pages; the book now has ${n}, so the spine width changed. Render the cover again.`,
         });
-      } else if (cover.finishedAt && cover.finishedAt < book.updatedAt) {
+      } else if (!isCurrentRender(cover, book.updatedAt)) {
         items.push({ level: 'warn', code: 'cover-stale', message: 'The book changed after the cover PDF was rendered. Render the cover again.' });
       }
     }
@@ -122,7 +133,7 @@ export function preflightBook(input: PreflightInput): Preflight {
 
   const print = done('print')[0];
   if (!print) items.push({ level: 'warn', code: 'render-missing', message: 'No print PDF has been rendered yet.' });
-  else if (print.finishedAt && print.finishedAt < book.updatedAt) {
+  else if (!isCurrentRender(print, book.updatedAt)) {
     items.push({ level: 'warn', code: 'render-missing', message: 'The book changed after the last print PDF. Render it again before ordering.' });
   }
 

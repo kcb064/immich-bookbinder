@@ -3,7 +3,7 @@
 import type { CSSProperties, PointerEvent } from 'react';
 import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
-import { MIN_SPINE_TEXT_IN, coverSlotIn, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
+import { MIN_SPINE_TEXT_IN, coverFrameIn, coverSlotIn, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
 import { activateOnKey, frameTransform, photoFrameStyle, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
 
 export interface CoverViewProps {
@@ -56,10 +56,14 @@ export function coverPxToUnits(px: number, py: number, format: BookFormat, g: Co
   return { x, y: (py - wrap) / trimH };
 }
 
-/** Pixel box of a cover slot on the sheet: back cover left, spine, then front; bleed slots run to the sheet edge. */
-export function coverSlotPx(slot: Pick<SlotSpec, 'id' | 'x' | 'y' | 'w' | 'h'>, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN): { x: number; y: number; w: number; h: number } {
+/**
+ * Pixel box of a cover slot on the sheet: back cover left, spine, then front; bleed slots run to the
+ * sheet edge. `linear` is for hand-placed frames (M6): the box keeps its own size and its corner is
+ * mapped without clamping, so what the editor stores is exactly what draws (see coverFrameIn).
+ */
+export function coverSlotPx(slot: Pick<SlotSpec, 'id' | 'x' | 'y' | 'w' | 'h'>, format: BookFormat, g: CoverGeometry, ppi = PX_PER_IN, linear = false): { x: number; y: number; w: number; h: number } {
   // Template x is in trim widths: back [-1, 0], front [0, 1]; the spine is inserted at 0 (see coverSlotIn).
-  const r = coverSlotIn(slot, format, g);
+  const r = linear && slot.id !== 'spine' ? coverFrameIn(slot, format, g) : coverSlotIn(slot, format, g);
   const x0 = r.x * ppi;
   const y0 = r.y * ppi;
   const x1 = (r.x + r.w) * ppi;
@@ -136,6 +140,7 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
     height: sheetH,
     transform: scale === 1 ? undefined : `scale(${scale})`,
     transformOrigin: '0 0',
+    isolation: 'isolate',
     fontFamily: theme.bodyFont,
   };
 
@@ -143,7 +148,7 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
     <div className={['bb-cover', className].filter(Boolean).join(' ')} style={outer} data-template={template.id} data-spine-in={g.spineIn}>
       <div className="bb-cover__inner" style={inner} onClick={onBackgroundClick}>
         {photoSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
-          const r = coverSlotPx(slot, format, g, ppi);
+          const r = coverSlotPx(slot, format, g, ppi, adHoc || content?.frame !== undefined);
           const asset = content?.assetId ? assets.get(content.assetId) : undefined;
           const selected = selectedSlotId === slot.id || Boolean(selectedSlotIds?.has(slot.id));
           return (
@@ -186,7 +191,7 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
           />
         ) : null}
         {textSlots.map(({ spec: slot, content, frame, z, adHoc }) => {
-          const r = coverSlotPx(slot, format, g, ppi);
+          const r = coverSlotPx(slot, format, g, ppi, adHoc || content?.frame !== undefined);
           const selected = selectedSlotId === slot.id || Boolean(selectedSlotIds?.has(slot.id));
           const base: CSSProperties = { position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, ...frameTransform(frame, z) };
           const textHooks = designing && slot.id !== 'spine' ? hooksFor(slot, content, `Text ${slot.id}`) : {};
