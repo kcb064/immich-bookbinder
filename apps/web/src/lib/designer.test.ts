@@ -18,6 +18,7 @@ import {
   setTextStyle,
   setZ,
   slotsDelete,
+  slotsNudge,
   slotsSetFrame,
   withCoverSlots,
 } from './designer.ts';
@@ -204,5 +205,20 @@ describe('coalescing history', () => {
     const h5 = historyPush(u, { ...doc, pages: [] }, { key: 'nudge:1:p2', now: 5100 });
     expect(h5.past).toHaveLength(3);
     expect(h5.future).toHaveLength(0);
+  });
+});
+
+describe('slotsNudge with a format', () => {
+  it('cannot push a box fully off the page', () => {
+    const square = FORMAT_PRESETS['lulu-square-8.5']!;
+    const page: Page = { id: 'p', index: 0, templateId: 'one-up-full-bleed', custom: true, slots: [{ slotId: 'p1', assetId: 'a', frame: { x: 0.6, y: 0.2, w: 0.3, h: 0.3 } }] };
+    let slots = page.slots;
+    for (let i = 0; i < 40; i++) slots = slotsNudge({ templateId: page.templateId, slots }, 'p1', 0.1, 0, square);
+    const frame = slots.find((s) => s.slotId === 'p1')!.frame!;
+    const bleed = square.bleedIn / square.trimWidthIn;
+    expect(frame.x).toBeCloseTo(1 + bleed - 0.25 / square.trimWidthIn, 3);
+    // Without a format (the cover), nudges are free.
+    const free = slotsNudge({ templateId: page.templateId, slots: page.slots }, 'p1', 3, 0);
+    expect(free.find((s) => s.slotId === 'p1')!.frame!.x).toBeCloseTo(3.6, 4);
   });
 });

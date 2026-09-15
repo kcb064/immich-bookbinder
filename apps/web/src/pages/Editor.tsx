@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { FORMAT_PRESETS, PX_PER_IN, type Book, type BookAsset, type BookCover, type BookFormat, type Page, type SlotContent, type SlotSpec, type Theme } from '@bookbinder/shared';
 import {
+  clampFrameToPage,
   NO_FOLIO_TEMPLATE_IDS,
   NUDGE_IN,
   NUDGE_SHIFT_IN,
@@ -387,10 +388,11 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         const page = h.present.pages[ref.pageIndex];
         const frame = page ? currentFrame(page, ref.slotId) : undefined;
         if (!page || !frame) return h;
-        return historyPush(h, { ...h.present, pages: setFrame(h.present.pages, ref, { ...frame, ...patch }) }, coalesce ? { key: coalesce } : undefined);
+        // Typed positions and nudges obey the same "never fully off the page" rule as drags.
+        return historyPush(h, { ...h.present, pages: setFrame(h.present.pages, ref, clampFrameToPage({ ...frame, ...patch }, format)) }, coalesce ? { key: coalesce } : undefined);
       });
     },
-    [],
+    [format],
   );
 
   const surfaceHost = useRef<Map<number, HTMLDivElement | null>>(new Map());
@@ -437,18 +439,25 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     [dragRef, livePages, liveCover, surfaceFor],
   );
 
+  // The patch a drag has built up so far, outside React state: the commit on release reads it
+  // synchronously (state updaters must stay pure; StrictMode runs them twice in development).
+  const pendingDrag = useRef<{ ref: SlotRef; patch: FramePatch } | undefined>(undefined);
   const drag = useDesignDrag(
     dragSurface,
     dragRef?.pageIndex === COVER ? coverScale : scale,
     (id, patch, phase) => {
       const ref = dragRef?.slotId === id ? dragRef : undefined;
       if (!ref) return;
-      if (phase === 'move') setLive((cur) => ({ ref, patch: { ...(cur && cur.ref.slotId === id ? cur.patch : {}), ...patch } }));
-      else {
-        setLive((cur) => {
-          if (cur && cur.ref.slotId === id) commitFrame(ref, cur.patch);
-          return undefined;
-        });
+      if (phase === 'move') {
+        const cur = pendingDrag.current;
+        const merged = { ref, patch: { ...(cur && cur.ref.slotId === id ? cur.patch : {}), ...patch } };
+        pendingDrag.current = merged;
+        setLive(merged);
+      } else {
+        const cur = pendingDrag.current;
+        pendingDrag.current = undefined;
+        setLive(undefined);
+        if (cur && cur.ref.slotId === id) commitFrame(ref, cur.patch);
       }
     },
     () => surfaceHost.current.get(dragRef?.pageIndex ?? COVER) ?? null,

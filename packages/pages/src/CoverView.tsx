@@ -1,5 +1,6 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
+import { memo } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
@@ -85,7 +86,7 @@ function fitTitle(text: string, w: number, h: number): number {
  * the spine text reads bottom-to-top once the spine is wide enough. Same markup for the admin
  * preview and the PDF.
  */
-export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, selectedSlotIds, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
+function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, selectedSlotIds, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
   const template = getTemplate(cover.templateId);
   const slots = effectiveSlots(cover.templateId, cover.slots);
   const photoSlots = slots.filter((s) => s.spec.role === 'hero' || s.spec.role === 'photo');
@@ -269,3 +270,6 @@ export function CoverView({ cover, geometry: g, format, theme, assets, imageSrc,
     </div>
   );
 }
+
+/** The cover sheet, memoised like {@link PageView}. */
+export const CoverView = memo(CoverViewImpl);

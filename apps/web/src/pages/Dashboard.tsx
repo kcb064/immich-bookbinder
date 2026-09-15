@@ -45,10 +45,10 @@ function BookCard({ book }: { book: BookSummary }) {
   );
 }
 
-const WAYS: Array<{ icon: IconName; name: string; desc: string; soon?: boolean }> = [
+const WAYS: Array<{ icon: IconName; name: string; desc: string }> = [
   { icon: 'album', name: 'Album', desc: 'Pick one or more Immich albums. The app scores the photos and lays out a first draft.' },
-  { icon: 'trip', name: 'Trip', desc: 'A date range and the places you were. Finds photos that never made it into an album.', soon: true },
-  { icon: 'people', name: 'People & pets', desc: 'Everything with chosen people, or a pet you have taught the app to find.', soon: true },
+  { icon: 'trip', name: 'Trip', desc: 'A date range and the places you were. Finds photos that never made it into an album.' },
+  { icon: 'people', name: 'People & pets', desc: 'Everything with chosen people, or a pet you have taught the app to find.' },
 ];
 
 function EmptyState() {
@@ -69,7 +69,6 @@ function EmptyState() {
             </div>
             <div className="way__name">
               {w.name}
-              {w.soon ? <Chip>coming in M3</Chip> : null}
             </div>
             <div className="way__desc">{w.desc}</div>
           </div>

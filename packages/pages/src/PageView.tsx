@@ -1,5 +1,6 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
+import { memo } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
 import { PT_PER_IN, PX_PER_IN } from '@bookbinder/shared';
@@ -262,7 +263,7 @@ function textStyle(theme: Theme, template: Template, slot: SlotSpec, w: number, 
  * Draws one page at 96 CSS px per inch (times `scale`), origin at the top-left of the bleed box.
  * Pure and deterministic: the same markup serves the editor, the viewer and the PDF renderer.
  */
-export function PageView({
+function PageViewImpl({
   page,
   format,
   theme,
@@ -464,3 +465,9 @@ export function PageView({
     </div>
   );
 }
+
+/**
+ * One page. Memoised: the editor re-renders on every pointer move and the filmstrip draws every
+ * page, so pages whose props did not change (the vast majority) skip their slot geometry work.
+ */
+export const PageView = memo(PageViewImpl);

@@ -67,3 +67,26 @@ describe('planMap', () => {
     }
   });
 });
+
+describe('planMap across the antimeridian', () => {
+  it('unwraps longitudes so points either side of 180 degrees sit next to each other', () => {
+    const fiji = { lat: -17.7, lon: 178.1 };
+    const samoa = { lat: -13.8, lon: -171.8 };
+    const m = planMap(
+      [
+        { ...fiji, takenAt: '2026-05-12T10:00:00Z' },
+        { ...samoa, takenAt: '2026-05-14T10:00:00Z' },
+      ],
+      320,
+      200,
+    )!;
+    expect(m.dots).toHaveLength(2);
+    const [f, s] = m.dots;
+    // Samoa is east of Fiji the short way round: to the right, and both well inside the box (not pinned to opposite edges).
+    expect(s!.x).toBeGreaterThan(f!.x);
+    expect(f!.x).toBeGreaterThan(320 * 0.1);
+    expect(s!.x).toBeLessThan(320 * 0.9);
+    // The box spans about ten degrees, not the whole globe.
+    expect(m.bbox[2] - m.bbox[0]).toBeLessThan(60);
+  });
+});

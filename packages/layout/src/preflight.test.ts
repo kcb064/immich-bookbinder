@@ -83,12 +83,14 @@ describe('preflightBook', () => {
     // A 1600 px square on a full-bleed 8.75 in page is ~183 ppi; 1200 px is ~137 ppi.
     const soft = fixture(26, 1600);
     const warn = preflightBook({ book: soft.book, format: square, assets: soft.assets, renders: [printRender(), coverRender(N)] });
-    const res = warn.items.filter((i) => i.code === 'low-resolution');
+    // Interior pages: warnings only. The same 1600 px square across the 18.9 in cover sheet is an error (about 85 ppi); it has no page index.
+    const res = warn.items.filter((i) => i.code === 'low-resolution' && i.pageIndex !== undefined);
     expect(res.length).toBeGreaterThan(0);
     expect(res.every((i) => i.level === 'warn')).toBe(true);
     expect(res[0]!.pageIndex).toBeTypeOf('number');
     expect(res[0]!.slotId).toBeTypeOf('string');
-    expect(warn.ok).toBe(true);
+    expect(warn.items.find((i) => i.code === 'low-resolution' && i.pageIndex === undefined)?.level).toBe('error');
+    expect(warn.ok).toBe(false);
 
     const bad = fixture(26, 1200);
     const err = preflightBook({ book: bad.book, format: square, assets: bad.assets, renders: [printRender(), coverRender(N)] });
@@ -153,5 +155,25 @@ describe('preflightBook', () => {
     expect(isCurrentRender({ ...during, startedAt: '2026-09-14T10:00:00.000Z' }, book.updatedAt)).toBe(true);
     expect(isCurrentRender({ status: 'done', finishedAt: '2026-09-14T11:00:00.000Z' }, book.updatedAt)).toBe(true);
     expect(isCurrentRender({ status: 'queued' }, book.updatedAt)).toBe(false);
+  });
+});
+
+describe('cover photo resolution', () => {
+  it('grades the hero over the whole sheet it covers, and a hand-placed photo box over its frame', () => {
+    const { book, assets } = fixture();
+    // 6000 px over an 18.9 in sheet is fine (about 320 ppi); 3000 px is not (about 160 ppi).
+    const fine = preflightBook({ book, format: square, assets, renders: [printRender(), coverRender(N)] });
+    expect(fine.items.filter((i) => i.code === 'low-resolution')).toEqual([]);
+    const small = new Map(assets);
+    small.set('a0', { ...assets.get('a0')!, width: 3000, height: 2000 });
+    const soft = preflightBook({ book, format: square, assets: small, renders: [printRender(), coverRender(N)] });
+    const item = soft.items.find((i) => i.code === 'low-resolution' && i.pageIndex === undefined);
+    expect(item?.level).toBe('warn');
+    expect(item?.message).toMatch(/across the cover/);
+    expect(item?.slotId).toBe('p1');
+    // A small photo box on the back cover is judged over its own frame: 3000 px on 3 in is plenty.
+    const boxed = { ...book, cover: { ...book.cover!, slots: [{ slotId: 'photo-1', role: 'photo' as const, assetId: 'a0', frame: { x: -0.8, y: 0.2, w: 0.35, h: 0.25 } }] } };
+    const ok = preflightBook({ book: boxed, format: square, assets: small, renders: [printRender(), coverRender(N)] });
+    expect(ok.items.filter((i) => i.code === 'low-resolution' && i.pageIndex === undefined)).toEqual([]);
   });
 });

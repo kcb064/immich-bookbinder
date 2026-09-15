@@ -120,12 +120,16 @@ export function defaultTextFrame(): SlotFrame {
   return { x: 0.2, y: 0.42, w: 0.6, h: 0.16 };
 }
 
-/** A new photo box on a page: 45% of the trim wide at the photo's aspect, centred (units follow the format). */
+/** A new photo box on a page: 45% of the trim wide at the photo's aspect (narrower when that would be taller than 90% of the page), centred. */
 export function defaultPhotoFrame(ratio: number, format: BookFormat): SlotFrame {
-  const w = 0.45;
-  const wIn = w * format.trimWidthIn;
-  const hIn = wIn / Math.max(0.1, ratio);
-  const h = Math.min(0.9, hIn / format.trimHeightIn);
+  const r = Math.max(0.1, ratio);
+  let w = 0.45;
+  let h = (w * format.trimWidthIn) / r / format.trimHeightIn;
+  if (h > 0.9) {
+    // Keep the aspect: a tall portrait gets a shorter, narrower box instead of a squashed one.
+    h = 0.9;
+    w = (h * format.trimHeightIn * r) / format.trimWidthIn;
+  }
   return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
 }
 

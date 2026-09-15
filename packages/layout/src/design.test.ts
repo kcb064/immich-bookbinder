@@ -72,6 +72,11 @@ describe('effective slots', () => {
     expect(pf.w).toBe(0.45);
     expect(pf.h).toBeCloseTo(0.3, 5);
     expect(pf.x + pf.w / 2).toBeCloseTo(0.5, 5);
+    // A tall 1:3 portrait would be 1.35 pages high at 45% wide: capped at 90% high and narrowed to keep its aspect.
+    const tall = defaultPhotoFrame(1 / 3, square);
+    expect(tall.h).toBeCloseTo(0.9, 5);
+    expect(tall.w).toBeCloseTo(0.3, 5);
+    expect(tall.x + tall.w / 2).toBeCloseTo(0.5, 5);
   });
 });
 

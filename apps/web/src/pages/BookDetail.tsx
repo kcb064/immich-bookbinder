@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { FORMAT_PRESETS, formatIsoRange, targetPhotosFor, type Book, type BookAsset, type SelectionSource } from '@bookbinder/shared';
 import { dateRangeLabel, PageView, bookMetaFor, toSpreads } from '@bookbinder/pages';
@@ -41,8 +42,8 @@ export function describeSources(book: { rules?: { sources: SelectionSource[] } |
     .join('; ');
 }
 
-/** The first few spreads, drawn small with the real page components. */
-function SpreadPreview({ book, assets }: { book: Book; assets: BookAsset[] }) {
+/** The first few spreads, drawn small with the real page components. Memoised: the page polls renders, selection and jobs every second. */
+const SpreadPreview = memo(function SpreadPreview({ book, assets }: { book: Book; assets: BookAsset[] }) {
   const format = FORMAT_PRESETS[book.formatId];
   const theme = themeFor(book);
   if (!format || book.pages.length === 0) return null;
@@ -64,6 +65,16 @@ function SpreadPreview({ book, assets }: { book: Book; assets: BookAsset[] }) {
         </Link>
       ))}
     </div>
+  );
+});
+
+/** The book document, serialised once per document, not once per poll tick. */
+function StoredJson({ book }: { book: Book }) {
+  const json = useMemo(() => JSON.stringify(book, null, 2), [book]);
+  return (
+    <pre className="code" tabIndex={0} style={{ marginTop: 16 }}>
+      {json}
+    </pre>
   );
 }
 
@@ -362,9 +373,7 @@ export function BookDetailPage() {
               <summary className="h2" style={{ cursor: 'pointer' }}>
                 Stored JSON
               </summary>
-              <pre className="code" tabIndex={0} style={{ marginTop: 16 }}>
-                {JSON.stringify(b, null, 2)}
-              </pre>
+              <StoredJson book={b} />
             </details>
           </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
   DEFAULT_FORMAT_ID,
@@ -23,6 +23,7 @@ import {
   useTrips,
 } from '../lib/queries.ts';
 import type { AlbumSummary, PersonSummary, SourceInput, TripSuggestion } from '../lib/queries.ts';
+import { useDebounced } from '../lib/hooks.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 import { formatDateRange, formatNumber, formatTrim, pluralize } from '../lib/format.ts';
 
@@ -74,15 +75,6 @@ interface TripState {
   to: string;
   places: PlaceChoice[];
   includeUngeotagged: boolean;
-}
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setV(value), ms);
-    return () => window.clearTimeout(t);
-  }, [value, ms]);
-  return v;
 }
 
 function personThumb(id: string): string {

@@ -1,13 +1,13 @@
 import { FORMAT_PRESETS, RenderData, luluPodPackageId, resolveTheme, type Book, type BookCover, type BookFormat, type CoverGeometry, type RenderJob, type RenderKind } from '@bookbinder/shared';
 import { coverGeometry, type CoverOverride } from '@bookbinder/layout';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BookStore } from '../books/store.js';
 import type { Db } from '../db/index.js';
-import { renders, type RenderRow } from '../db/schema.js';
+import { exports, renders, type RenderRow } from '../db/schema.js';
 import type { ImmichClient } from '../immich/client.js';
 import { ImageStore } from './images.js';
 import type { NotifyEvent } from '../notify/notifier.js';
@@ -41,7 +41,16 @@ export interface RenderServiceDeps {
   shareUrl?: (bookId: string) => string | undefined;
   /** Fired when a render finishes or fails (M7 notifications). */
   notify?: (event: NotifyEvent) => void;
+  /** Done renders kept per book and kind (default {@link KEEP_RENDERS_PER_KIND}). */
+  keepPerKind?: number;
 }
+
+/**
+ * Done renders kept per book and kind, newest first. A 300 ppi print PDF runs to hundreds of
+ * megabytes, so older ones go with their files once a new one lands; a render an unexpired export
+ * points at (an order Lulu may still download) is spared.
+ */
+export const KEEP_RENDERS_PER_KIND = 3;
 
 /** Warning on cover and preview renders sized with the caliper estimate instead of Lulu's answer. */
 export const SPINE_ESTIMATED_WARNING = 'Spine width estimated; connect Lulu for exact dimensions';
@@ -146,6 +155,33 @@ export class RenderService {
     this.deps.db.delete(renders).where(eq(renders.id, id)).run();
     if (row.filePath) await rm(row.filePath, { force: true, recursive: true });
     return true;
+  }
+
+  /**
+   * Deletes the book's done renders of a kind beyond the newest `keep`, files included, sparing
+   * those an unexpired export still points at. Returns how many went.
+   */
+  async prune(bookId: string, kind: RenderKind, keep = this.deps.keepPerKind ?? KEEP_RENDERS_PER_KIND): Promise<number> {
+    const done = this.list(bookId)
+      .filter((r) => r.kind === kind && r.status === 'done')
+      .sort((a, b) => (b.finishedAt ?? b.createdAt).localeCompare(a.finishedAt ?? a.createdAt));
+    const old = done.slice(Math.max(0, keep));
+    if (old.length === 0) return 0;
+    const held = new Set(
+      this.deps.db
+        .select({ renderId: exports.renderId })
+        .from(exports)
+        .where(and(inArray(exports.renderId, old.map((r) => r.id)), gt(exports.expiresAt, new Date().toISOString())))
+        .all()
+        .map((e) => e.renderId),
+    );
+    let n = 0;
+    for (const r of old) {
+      if (held.has(r.id)) continue;
+      if (await this.delete(r.id)) n += 1;
+    }
+    if (n > 0) this.deps.log.info({ bookId, kind, deleted: n, kept: keep }, 'old renders pruned');
+    return n;
   }
 
   /** Cover and its (estimated) geometry for a book, or undefined when the format has no cover or the book none yet. */
@@ -265,6 +301,7 @@ export class RenderService {
         });
         log.info({ pageCount: out.pageCount, hasCover: out.hasCover, bytes: out.bytes, warnings: out.warnings.length }, 'preview finished');
         this.deps.notify?.(this.finishedEvent(book, kind, out.pageCount, out.warnings.length));
+        await this.prune(book.id, kind).catch((err) => log.warn({ err }, 'pruning old renders failed'));
         return;
       }
 
@@ -286,10 +323,13 @@ export class RenderService {
       if (kind === 'print' && book.status === 'editing') this.deps.store.setStatus(book.id, 'rendered');
       log.info({ pageCount: out.pageCount, bytes: out.pdf.byteLength, warnings: out.warnings.length }, 'render finished');
       this.deps.notify?.(this.finishedEvent(book, kind, out.pageCount, out.warnings.length));
+      await this.prune(book.id, kind).catch((err) => log.warn({ err }, 'pruning old renders failed'));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error({ err }, 'render failed');
       this.update(id, { status: 'error', error: message, finishedAt: new Date().toISOString() });
+      // A preview writes its PNGs as it goes; a failed one must not leave them behind (delete() only knows done rows).
+      if (row.kind === 'preview') await rm(join(this.deps.exportsDir, row.bookId, id), { recursive: true, force: true }).catch(() => undefined);
       const book = this.deps.store.get(row.bookId);
       this.deps.notify?.({
         kind: 'render-failed',

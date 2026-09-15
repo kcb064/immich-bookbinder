@@ -1,5 +1,5 @@
 import type { BookCover, BookFormat, Page, SlotContent, SlotFrame, TextStyle } from '@bookbinder/shared';
-import { DEFAULT_TEXT_STYLE, adHocSlotId, defaultPhotoFrame, defaultTextFrame, effectiveSlots, frameOf, getTemplate, isAdHocSlot, nextZ, roundFrame } from '@bookbinder/layout';
+import { adHocSlotId, clampFrameToPage, DEFAULT_TEXT_STYLE, defaultPhotoFrame, defaultTextFrame, effectiveSlots, frameOf, getTemplate, isAdHocSlot, nextZ, roundFrame } from '@bookbinder/layout';
 
 /**
  * Pure free-form operations (M6) over a slot list: a page or the cover, which both carry a
@@ -40,11 +40,12 @@ export function slotsSetFrame(list: SlotList, slotId: string, frame: SlotFrame):
   return upsert(list.slots, slotId, (existing) => ({ ...(existing ?? { slotId }), frame: roundFrame(frame) }));
 }
 
-/** Moves a slot by (dx, dy) template units. */
-export function slotsNudge(list: SlotList, slotId: string, dx: number, dy: number): SlotContent[] {
+/** Moves a slot by (dx, dy) template units; with a `format` the box keeps its minimum inside the page's bleed box (pages only; the cover sheet has its own bounds). */
+export function slotsNudge(list: SlotList, slotId: string, dx: number, dy: number, format?: BookFormat): SlotContent[] {
   const frame = currentFrame(list, slotId);
   if (!frame) return [...list.slots];
-  return slotsSetFrame(list, slotId, { ...frame, x: frame.x + dx, y: frame.y + dy });
+  const moved = { ...frame, x: frame.x + dx, y: frame.y + dy };
+  return slotsSetFrame(list, slotId, format ? clampFrameToPage(moved, format) : moved);
 }
 
 /** Brings a slot in front of (or behind) every other slot. */
@@ -183,7 +184,7 @@ export function setFrame(pages: readonly Page[], ref: SlotRef, frame: SlotFrame)
   return withPage(pages, ref.pageIndex, (p) => slotsSetFrame(p, ref.slotId, frame));
 }
 export function nudgeSlot(pages: readonly Page[], ref: SlotRef, dxIn: number, dyIn: number, format: BookFormat): Page[] {
-  return withPage(pages, ref.pageIndex, (p) => slotsNudge(p, ref.slotId, dxIn / format.trimWidthIn, dyIn / format.trimHeightIn));
+  return withPage(pages, ref.pageIndex, (p) => slotsNudge(p, ref.slotId, dxIn / format.trimWidthIn, dyIn / format.trimHeightIn, format));
 }
 export function setZ(pages: readonly Page[], ref: SlotRef, where: 'front' | 'back'): Page[] {
   return withPage(pages, ref.pageIndex, (p) => slotsSetZ(p, ref.slotId, where));

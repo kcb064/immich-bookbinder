@@ -87,6 +87,18 @@ export function planMap(points: readonly MapPoint[], width: number, height: numb
     south = Math.min(south, p.lat);
     north = Math.max(north, p.lat);
   }
+  // Points on both sides of the antimeridian (Fiji, a Pacific crossing) span the globe when read
+  // as raw longitudes; unwrap the western ones by 360 degrees so the box goes the short way round.
+  const wrap = east - west > 180;
+  const lonOf = (p: MapPoint): number => (wrap && p.lon < 0 ? p.lon + 360 : p.lon);
+  if (wrap) {
+    west = Number.POSITIVE_INFINITY;
+    east = Number.NEGATIVE_INFINITY;
+    for (const p of valid) {
+      west = Math.min(west, lonOf(p));
+      east = Math.max(east, lonOf(p));
+    }
+  }
   const midLat = (south + north) / 2;
   const kx = Math.max(0.2, Math.cos((midLat * Math.PI) / 180));
   // Floor the span so a single spot or a tight cluster still reads as a place (about 2 km).
@@ -104,7 +116,7 @@ export function planMap(points: readonly MapPoint[], width: number, height: numb
   const cy = midLat;
   const bbox: [number, number, number, number] = [cx - lonSpan / 2, cy - latSpan / 2, cx + lonSpan / 2, cy + latSpan / 2];
   const project = (p: MapPoint): { x: number; y: number } => ({
-    x: round2(width / 2 + (p.lon - cx) * kx * scale),
+    x: round2(width / 2 + (lonOf(p) - cx) * kx * scale),
     y: round2(height / 2 - (p.lat - cy) * scale),
   });
 

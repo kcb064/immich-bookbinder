@@ -4,6 +4,7 @@ import type { SavedPet } from '@bookbinder/shared';
 import { Icon } from './Icon.tsx';
 import { Button, Chip, Field, Note, Skeleton, TextInput } from './ui.tsx';
 import { useSavePets, useSettings, useSmartPreview } from '../lib/queries.ts';
+import { useDebounced } from '../lib/hooks.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 
 const MAX_EXAMPLES = 10;
@@ -23,7 +24,9 @@ interface Draft {
 function PetForm({ initial, ready, saving, onSave, onCancel }: { initial: Draft; ready: boolean; saving: boolean; onSave: (pet: SavedPet) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState<Draft>(initial);
   const [submitted, setSubmitted] = useState(false);
-  const preview = useSmartPreview(draft.query, ready);
+  // Every keystroke would be a CLIP search on the Immich server; wait for the typing to pause.
+  const debouncedQuery = useDebounced(draft.query, 500);
+  const preview = useSmartPreview(debouncedQuery, ready);
   const nameError = submitted && !draft.name.trim() ? 'Give the pet a name.' : undefined;
   const queryError = submitted && !draft.query.trim() ? 'Describe the pet the way you would search for it.' : undefined;
   const toggle = (id: string) =>

@@ -1,6 +1,6 @@
 import { FORMAT_PRESETS, type CoverGeometry } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
-import { angleFromCentre, clampToBounds, coverSnapLines, pageSnapLines, resizeBy, slotSnapLines, snapAngle, snapAngleToBoxes, snapMove, snapResize } from './snap.js';
+import { angleFromCentre, clampFrameToPage, clampToBounds, coverSnapLines, pageSnapLines, resizeBy, slotSnapLines, snapAngle, snapAngleToBoxes, snapMove, snapResize } from './snap.js';
 
 const square = FORMAT_PRESETS['lulu-square-8.5']!;
 const home = FORMAT_PRESETS['home-letter']!;
@@ -103,5 +103,22 @@ describe('snapping', () => {
     expect(angleFromCentre({ x: 0, y: 0 }, { x: 0, y: -1 })).toBe(0);
     expect(angleFromCentre({ x: 0, y: 0 }, { x: 1, y: 0 })).toBe(90);
     expect(angleFromCentre({ x: 0, y: 0 }, { x: -1, y: 0 })).toBe(-90);
+  });
+});
+
+describe('clampFrameToPage', () => {
+  it('keeps a quarter inch of a frame inside the bleed box, in template units', () => {
+    const bleed = square.bleedIn / square.trimWidthIn;
+    const keep = 0.25 / square.trimWidthIn;
+    // Nudged far off the right edge: pulled back so 0.25 in still shows.
+    const right = clampFrameToPage({ x: 3, y: 0.2, w: 0.3, h: 0.2 }, square);
+    expect(right.x).toBeCloseTo(1 + bleed - keep, 6);
+    expect(right.y).toBe(0.2);
+    // Off the top-left: the same rule on both axes.
+    const off = clampFrameToPage({ x: -5, y: -5, w: 0.3, h: 0.2 }, square);
+    expect(off.x).toBeCloseTo(-bleed - 0.3 + keep, 6);
+    expect(off.y).toBeCloseTo(-bleed - 0.2 + keep, 6);
+    // Inside: untouched, rotation and stacking kept.
+    expect(clampFrameToPage({ x: 0.1, y: 0.1, w: 0.3, h: 0.2, rotation: 10, z: 2 }, square)).toEqual({ x: 0.1, y: 0.1, w: 0.3, h: 0.2, rotation: 10, z: 2 });
   });
 });

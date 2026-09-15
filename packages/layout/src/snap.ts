@@ -216,6 +216,20 @@ export function clampToBounds(rect: Rect, bounds: Rect, minInside = MIN_INSIDE_I
   return { ...rect, x, y };
 }
 
+/**
+ * The same rule in template units for keyboard nudges and typed positions: at least `minInsideIn`
+ * of a page frame stays inside the bleed box (x/w in trim widths, y/h in trim heights).
+ */
+export function clampFrameToPage<T extends { x: number; y: number; w: number; h: number }>(frame: T, format: BookFormat, minInsideIn = MIN_INSIDE_IN): T {
+  const bx = format.bleedIn / format.trimWidthIn;
+  const by = format.bleedIn / format.trimHeightIn;
+  const keepX = Math.min(minInsideIn / format.trimWidthIn, frame.w);
+  const keepY = Math.min(minInsideIn / format.trimHeightIn, frame.h);
+  const x = Math.min(Math.max(frame.x, -bx - frame.w + keepX), 1 + bx - keepX);
+  const y = Math.min(Math.max(frame.y, -by - frame.h + keepY), 1 + by - keepY);
+  return { ...frame, x, y };
+}
+
 /** Snaps an angle to the nearest multiple of `step` when within `within` degrees; normalises to (-180, 180]. */
 export function snapAngle(deg: number, step = SNAP_ANGLE_STEP, within = SNAP_ANGLE_WITHIN): number {
   let a = ((((deg + 180) % 360) + 360) % 360) - 180;

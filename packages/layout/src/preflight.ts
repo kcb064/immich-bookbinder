@@ -101,6 +101,23 @@ export function preflightBook(input: PreflightInput): Preflight {
     for (const { spec, content, adHoc } of effectiveSlots(book.cover.templateId, book.cover.slots)) {
       if (spec.id === 'spine' || spec.role === 'map' || spec.role === 'qr') continue;
       const isPhoto = spec.role === 'hero' || spec.role === 'photo';
+      // Resolution of every cover photo, the wrap-around hero included: it spans two trims plus the
+      // wrap, so a photo that is fine on an interior page can be half the ppi here.
+      if (isPhoto && content?.assetId) {
+        const asset = assets.get(content.assetId);
+        const box = adHoc || content.frame ? coverFrameIn(spec, format, g) : coverSlotIn(spec, format, g);
+        if (asset?.width && asset.height) {
+          const ppi = effectivePpi(asset.width, asset.height, box.w, box.h, content.crop);
+          if (ppi < PPI_WARN) {
+            items.push({
+              level: ppi < PPI_ERROR ? 'error' : 'warn',
+              code: 'low-resolution',
+              message: `${asset.fileName ?? 'The cover photo'} prints at ${Math.round(ppi)} ppi across the cover (${ppi < PPI_ERROR ? 'visibly soft' : 'slightly soft'}; ${PPI_WARN}+ is safe).`,
+              slotId: spec.id,
+            });
+          }
+        }
+      }
       if (isPhoto && (!adHoc || !content?.assetId)) continue;
       // Text slots with nothing to print are ignored: an ad-hoc box needs text, the back blurb needs a blurb, an emptied slot is hidden.
       if (!isPhoto && ((adHoc && !content?.text) || (spec.id === 'back-blurb' && !content?.text && !book.cover.blurb) || content?.text === '')) continue;

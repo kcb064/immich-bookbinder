@@ -45,6 +45,26 @@ const SNAP_PX = 8;
 const MIN_BOX_PX = 0.25 * PX_PER_IN;
 const MIN_INSIDE_PX = 0.25 * PX_PER_IN;
 
+/**
+ * Re-imposes an aspect ratio after snapping: the axis a guide hit (else the wider change) leads,
+ * the other follows, anchored on the edges that are not being dragged like {@link resizeBy}.
+ */
+function keepRatio(rect: PxRect, origin: PxRect, edges: Edges, ratio: number, hits: readonly SnapLine[]): PxRect {
+  const horizontal = Boolean(edges.left || edges.right);
+  const vertical = Boolean(edges.top || edges.bottom);
+  const byWidth = horizontal && (!vertical || hits.some((l) => l.axis === 'x') || !hits.some((l) => l.axis === 'y'));
+  let { w, h } = rect;
+  if (byWidth) h = w / ratio;
+  else w = h * ratio;
+  let x = rect.x;
+  let y = rect.y;
+  if (edges.left) x = origin.x + origin.w - w;
+  if (edges.top) y = origin.y + origin.h - h;
+  if (!horizontal) x = origin.x + (origin.w - w) / 2;
+  if (!vertical) y = origin.y + (origin.h - h) / 2;
+  return { x, y, w, h };
+}
+
 interface Session {
   id: string;
   mode: 'move' | 'resize' | 'rotate';
@@ -126,27 +146,21 @@ export function useDesignDrag(surface: DesignSurface, scale: number, onChange: (
       } else {
         const ratio = st.ratio && !e.altKey ? st.ratio : undefined;
         const resized = resizeBy(st.origin, st.edges, dx, dy, ratio, MIN_BOX_PX);
-        if (ratio) rect = resized;
-        else {
-          const snapped = snapResize(resized, st.edges, guides, threshold, MIN_BOX_PX);
-          rect = snapped.rect;
-          hits = snapped.hits;
-        }
+        const snapped = snapResize(resized, st.edges, guides, threshold, MIN_BOX_PX);
+        // Aspect-locked boxes snap too: the snapped edge leads and the other dimension follows the ratio.
+        rect = ratio ? keepRatio(snapped.rect, st.origin, st.edges, ratio, snapped.hits) : snapped.rect;
+        hits = snapped.hits;
       }
       setLines(hits);
       emit(st.id, s.toFrame(rect), 'move');
     };
-    const onUp = (e: PointerEvent) => {
+    const onUp = () => {
       const st = session.current;
       if (!st) return;
       session.current = undefined;
       setLines([]);
       setActive(undefined);
-      if (st.moved) {
-        // Re-run the last move so the commit carries the final position.
-        onMove(e);
-        latest.current.onChange(st.id, {}, 'end');
-      }
+      if (st.moved) latest.current.onChange(st.id, {}, 'end');
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -346,8 +360,6 @@ export function DesignPanel({ kind, adHoc, frame, format, onFrame, onZ, onDuplic
 export const SHORTCUTS: ReadonlyArray<[keys: string, what: string]> = [
   ['← →', 'Previous / next spread (with nothing selected)'],
   ['Tab, Enter', 'Move focus between slots and select one'],
-  ['Shift+click', 'Add a box to the selection (nudge, restack and delete act on all of them)'],
-  ['Drag from the tray', 'Drop a photo onto a slot to put it there, or anywhere on the page for a new photo box'],
   ['Shift+click', 'Add a box to the selection (nudge, restack and delete act on all of them)'],
   ['Drag from the tray', 'Drop a photo onto a slot to put it there, or anywhere on the page for a new photo box'],
   ['Arrows', 'Nudge the selected slot 0.1 in (Shift: 0.5 in)'],
