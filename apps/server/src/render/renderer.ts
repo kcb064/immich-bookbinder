@@ -162,7 +162,20 @@ export class ChromiumRenderer {
     const page = await context.newPage();
     await page.emulateMedia({ media: 'print' });
     await page.setContent(html, { waitUntil: 'load', timeout: 120_000 });
-    await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 8000))]));
+    // Web fonts load lazily, once layout asks for them; on a big document `fonts.ready` can resolve
+    // before that happens. Force layout, ask for the theme's faces outright, then wait.
+    await page.evaluate(
+      (families: readonly string[]) =>
+        Promise.race([
+          (async () => {
+            void document.body.offsetHeight;
+            await Promise.all(families.flatMap((f) => [document.fonts.load(`16px "${f}"`), document.fonts.load(`italic 300 16px "${f}"`)]).map((p) => p.catch(() => [])));
+            await document.fonts.ready;
+          })(),
+          new Promise((r) => setTimeout(r, 8000)),
+        ]),
+      fontFamilies,
+    );
     if (fontFamilies.length > 0 && !warnings.some((w) => w.startsWith(FONTS_WARNING_PREFIX))) {
       const missing = await page.evaluate((families: readonly string[]) => {
         const faces = Array.from(document.fonts);

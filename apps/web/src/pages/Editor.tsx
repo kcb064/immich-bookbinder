@@ -157,8 +157,13 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const [history, setHistory] = useState<History<Doc>>(() => ({ present: docOf(book), past: [], future: [] }));
   const doc = history.present;
   const pages = doc.pages;
-  /** The document we last sent to (or received from) the server; `doc !== savedRef` means unsaved edits. */
-  const savedRef = useRef<Doc>(docOf(book));
+  /**
+   * The document we last sent to (or received from) the server; `doc !== savedRef` means unsaved
+   * edits. Starts as the very object the history holds: a second `docOf(book)` would be a different
+   * object, the editor would open "dirty" and autosave at once, bumping `updatedAt` for nothing.
+   */
+  const savedRef = useRef<Doc | null>(null);
+  if (savedRef.current === null) savedRef.current = history.present;
   /** Serialized server document we already account for, so a save echo or refetch is not a "new layout". */
   const knownServerDoc = useRef<string>(docKey(docOf(book)));
   /**
@@ -237,6 +242,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const loadNewer = useCallback(async () => {
     forceAdopt.current = true;
     await qc.invalidateQueries({ queryKey: keys.book(book.id), exact: true });
+    // The refetch usually reaches the adopt effect above first; this covers a refetch that changed nothing.
     const fresh = qc.getQueryData<Book>(keys.book(book.id));
     if (fresh && forceAdopt.current) {
       forceAdopt.current = false;
@@ -247,6 +253,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       setConflict(false);
       setHistory({ present: next, past: [], future: [] });
     }
+    // The refused save is history too; the status line says "Saved" again.
+    latest.current.save.reset();
   }, [book.id, qc]);
   /** Conflict: keep the local edits, replacing whatever changed on the server. */
   const overwrite = useCallback(() => {
