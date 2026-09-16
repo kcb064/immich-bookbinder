@@ -189,7 +189,7 @@ export function toOrderCost(c: LuluCostCalculation): OrderCost {
 }
 
 function toFileValidation(v: LuluFileValidation): FileValidation {
-  const s = v.status.toUpperCase();
+  const s = (v.status ?? '').toUpperCase();
   const status: FileValidation['status'] = s === 'ERROR' ? 'error' : s === 'VALIDATED' || s === 'NORMALIZED' ? 'ok' : 'pending';
   const pages = v.page_count === null || v.page_count === undefined ? undefined : Number(v.page_count);
   return { id: v.id, status, errors: v.errors ?? [], ...(pages !== undefined && Number.isFinite(pages) ? { pageCount: pages } : {}) };

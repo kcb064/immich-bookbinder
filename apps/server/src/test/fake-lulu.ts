@@ -238,7 +238,8 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
     const id = await startValidation('interior', req.body?.source_url, behaviour.interiorErrors);
     behaviour.interiorErrors = undefined;
     if (id === undefined) return reply.code(400).send({ source_url: ['This field is required.'] });
-    return reply.code(201).send(validationView(id));
+    // Like the sandbox, the create answer has no status yet; the first poll reports VALIDATING.
+    return reply.code(201).send({ ...validationView(id), status: null });
   });
   app.get<{ Params: { id: string } }>('/validate-interior/:id/', async (req, reply) => {
     if (!authed(req, reply)) return;
@@ -255,7 +256,7 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
     const id = await startValidation('cover', req.body.source_url, behaviour.coverErrors);
     behaviour.coverErrors = undefined;
     if (id === undefined) return reply.code(400).send({ source_url: ['This field is required.'] });
-    return reply.code(201).send(validationView(id));
+    return reply.code(201).send({ ...validationView(id), status: null });
   });
   app.get<{ Params: { id: string } }>('/validate-cover/:id/', async (req, reply) => {
     if (!authed(req, reply)) return;

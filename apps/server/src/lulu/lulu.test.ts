@@ -7,7 +7,7 @@ import { PDFDocument } from 'pdf-lib';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renders } from '../db/schema.js';
-import { LuluPrintJob } from './client.js';
+import { LuluFileValidation, LuluPrintJob } from './client.js';
 import { chromiumAvailable } from '../render/renderer.js';
 import { SPINE_ESTIMATED_WARNING } from '../render/service.js';
 import { createTestApp, loginCookie, type TestApp } from '../test/helpers.js';
@@ -35,6 +35,11 @@ describe('Lulu print-job schema', () => {
     expect(LuluPrintJob.parse({ ...base, status: { name: 'UNPAID', message: 'pay me' } }).status).toEqual({ name: 'UNPAID', message: 'pay me' });
     expect(LuluPrintJob.parse({ ...base, status: null }).status).toBeUndefined();
     expect(LuluPrintJob.parse(base).status).toBeUndefined();
+  });
+
+  it('accepts a file validation without a status yet (create response of the sandbox)', () => {
+    expect(LuluFileValidation.parse({ id: 3, status: null, errors: null }).status).toBeNull();
+    expect(LuluFileValidation.parse({ id: 3, status: 'VALIDATING' }).status).toBe('VALIDATING');
   });
 });
 

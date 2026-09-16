@@ -62,8 +62,11 @@ export type LuluCoverDimensions = z.infer<typeof LuluCoverDimensions>;
 
 export const LuluFileValidation = z.object({
   id: z.number().int(),
-  /** Interior: VALIDATING/VALIDATED/ERROR; cover: NORMALIZING/NORMALIZED/ERROR (plus a few in-between names). */
-  status: z.string(),
+  /**
+   * Interior: VALIDATING/VALIDATED/ERROR; cover: NORMALIZING/NORMALIZED/ERROR (plus a few in-between names).
+   * The sandbox answers the create call (201) with `null` before validation has started: treat as pending.
+   */
+  status: z.string().nullish(),
   errors: z.array(z.string()).nullish(),
   page_count: z.union([z.string(), z.number()]).nullish(),
 });
