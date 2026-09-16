@@ -408,7 +408,8 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
         }
       }
     }
-    return reply.code(201).send(jobView(job));
+    // Lulu's create response carries the bare status name (spec schema for the 201), unlike the detail view.
+    return reply.code(201).send({ ...jobView(job), status: job.status });
   });
 
   /** Lulu signs each submission with the API secret (HMAC-SHA256 over the raw body) and retries failures; the fake sends once. */

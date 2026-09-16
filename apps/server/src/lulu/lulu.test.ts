@@ -7,6 +7,7 @@ import { PDFDocument } from 'pdf-lib';
 import { z } from 'zod';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { renders } from '../db/schema.js';
+import { LuluPrintJob } from './client.js';
 import { chromiumAvailable } from '../render/renderer.js';
 import { SPINE_ESTIMATED_WARNING } from '../render/service.js';
 import { createTestApp, loginCookie, type TestApp } from '../test/helpers.js';
@@ -26,6 +27,16 @@ const ADDRESS: ShippingAddress = {
   phone_number: '+1 512 555 0100',
   email: 'kevin@example.com',
 };
+
+describe('Lulu print-job schema', () => {
+  it('accepts the bare status string of the create response and the status object of the detail view', () => {
+    const base = { id: 7, line_items: [] };
+    expect(LuluPrintJob.parse({ ...base, status: 'CREATED' }).status).toEqual({ name: 'CREATED' });
+    expect(LuluPrintJob.parse({ ...base, status: { name: 'UNPAID', message: 'pay me' } }).status).toEqual({ name: 'UNPAID', message: 'pay me' });
+    expect(LuluPrintJob.parse({ ...base, status: null }).status).toBeUndefined();
+    expect(LuluPrintJob.parse(base).status).toBeUndefined();
+  });
+});
 
 describe('Lulu ordering', () => {
   let t: TestApp;

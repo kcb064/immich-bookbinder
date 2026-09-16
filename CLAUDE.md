@@ -143,5 +143,7 @@ Prefer a new file next to them over growing them; when editing, anchor on a uniq
   public URL, payment on lulu.com (developer portal), sandbox needs its own account. The vendored
   spec's `POST /print-jobs/` create body marks read-only `id` as required (cast in `client.ts`) and
   has a second `/print-jobs/<hair space>` path for reprints; the status endpoint's
-  `line_item_statuses` is undocumented in the schema but present in Lulu's own example.
+  `line_item_statuses` is undocumented in the schema but present in Lulu's own example. The create
+  response (`POST /print-jobs/` 201) carries `status` as a bare string, the detail/list/webhook
+  payloads as `{ name, message, changed }`; `LuluJobStatus` in `client.ts` narrows both to the object.
 - Chromium PDFs are sRGB PDF 1.4 with subsetted fonts; no CMYK, no PDF/X.

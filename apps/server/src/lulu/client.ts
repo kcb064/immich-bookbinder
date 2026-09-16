@@ -117,10 +117,21 @@ const LineItemMessages = z
   })
   .loose();
 
+/**
+ * Print-job status. The detail, list and webhook payloads carry `{ name, message, changed }`, but the
+ * spec's own schema for `POST /print-jobs/` answers with the bare status name as a string (observed
+ * against the sandbox as "unexpected response shape: status" on the 201). Both are narrowed to the object.
+ */
+const LuluJobStatusObject = z.object({ name: z.string(), message: z.string().nullish(), messages: LineItemMessages.nullish() });
+export const LuluJobStatus = z.preprocess(
+  (v) => (typeof v === 'string' ? { name: v } : v === null ? undefined : v),
+  LuluJobStatusObject.optional(),
+);
+
 export const LuluPrintJob = z.object({
   id: z.number().int(),
   external_id: z.string().nullish(),
-  status: z.object({ name: z.string(), message: z.string().nullish(), messages: LineItemMessages.nullish() }).optional(),
+  status: LuluJobStatus,
   contact_email: z.string().nullish(),
   shipping_level: z.string().nullish(),
   date_created: z.string().nullish(),
@@ -260,7 +271,10 @@ export function createLuluClient(opts: LuluClientOptions) {
     }
     if (!result.response.ok) throw new LuluApiError(result.response.status, path, result.error ?? result.data);
     const parsed = schema.safeParse(result.data);
-    if (!parsed.success) throw new LuluApiError(result.response.status, path, `unexpected response shape: ${parsed.error.issues.map((i) => i.path.join('.')).join(', ')}`);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'} (${i.message})`).join(', ');
+      throw new LuluApiError(result.response.status, path, `unexpected response shape: ${issues}`);
+    }
     return parsed.data;
   }
 
