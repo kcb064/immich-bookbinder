@@ -53,7 +53,8 @@ export function luluErrorLines(body: unknown, prefix = ''): string[] {
 
 /* ---------- Response schemas (only what the app reads) ---------- */
 
-const Decimal = z.union([z.string(), z.number()]).transform((v) => String(v));
+/** Money fields: strings in the spec, numbers in parts of the sandbox (shipping options). Always narrowed to a 2-decimal string. */
+const Decimal = z.union([z.string(), z.number()]).transform((v) => (typeof v === 'number' ? v.toFixed(2) : v));
 
 export const LuluToken = z.object({ access_token: z.string().min(1), expires_in: z.number().optional() });
 
@@ -74,7 +75,7 @@ export type LuluFileValidation = z.infer<typeof LuluFileValidation>;
 
 export const LuluShippingOptionRow = z.object({
   level: z.string(),
-  cost_excl_tax: z.string().nullish(),
+  cost_excl_tax: Decimal.nullish(),
   currency: z.string().nullish(),
   traceable: z.boolean().optional(),
   min_delivery_date: z.string().nullish(),

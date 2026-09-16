@@ -279,7 +279,7 @@ export async function startFakeLulu(opts: FakeLuluOptions = {}): Promise<FakeLul
     return SHIPPING.filter((s) => !s.usOnly || country === 'US').map((s, i) => ({
       id: 100 + i,
       level: s.level,
-      cost_excl_tax: money(s.cost),
+      cost_excl_tax: Number(money(s.cost)), // the sandbox sends a number here, unlike the cost calculation
       currency,
       traceable: s.level !== 'MAIL',
       postbox_ok: s.level === 'MAIL',

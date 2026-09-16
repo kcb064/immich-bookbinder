@@ -147,4 +147,5 @@ Prefer a new file next to them over growing them; when editing, anchor on a uniq
   response (`POST /print-jobs/` 201) carries `status` as a bare string, the detail/list/webhook
   payloads as `{ name, message, changed }`; `LuluJobStatus` in `client.ts` narrows both to the object.
   `POST /validate-interior/` and `/validate-cover/` answer 201 with `status: null` until the first poll.
+  `/shipping-options/` sends `cost_excl_tax` as a number where the cost calculation sends strings (`Decimal` in `client.ts` takes both).
 - Chromium PDFs are sRGB PDF 1.4 with subsetted fonts; no CMYK, no PDF/X.
