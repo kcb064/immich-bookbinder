@@ -104,7 +104,7 @@ The review page lists every named person seen in the gathered photos with picked
 
 ### Face-aware crops
 
-Every slot cover-fits its photo (CSS `object-fit: cover`), so a 3:2 photo in a square slot loses a third of its width. `applyFaceCrops` sets the focal point of every placed photo that has face boxes: the union of the faces (padded by 35% of their size for hair and chins) is centred in the visible window, clamped to the image, and stored as `Crop.focalX/Y` in fractions, which both the editor (`object-position`) and the print renderer (sharp extract) honour. Photos whose slot shows the whole frame, and photos without faces, keep the centred default. The editor shows "Framed on the faces" with a Centre button to undo it.
+Every slot cover-fits its photo (CSS `object-fit: cover`), so a 3:2 photo in a square slot loses a third of its width. `applyFaceCrops` sets the focal point of every placed photo that has face boxes: the union of the faces (padded by 35% of their size for hair and chins) is centred in the visible window, clamped to the image, and stored as `Crop.focalX/Y` in fractions, which both the editor (`object-position`) and the print renderer (sharp extract) honour. Photos whose slot shows the whole frame, and photos without faces, keep the centred default. In the editor the crop is the user's to change afterwards: "Adjust crop" moves the picture inside its box, a slider zooms and Reset returns to the centred cover-fit (see the Crop row in [design.md](design.md)).
 
 ## API
 

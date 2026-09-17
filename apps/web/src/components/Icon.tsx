@@ -160,6 +160,7 @@ const PATHS = {
     </>
   ),
   swap: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
+  crop: <path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14" />,
   layout: (
     <>
       <rect x="3" y="3" width="18" height="18" rx="2" />

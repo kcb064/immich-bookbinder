@@ -4,7 +4,7 @@ import { memo } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
 import { PT_PER_IN, PX_PER_IN } from '@bookbinder/shared';
-import { COLOPHON_TEMPLATE_ID, DEFAULT_TEXT_STYLE, QR_QUIET_ZONE, encodeQr, getTemplate, objectPosition, pagePx, pageSlots, planMap, qrPath, slotToPx, type MapPoint } from '@bookbinder/layout';
+import { COLOPHON_TEMPLATE_ID, DEFAULT_TEXT_STYLE, QR_QUIET_ZONE, encodeQr, cropImageStyle, getTemplate, pagePx, pageSlots, planMap, qrPath, slotToPx, type MapPoint } from '@bookbinder/layout';
 import { autoCaption, photographsLabel } from './captions.js';
 
 /** A chapter as the opener pages need it. */
@@ -115,6 +115,8 @@ export interface PageViewProps {
   onBackgroundClick?: (() => void) | undefined;
   /** Renders extra UI on top of a photo slot (ppi badges, empty-slot hints). */
   slotOverlay?: ((ctx: SlotOverlayContext) => ReactNode) | undefined;
+  /** The image provider already cut the crop (print renderer): draw a plain cover-fit instead of the CSS crop. */
+  croppedImages?: boolean | undefined;
   className?: string | undefined;
   style?: CSSProperties | undefined;
 }
@@ -280,6 +282,7 @@ function PageViewImpl({
   onSlotPointerDown,
   onBackgroundClick,
   slotOverlay,
+  croppedImages = false,
   className,
   style,
 }: PageViewProps) {
@@ -366,7 +369,7 @@ function PageViewImpl({
                     src={imageSrc({ asset, wIn, hIn, crop: content?.crop })}
                     alt=""
                     draggable={false}
-                    style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover', objectPosition: objectPosition(content?.crop) }}
+                    style={{ display: 'block', ...cropImageStyle(croppedImages ? undefined : content?.crop) }}
                   />
                 ) : null}
                 {slotOverlay ? slotOverlay({ slot, content, asset, wIn, hIn }) : null}

@@ -197,10 +197,12 @@ export interface DesignOverlayProps {
   scale: number;
   selectedId: string | undefined;
   drag: DesignDrag;
+  /** Crop mode: the box is fixed and drags move the picture inside it, so no handles. */
+  cropping?: boolean | undefined;
 }
 
 /** Selection box, resize and rotation handles, and the snap guides in play, drawn over a page or the cover. */
-export function DesignOverlay({ surface, scale, selectedId, drag }: DesignOverlayProps) {
+export function DesignOverlay({ surface, scale, selectedId, drag, cropping = false }: DesignOverlayProps) {
   const box = selectedId ? surface.boxes.find((b) => b.id === selectedId) : undefined;
   return (
     <div className="design-overlay" style={{ width: surface.width * scale, height: surface.height * scale }} aria-hidden="true">
@@ -213,17 +215,19 @@ export function DesignOverlay({ surface, scale, selectedId, drag }: DesignOverla
       ))}
       {box ? (
         <div
-          className={`design-sel${drag.active ? ' design-sel--dragging' : ''}`}
+          className={`design-sel${drag.active ? ' design-sel--dragging' : ''}${cropping ? ' design-sel--crop' : ''}`}
           style={{ left: box.rect.x * scale, top: box.rect.y * scale, width: box.rect.w * scale, height: box.rect.h * scale, transform: box.rotation ? `rotate(${box.rotation}deg)` : undefined }}
         >
-          {box.kind === 'rule'
+          {box.kind === 'rule' || cropping
             ? null
             : HANDLES.map((h) => (
                 <span key={h.key} className="design-handle" style={{ left: `${h.x * 100}%`, top: `${h.y * 100}%`, cursor: h.cursor }} onPointerDown={(e) => drag.startResize(box.id, h.edges, e)} />
               ))}
-          <span className="design-rotate" onPointerDown={(e) => drag.startRotate(box.id, e)} title="Drag to rotate (snaps to 15°)">
-            <Icon name="refresh" size={12} />
-          </span>
+          {cropping ? null : (
+            <span className="design-rotate" onPointerDown={(e) => drag.startRotate(box.id, e)} title="Drag to rotate (snaps to 15°)">
+              <Icon name="refresh" size={12} />
+            </span>
+          )}
           {drag.active && drag.active.id === box.id ? (
             <span className="design-readout mono">
               {drag.active.mode === 'rotate'
@@ -364,6 +368,7 @@ export const SHORTCUTS: ReadonlyArray<[keys: string, what: string]> = [
   ['Drag from the tray', 'Drop a photo onto a slot to put it there, or anywhere on the page for a new photo box'],
   ['Arrows', 'Nudge the selected slot 0.1 in (Shift: 0.5 in)'],
   ['Drag', 'Move; handles resize (Alt frees a photo’s aspect, Shift skips snapping); top handle rotates'],
+  ['C', 'Adjust the crop of the selected photo: drag the picture inside its box, arrows nudge it (Shift: more), Esc leaves'],
   ['] / [', 'Bring to front / send to back'],
   ['T', 'Add a text box to the focused page'],
   ['Ctrl+D', 'Duplicate the selected text box'],

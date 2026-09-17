@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { FORMAT_PRESETS, PX_PER_IN, type Book, type BookAsset, type BookCover, type BookFormat, type Page, type SlotContent, type SlotSpec, type Theme } from '@bookbinder/shared';
+import { FORMAT_PRESETS, PX_PER_IN, type Book, type BookAsset, type BookCover, type BookFormat, type Crop, type Page, type SlotContent, type SlotSpec, type Theme } from '@bookbinder/shared';
 import {
   clampFrameToPage,
   NO_FOLIO_TEMPLATE_IDS,
@@ -15,9 +15,11 @@ import {
   pagePx,
   pageSlots,
   pageSnapLines,
+  panCrop,
   photoSlots,
   slotToPx,
   templatesForPhotos,
+  zoomCrop,
   type SnapLine,
 } from '@bookbinder/layout';
 import { CoverView, PageView, bookMetaFor, coverPxToUnits, coverSlotPx, coverText, formatTakenDate, placeLabel, spreadIndexOfPage, spreadLabel, toSpreads, type ImageSrc, type SlotOverlayContext, type Spread } from '@bookbinder/pages';
@@ -25,6 +27,7 @@ import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, isActiveRender } from '../components/Renders.tsx';
 import { DesignOverlay, DesignPanel, ShortcutHelp, useDesignDrag, type DesignSurface, type FramePatch, type SurfaceBox } from '../components/Designer.tsx';
+import { CropPanel, useCropDrag } from '../components/CropTool.tsx';
 import { keys, useAiJobs, useBook, useBookAssets, useLayoutBook, useRenders, useSaveBook, useShares } from '../lib/queries.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { themeFor } from '../lib/format.ts';
@@ -313,6 +316,8 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const [swapFrom, setSwapFrom] = useState<SlotRef | undefined>();
   const [focusIndex, setFocusIndex] = useState<number | undefined>();
   const [help, setHelp] = useState(false);
+  /** Crop mode: drags on the selected photo move the picture inside its box instead of the box. */
+  const [cropMode, setCropMode] = useState(false);
   const focusPageIndex = focusIndex !== undefined && pages[focusIndex] ? focusIndex : (spread?.right?.index ?? spread?.left?.index ?? 0);
   const focusPage = pages[focusPageIndex];
 
@@ -331,6 +336,10 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   }, [pages, selected, selectedSlot, swapFrom, view]);
   // Extras follow the primary: a new primary (or none) starts a fresh multi-selection.
   useEffect(() => setExtra([]), [selected, view]);
+  // Crop mode belongs to one photo: selecting another (or none) leaves it. Keyed on the slot, not the
+  // reference object, because clicking the same photo again makes a fresh reference.
+  const selectedKey = selected ? `${selected.pageIndex}:${selected.slotId}` : undefined;
+  useEffect(() => setCropMode(false), [selectedKey, view]);
   const extraIds = useMemo(() => new Set(extra.map((r) => r.slotId)), [extra]);
   const allSelected = useMemo(() => (selected ? [selected, ...extra] : []), [selected, extra]);
 
@@ -378,8 +387,30 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     },
     [live],
   );
-  const livePages = useMemo(() => (live && live.ref.pageIndex !== COVER ? pages.map((p, i) => (i === live.ref.pageIndex ? { ...p, slots: withLive(p, i) } : p)) : pages), [pages, live, withLive]);
-  const liveCover = useMemo(() => (live && live.ref.pageIndex === COVER && doc.cover ? { ...doc.cover, slots: withLive(doc.cover, COVER) } : doc.cover), [doc.cover, live, withLive]);
+  /** Crop of the photo being panned (crop tool), drawn live and committed on release. */
+  const [liveCrop, setLiveCrop] = useState<{ ref: SlotRef; crop: Crop } | undefined>();
+  const livePages = useMemo(() => {
+    const framed = live && live.ref.pageIndex !== COVER ? pages.map((p, i) => (i === live.ref.pageIndex ? { ...p, slots: withLive(p, i) } : p)) : pages;
+    return liveCrop && liveCrop.ref.pageIndex !== COVER ? setCrop(framed, liveCrop.ref, liveCrop.crop) : framed;
+  }, [pages, live, withLive, liveCrop]);
+  const liveCover = useMemo(() => {
+    const framed = live && live.ref.pageIndex === COVER && doc.cover ? { ...doc.cover, slots: withLive(doc.cover, COVER) } : doc.cover;
+    if (!framed || !liveCrop || liveCrop.ref.pageIndex !== COVER) return framed;
+    return { ...framed, slots: framed.slots.map((s) => (s.slotId === liveCrop.ref.slotId ? { ...s, crop: liveCrop.crop } : s)) };
+  }, [doc.cover, live, withLive, liveCrop]);
+
+  /** Sets (or clears) the crop of one slot, on a page or the cover; `coalesce` merges nudges and slider moves. */
+  const commitCrop = useCallback((ref: SlotRef, crop: Crop | undefined, coalesce?: string) => {
+    setHistory((h) => {
+      const present = h.present;
+      let next: Doc;
+      if (ref.pageIndex === COVER) {
+        if (!present.cover) return h;
+        next = { ...present, cover: { ...present.cover, slots: present.cover.slots.map((s) => (s.slotId === ref.slotId ? (crop ? { ...s, crop } : omitKeys(s, 'crop')) : s)) } };
+      } else next = { ...present, pages: setCrop(present.pages, ref, crop) };
+      return historyPush(h, next, coalesce ? { key: coalesce } : undefined);
+    });
+  }, []);
 
   const commitFrame = useCallback(
     (ref: SlotRef, patch: FramePatch, coalesce?: string) => {
@@ -471,7 +502,16 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     () => surfaceHost.current.get(dragRef?.pageIndex ?? COVER) ?? null,
   );
 
-  const onSlotPointerDown = (pageIndex: number) => (slot: SlotSpec, _content: SlotContent | undefined, e: ReactPointerEvent<HTMLElement>) => {
+  const cropDrag = useCropDrag((id, crop, phase) => {
+    if (!selected || selected.slotId !== id) return;
+    if (phase === 'move') setLiveCrop({ ref: selected, crop });
+    else {
+      setLiveCrop(undefined);
+      commitCrop(selected, crop);
+    }
+  });
+
+  const onSlotPointerDown = (pageIndex: number) => (slot: SlotSpec, content: SlotContent | undefined, e: ReactPointerEvent<HTMLElement>) => {
     if (slot.role === 'map' || slot.role === 'qr') return;
     const ref: SlotRef = { pageIndex, slotId: slot.id };
     shiftHeld.current = e.shiftKey;
@@ -479,6 +519,22 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       e.preventDefault();
       setExtra((list) => (list.some((r) => r.slotId === slot.id) ? list.filter((r) => r.slotId !== slot.id) : [...list, ref]));
       return;
+    }
+    if (cropMode && selected && selected.pageIndex === pageIndex && selected.slotId === slot.id && content?.assetId) {
+      // Crop tool: the box stays where it is; the drag moves the picture behind it.
+      const box = surfaceFor(ref, pages, doc.cover).boxes.find((b) => b.id === slot.id);
+      if (box) {
+        const sc = pageIndex === COVER ? coverScale : scale;
+        e.currentTarget.focus({ preventScroll: true });
+        cropDrag.start(slot.id, e, {
+          crop: content.crop,
+          srcRatio: assetMap.get(content.assetId)?.ratio ?? 1.5,
+          slotRatio: box.rect.w / box.rect.h,
+          boxPx: { w: box.rect.w * sc, h: box.rect.h * sc },
+          rotation: box.rotation,
+        });
+        return;
+      }
     }
     setDragRef(ref);
     if (pageIndex !== COVER) setFocusIndex(pageIndex);
@@ -575,6 +631,17 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     [selected, onSelection, format],
   );
 
+  /** Crop tool: moves the picture by a fraction of its box (arrow keys). */
+  const nudgeCrop = useCallback(
+    (dx: number, dy: number) => {
+      if (!selected || !selectedAsset) return;
+      const box = surfaceFor(selected, pages, doc.cover).boxes.find((b) => b.id === selected.slotId);
+      if (!box) return;
+      commitCrop(selected, panCrop(selectedContent?.crop, dx, dy, selectedAsset.ratio, box.rect.w / box.rect.h), `crop:${selected.pageIndex}:${selected.slotId}`);
+    },
+    [selected, selectedAsset, selectedContent, pages, doc.cover, surfaceFor, commitCrop],
+  );
+
   const duplicateSelected = useCallback(() => {
     if (!selected || !selectedSlot?.adHoc || selectedSlot.spec.role !== 'text') return;
     if (selected.pageIndex === COVER) {
@@ -620,6 +687,10 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       } else if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         duplicateSelected();
+      } else if (e.key.startsWith('Arrow') && selected && cropMode) {
+        e.preventDefault();
+        const step = e.shiftKey ? 0.1 : 0.02;
+        nudgeCrop(e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0);
       } else if (e.key.startsWith('Arrow') && selected) {
         e.preventDefault();
         const step = e.shiftKey ? NUDGE_SHIFT_IN : NUDGE_IN;
@@ -635,16 +706,19 @@ function Editor({ book, assets, format, theme }: EditorProps) {
       else if (e.key === ']' && selected) onSelection((p, ref) => setZ(p, ref, 'front'), (c, id) => withCoverSlots(c, (l) => slotsSetZ(l, id, 'front')));
       else if (e.key === '[' && selected) onSelection((p, ref) => setZ(p, ref, 'back'), (c, id) => withCoverSlots(c, (l) => slotsSetZ(l, id, 'back')));
       else if (e.key.toLowerCase() === 't' && !mod) addText();
+      else if (e.key.toLowerCase() === 'c' && !mod && selected && selectedIsPhoto && selectedAsset) setCropMode((m) => !m);
       else if (e.key === '?') setHelp((h) => !h);
       else if (e.key === 'Escape') {
         setHelp(false);
         setSwapFrom(undefined);
-        setSelected(undefined);
+        // The first Escape leaves crop mode; the next one clears the selection.
+        if (cropMode) setCropMode(false);
+        else setSelected(undefined);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, gotoSpread, gotoCover, spreadIndex, removeSelected, selected, nudgeSelected, onSelection, duplicateSelected, addText, view, hasCover]);
+  }, [undo, redo, gotoSpread, gotoCover, spreadIndex, removeSelected, selected, selectedIsPhoto, selectedAsset, nudgeSelected, nudgeCrop, cropMode, onSelection, duplicateSelected, addText, view, hasCover]);
 
   const focusPhotos = focusPage ? pageAssetIds(focusPage).map((id) => ({ id, ratio: ratios.get(id) ?? 1.5 })) : [];
   const templateChoices = focusPage && isFlexiblePage(focusPage) && !focusPage.custom && focusPhotos.length > 0 ? templatesForPhotos(focusPhotos) : [];
@@ -747,9 +821,10 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     const isFocus = focusPageIndex === page.index;
     const shown = livePages[page.index] ?? page;
     const surface = dragRef?.pageIndex === page.index ? dragSurface : pageSurface(shown, format, side);
+    const cropping = cropMode && selected?.pageIndex === page.index;
     return (
       <div
-        className={`page-frame${isFocus ? ' page-frame--focus' : ''}`}
+        className={`page-frame${isFocus ? ' page-frame--focus' : ''}${cropping ? ' page-frame--cropping' : ''}`}
         ref={(el) => {
           surfaceHost.current.set(page.index, el);
         }}
@@ -777,7 +852,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           }}
           slotOverlay={slotOverlay}
         />
-        <DesignOverlay surface={surface} scale={scale} selectedId={selected?.pageIndex === page.index ? selected.slotId : undefined} drag={drag} />
+        <DesignOverlay surface={surface} scale={scale} selectedId={selected?.pageIndex === page.index ? selected.slotId : undefined} drag={drag} cropping={cropping} />
         {page.custom ? (
           <span className="page-frame__badge" title="Laid out by hand: re-layout leaves this page alone">
             Custom
@@ -790,9 +865,10 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   const renderCover = () => {
     if (!liveCover) return null;
     const surface = dragRef?.pageIndex === COVER ? dragSurface : surfaceFor({ pageIndex: COVER, slotId: '' }, livePages, liveCover);
+    const cropping = cropMode && selected?.pageIndex === COVER;
     return (
       <div
-        className="page-frame page-frame--focus"
+        className={`page-frame page-frame--focus${cropping ? ' page-frame--cropping' : ''}`}
         ref={(el) => {
           surfaceHost.current.set(COVER, el);
         }}
@@ -815,7 +891,7 @@ function Editor({ book, assets, format, theme }: EditorProps) {
           onSlotPointerDown={onSlotPointerDown(COVER)}
           onBackgroundClick={() => setSelected(undefined)}
         />
-        <DesignOverlay surface={surface} scale={coverScale} selectedId={selected?.pageIndex === COVER ? selected.slotId : undefined} drag={drag} />
+        <DesignOverlay surface={surface} scale={coverScale} selectedId={selected?.pageIndex === COVER ? selected.slotId : undefined} drag={drag} cropping={cropping} />
       </div>
     );
   };
@@ -1212,23 +1288,15 @@ function Editor({ book, assets, format, theme }: EditorProps) {
                   </div>
                 </div>
                 {selectedPpi !== undefined && selectedPpi < 200 ? (
-                  <Note tone="amber">This photo has {Math.round(selectedPpi)} pixels per printed inch here; it will look soft. Make the box smaller or pick another shot.</Note>
+                  <Note tone="amber">This photo has {Math.round(selectedPpi)} pixels per printed inch here; it will look soft. Make the box smaller, zoom out or pick another shot.</Note>
                 ) : null}
-                {selectedContent?.crop ? (
-                  <div className="row row--between small">
-                    <span className="muted">
-                      Framed on the faces ({Math.round(selectedContent.crop.focalX * 100)}%, {Math.round(selectedContent.crop.focalY * 100)}%)
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onSelection((p, ref) => setCrop(p, ref, undefined), (c, id) => ({ ...c, slots: c.slots.map((s) => (s.slotId === id ? omitKeys(s, 'crop') : s)) }))}
-                      title="Back to the centred crop"
-                    >
-                      Centre
-                    </Button>
-                  </div>
-                ) : null}
+                <CropPanel
+                  crop={selectedContent?.crop}
+                  active={cropMode}
+                  onToggle={() => setCropMode((m) => !m)}
+                  onZoom={(z) => selected && commitCrop(selected, zoomCrop(selectedContent?.crop, z), `zoom:${selected.pageIndex}:${selected.slotId}`)}
+                  onReset={() => selected && commitCrop(selected, undefined)}
+                />
                 {selected.pageIndex !== COVER ? (
                   <div className="row" style={{ gap: 8 }}>
                     <Button className="grow" icon="swap" onClick={() => setSwapFrom(selected)} aria-pressed={Boolean(swapFrom)} title="Then click another photo to exchange places">

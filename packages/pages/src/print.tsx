@@ -61,7 +61,7 @@ img { image-rendering: auto; }
     <>
       {cover ? (
         <div className="bb-sheet bb-sheet--cover" data-sheet="cover">
-          <CoverView cover={cover.cover} geometry={cover.geometry} format={format} theme={theme} assets={opts.assets} imageSrc={opts.imageSrc} meta={opts.meta} />
+          <CoverView cover={cover.cover} geometry={cover.geometry} format={format} theme={theme} assets={opts.assets} imageSrc={opts.imageSrc} meta={opts.meta} croppedImages />
         </div>
       ) : null}
       {opts.pages.map((page, i) => {
@@ -69,7 +69,7 @@ img { image-rendering: auto; }
         const folio = opts.folios === false || NO_FOLIO_TEMPLATE_IDS.has(page.templateId) ? undefined : index + 1;
         return (
           <div className="bb-sheet" key={page.id} data-sheet={index}>
-            <PageView page={page} format={format} theme={theme} assets={opts.assets} imageSrc={opts.imageSrc} meta={opts.meta} side={sideOf(index)} folio={folio} />
+            <PageView page={page} format={format} theme={theme} assets={opts.assets} imageSrc={opts.imageSrc} meta={opts.meta} side={sideOf(index)} folio={folio} croppedImages />
           </div>
         );
       })}

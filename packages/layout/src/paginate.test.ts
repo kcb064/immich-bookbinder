@@ -1,6 +1,6 @@
 import { FORMAT_PRESETS } from '@bookbinder/shared';
 import { describe, expect, it } from 'vitest';
-import { applyFaceCrops, coverCrop, effectivePpi, faceFocal, objectPosition } from './crop.js';
+import { applyFaceCrops, coverCrop, cropImageStyle, effectivePpi, faceFocal, isDefaultCrop, objectPosition, panCrop, zoomCrop } from './crop.js';
 import { getTemplate } from './templates.js';
 import {
   assignPhotos,
@@ -192,12 +192,36 @@ describe('crop math', () => {
     expect(objectPosition({ focalX: 0.25, focalY: 0.75 })).toBe('25.00% 75.00%');
   });
 
-  it('zooms around the focal point and clamps to the source', () => {
+  it('zooms with the focal point keeping its object-position meaning, clamped to the source', () => {
+    expect(coverCrop(3000, 2000, 1000, 1000, { focalX: 0.5, focalY: 0.5, zoom: 2 })).toEqual({ x: 1000, y: 500, w: 1000, h: 1000 });
+    expect(coverCrop(3000, 2000, 1000, 1000, { focalX: 1, focalY: 1, zoom: 2 })).toEqual({ x: 2000, y: 1000, w: 1000, h: 1000 });
     const r = coverCrop(3000, 2000, 1000, 1000, { focalX: 0.9, focalY: 0.9, zoom: 2 });
-    expect(r.w).toBe(1000);
-    expect(r.h).toBe(1000);
     expect(r.x + r.w).toBeLessThanOrEqual(3000);
     expect(r.y + r.h).toBeLessThanOrEqual(2000);
+  });
+
+  it('reproduces the crop in CSS: the image is zoom times the box, shifted by the focal point', () => {
+    expect(cropImageStyle(undefined)).toEqual({ position: 'absolute', left: '0.000%', top: '0.000%', width: '100.000%', height: '100.000%', maxWidth: 'none', maxHeight: 'none', objectFit: 'cover', objectPosition: '50.00% 50.00%' });
+    const z = cropImageStyle({ focalX: 1, focalY: 0.25, zoom: 2 });
+    expect(z.width).toBe('200.000%');
+    expect(z.left).toBe('-100.000%');
+    expect(z.top).toBe('-25.000%');
+    expect(z.objectPosition).toBe('100.00% 25.00%');
+  });
+
+  it('pans the picture inside its box along the axes that overhang', () => {
+    // 3:2 photo in a square: the picture is 1.5 box widths wide, so half a box width overhangs.
+    expect(panCrop(undefined, 0.25, 0.3, 1.5, 1)).toEqual({ focalX: 0, focalY: 0.5, zoom: 1 });
+    expect(panCrop({ focalX: 0.5, focalY: 0.5, zoom: 1 }, -0.1, 0, 1.5, 1)).toEqual({ focalX: 0.7, focalY: 0.5, zoom: 1 });
+    // Zoomed 2x: 2 box widths overhang horizontally, 1 box height vertically.
+    expect(panCrop({ focalX: 0.5, focalY: 0.5, zoom: 2 }, -0.5, 0.25, 1.5, 1)).toEqual({ focalX: 0.75, focalY: 0.25, zoom: 2 });
+    // Never past the edges.
+    expect(panCrop({ focalX: 0.9, focalY: 0.5, zoom: 1 }, -1, 0, 1.5, 1).focalX).toBe(1);
+    expect(zoomCrop(undefined, 9)).toEqual({ focalX: 0.5, focalY: 0.5, zoom: 3 });
+    expect(zoomCrop({ focalX: 0.2, focalY: 0.3, zoom: 2 }, 0.5)).toEqual({ focalX: 0.2, focalY: 0.3, zoom: 1 });
+    expect(isDefaultCrop(undefined)).toBe(true);
+    expect(isDefaultCrop({ focalX: 0.5, focalY: 0.5, zoom: 1 })).toBe(true);
+    expect(isDefaultCrop({ focalX: 0.5, focalY: 0.5, zoom: 1.2 })).toBe(false);
   });
 
   it('reports effective ppi for a slot', () => {

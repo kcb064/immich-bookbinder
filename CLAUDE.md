@@ -87,6 +87,7 @@ Root scripts call `corepack pnpm` internally so they work without pnpm on PATH.
 - **Themes resolve through `resolveTheme(themeId, book.themeOverrides)`** (`packages/shared/src/theme.ts`,
   `themeFor(book)` on the web); never read `THEMES[id]` where a book is drawn.
 - **Nothing but `ImageStore.aiThumbnail` may feed the Claude client** (`docs/ai.md` promises thumbnails only).
+- **Crop math lives in `packages/layout/src/crop.ts` only.** `coverCrop` (sharp, print) and `cropImageStyle` (CSS in `PageView`/`CoverView`) must draw the same window; the focal point keeps CSS `object-position` meaning at every zoom. Print HTML passes `croppedImages` because its images are already the cut, so never apply the CSS crop twice. The editor's pan/zoom tool is `components/CropTool.tsx` + `panCrop`/`zoomCrop`.
 - **Slot geometry** is never read from `template.slots` directly where a page is drawn or measured:
   go through `pageSlots(page)` / `effectiveSlots(templateId, slots)` so hand-placed frames and
   ad-hoc boxes (M6) count. Edits that rebuild a `SlotContent` must keep `frame`, `role` and `style`

@@ -639,3 +639,17 @@
   margin: 0;
   color: var(--text-muted);
 }
+
+/* Crop tool: the box stays, the picture moves. */
+.page-frame--cropping .bb-slot--selected {
+  cursor: grab !important;
+}
+.page-frame--cropping .bb-slot--selected:active {
+  cursor: grabbing !important;
+}
+.design-sel--crop {
+  outline-style: dashed;
+}
+.crop-panel__zoom input[type='range'] {
+  accent-color: var(--accent);
+}

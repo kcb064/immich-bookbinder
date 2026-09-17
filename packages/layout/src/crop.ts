@@ -12,7 +12,10 @@ export interface SourceRect {
 /**
  * Cover-fit crop: the region of a `srcW × srcH` image that fills a `slotW × slotH` box while keeping
  * the focal point at the same relative position in both (the semantics of CSS
- * `object-fit: cover; object-position: fx% fy%`). `zoom` > 1 magnifies around the focal point.
+ * `object-fit: cover; object-position: fx% fy%`). `zoom` > 1 magnifies: the visible window shrinks
+ * by the zoom and the focal point keeps its object-position meaning (0 = left/top edge of the image
+ * against the box, 1 = right/bottom edge, 0.5 = centred), so a crop is continuous in `zoom` and
+ * {@link cropImageStyle} can reproduce it in the browser without knowing the source size.
  * Returns integer pixel bounds clamped to the source.
  */
 export function coverCrop(srcW: number, srcH: number, slotW: number, slotH: number, crop?: Partial<Crop>): SourceRect {
@@ -24,15 +27,8 @@ export function coverCrop(srcW: number, srcH: number, slotW: number, slotH: numb
   const scale = Math.max(slotW / srcW, slotH / srcH) * zoom;
   const visW = Math.min(srcW, slotW / scale);
   const visH = Math.min(srcH, slotH / scale);
-  let x = (srcW - visW) * fx;
-  let y = (srcH - visH) * fy;
-  // With zoom the focal point should stay centred rather than anchored by object-position math.
-  if (zoom > 1) {
-    x = fx * srcW - visW / 2;
-    y = fy * srcH - visH / 2;
-  }
-  x = Math.min(Math.max(0, x), srcW - visW);
-  y = Math.min(Math.max(0, y), srcH - visH);
+  const x = Math.min(Math.max(0, (srcW - visW) * fx), srcW - visW);
+  const y = Math.min(Math.max(0, (srcH - visH) * fy), srcH - visH);
   return {
     x: Math.round(x),
     y: Math.round(y),
@@ -46,6 +42,81 @@ export function objectPosition(crop?: Partial<Crop>): string {
   const fx = clamp01(crop?.focalX ?? 0.5);
   const fy = clamp01(crop?.focalY ?? 0.5);
   return `${(fx * 100).toFixed(2)}% ${(fy * 100).toFixed(2)}%`;
+}
+
+/** Largest zoom the editor offers (the schema allows 4; beyond 3× prints are soft anyway). */
+export const CROP_MAX_ZOOM = 3;
+
+/** Inline style of an `<img>` inside an `overflow: hidden` box that reproduces {@link coverCrop} in the browser. */
+export interface CropImageStyle {
+  position: 'absolute';
+  left: string;
+  top: string;
+  width: string;
+  height: string;
+  /** App stylesheets commonly cap `img` at `max-width: 100%`; the zoomed image must be allowed past the box. */
+  maxWidth: 'none';
+  maxHeight: 'none';
+  objectFit: 'cover';
+  objectPosition: string;
+}
+
+/**
+ * Draws the same window as {@link coverCrop} with CSS only: the image element is `zoom` times the
+ * box (cover-fitted with `object-position` inside its own, larger box) and shifted so the focal point
+ * keeps its meaning. Needs no source size, so the editor and the book page can show a crop from
+ * an uncropped thumbnail. Pass `undefined` when the image already is the cropped cut (print).
+ */
+export function cropImageStyle(crop?: Partial<Crop>): CropImageStyle {
+  const fx = clamp01(crop?.focalX ?? 0.5);
+  const fy = clamp01(crop?.focalY ?? 0.5);
+  const zoom = Math.max(1, crop?.zoom ?? 1);
+  const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
+  return {
+    position: 'absolute',
+    left: pct(-(zoom - 1) * fx),
+    top: pct(-(zoom - 1) * fy),
+    width: pct(zoom),
+    height: pct(zoom),
+    maxWidth: 'none',
+    maxHeight: 'none',
+    objectFit: 'cover',
+    objectPosition: objectPosition(crop),
+  };
+}
+
+/**
+ * Moves the picture inside its box (the editor's crop tool): `dx` / `dy` are how far the picture was
+ * dragged as fractions of the box width / height (positive = right / down). Along an axis where the
+ * cover-fitted picture does not overhang the box the focal point is left alone. `srcRatio` and
+ * `slotRatio` are width / height of the photo and of the box.
+ */
+export function panCrop(crop: Partial<Crop> | undefined, dx: number, dy: number, srcRatio: number, slotRatio: number): Crop {
+  const zoom = Math.max(1, crop?.zoom ?? 1);
+  const overX = Math.max(1, srcRatio / slotRatio) * zoom - 1; // overhang in box widths
+  const overY = Math.max(1, slotRatio / srcRatio) * zoom - 1; // overhang in box heights
+  const fx = clamp01(crop?.focalX ?? 0.5);
+  const fy = clamp01(crop?.focalY ?? 0.5);
+  return {
+    focalX: round4(overX > 1e-6 ? fx - dx / overX : fx),
+    focalY: round4(overY > 1e-6 ? fy - dy / overY : fy),
+    zoom,
+  };
+}
+
+/** Sets the zoom of a crop, clamped to [1, {@link CROP_MAX_ZOOM}]; the focal point keeps its meaning. */
+export function zoomCrop(crop: Partial<Crop> | undefined, zoom: number): Crop {
+  return {
+    focalX: round4(crop?.focalX ?? 0.5),
+    focalY: round4(crop?.focalY ?? 0.5),
+    zoom: Math.round(Math.min(CROP_MAX_ZOOM, Math.max(1, zoom)) * 1000) / 1000,
+  };
+}
+
+/** True when a crop shows exactly what the centred default would. */
+export function isDefaultCrop(crop: Partial<Crop> | undefined): boolean {
+  if (!crop) return true;
+  return Math.abs((crop.focalX ?? 0.5) - 0.5) < 1e-6 && Math.abs((crop.focalY ?? 0.5) - 0.5) < 1e-6 && (crop.zoom ?? 1) <= 1 + 1e-6;
 }
 
 /**

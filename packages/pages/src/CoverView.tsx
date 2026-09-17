@@ -4,7 +4,7 @@ import { memo } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
 import { PX_PER_IN } from '@bookbinder/shared';
-import { MIN_SPINE_TEXT_IN, coverFrameIn, coverSlotIn, effectiveSlots, getTemplate, objectPosition } from '@bookbinder/layout';
+import { MIN_SPINE_TEXT_IN, coverFrameIn, coverSlotIn, cropImageStyle, effectiveSlots, getTemplate } from '@bookbinder/layout';
 import { activateOnKey, frameTransform, photoFrameStyle, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
 
 export interface CoverViewProps {
@@ -25,6 +25,8 @@ export interface CoverViewProps {
   onSlotClick?: ((slot: SlotSpec, content: SlotContent | undefined) => void) | undefined;
   onSlotPointerDown?: ((slot: SlotSpec, content: SlotContent | undefined, event: PointerEvent<HTMLElement>) => void) | undefined;
   onBackgroundClick?: (() => void) | undefined;
+  /** The image provider already cut the crop (print renderer): draw a plain cover-fit instead of the CSS crop. */
+  croppedImages?: boolean | undefined;
   className?: string | undefined;
   style?: CSSProperties | undefined;
 }
@@ -86,7 +88,7 @@ function fitTitle(text: string, w: number, h: number): number {
  * the spine text reads bottom-to-top once the spine is wide enough. Same markup for the admin
  * preview and the PDF.
  */
-function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, selectedSlotIds, onSlotClick, onSlotPointerDown, onBackgroundClick, className, style }: CoverViewProps) {
+function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, meta, scale = 1, guides = false, selectedSlotId, selectedSlotIds, onSlotClick, onSlotPointerDown, onBackgroundClick, croppedImages = false, className, style }: CoverViewProps) {
   const template = getTemplate(cover.templateId);
   const slots = effectiveSlots(cover.templateId, cover.slots);
   const photoSlots = slots.filter((s) => s.spec.role === 'hero' || s.spec.role === 'photo');
@@ -178,7 +180,7 @@ function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, me
                   src={imageSrc({ asset, wIn: r.w / ppi, hIn: r.h / ppi, crop: content?.crop })}
                   alt=""
                   draggable={false}
-                  style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover', objectPosition: objectPosition(content?.crop) }}
+                  style={{ display: 'block', ...cropImageStyle(croppedImages ? undefined : content?.crop) }}
                 />
               ) : null}
             </div>
