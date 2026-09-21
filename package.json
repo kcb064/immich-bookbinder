@@ -23,7 +23,7 @@
     "generate:lulu": "openapi-typescript specs/lulu-openapi.yml -o apps/server/src/lulu/generated/lulu.d.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.20.2",
+    "@types/node": "^26.6.1",
     "eslint": "^9.39.0",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.6",
