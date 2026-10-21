@@ -76,7 +76,7 @@ jobs:
 
       # Proves docker/Dockerfile builds from a clean context. Nothing is pushed or
       # loaded; layers land in the GitHub Actions cache so release.yml reuses them.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile

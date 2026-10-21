@@ -55,7 +55,7 @@ jobs:
       # onnxruntime-node all publish arm64 Linux binaries, nothing runs the image
       # on arm64 in CI. If the arm64 build starts failing or hits the job time
       # limit, drop it from `platforms` rather than block amd64 releases.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
