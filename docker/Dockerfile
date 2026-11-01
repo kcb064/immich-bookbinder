@@ -14,7 +14,7 @@ ARG NODE_IMAGE=node:22-bookworm-slim
 # Must equal the "playwright" (or "playwright-core") version apps/server depends on.
 # The browser build and the npm package are pinned together; the runtime stage
 # checks the installed package against this value and fails the build on mismatch.
-ARG PLAYWRIGHT_VERSION=1.63.0
+ARG PLAYWRIGHT_VERSION=1.64.1
 
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS base
