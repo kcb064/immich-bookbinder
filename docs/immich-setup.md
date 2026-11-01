@@ -4,7 +4,7 @@ immich-bookbinder talks to your Immich server with an API key. It only reads: it
 
 ## Version
 
-The client is generated from the Immich OpenAPI spec vendored at `specs/immich-openapi.json`, currently **Immich 3.2.0** (`SUPPORTED_IMMICH_VERSION` in `packages/shared/src/api.ts`). Other 3.x servers usually work; the connection test shows your server's version next to the supported one and warns when they differ. A weekly CI job opens an issue when upstream Immich changes the spec.
+The client is generated from the Immich OpenAPI spec vendored at `specs/immich-openapi.json`, currently **Immich 3.3.5** (`SUPPORTED_IMMICH_VERSION` in `packages/shared/src/api.ts`). Other 3.x servers usually work; the connection test shows your server's version next to the supported one and warns when they differ. A weekly CI job opens an issue when upstream Immich changes the spec.
 
 ## Create the API key
 

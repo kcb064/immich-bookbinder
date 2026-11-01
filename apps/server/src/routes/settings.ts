@@ -1,4 +1,4 @@
-import { ImmichConnectionInput, PetsInput, type SettingsView } from '@bookbinder/shared';
+import { ImmichConnectionInput, Locale, PetsInput, type SettingsView } from '@bookbinder/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { SettingKeys } from '../settings.js';
@@ -6,6 +6,8 @@ import { SettingKeys } from '../settings.js';
 const PublicUrlInput = z.object({
   publicUrl: z.url({ error: 'publicUrl must be an absolute URL' }).nullable(),
 });
+
+const UiLocaleInput = z.object({ locale: Locale });
 
 function zodMessage(err: z.ZodError): string {
   return err.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
@@ -33,6 +35,14 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     const ids = new Set(parsed.data.pets.map((p) => p.id));
     if (ids.size !== parsed.data.pets.length) return reply.badRequest('pets: ids must be unique');
     app.settings.setPets(parsed.data.pets);
+    return app.settings.view();
+  });
+
+  /** Sets the admin UI locale (M8). */
+  app.put('/api/settings/locale', async (request, reply) => {
+    const parsed = UiLocaleInput.safeParse(request.body);
+    if (!parsed.success) return reply.badRequest(zodMessage(parsed.error));
+    app.settings.setUiLocale(parsed.data.locale);
     return app.settings.view();
   });
 

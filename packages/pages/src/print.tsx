@@ -77,7 +77,7 @@ img { image-rendering: auto; }
   );
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${opts.meta.locale ?? 'en'}">
 <head>
 <meta charset="utf-8">
 <title>print</title>

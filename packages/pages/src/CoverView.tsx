@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { BookAsset, BookCover, BookFormat, CoverGeometry, SlotContent, SlotSpec, Theme } from '@bookbinder/shared';
-import { PX_PER_IN } from '@bookbinder/shared';
+import { PX_PER_IN, THEMES } from '@bookbinder/shared';
 import { MIN_SPINE_TEXT_IN, coverFrameIn, coverSlotIn, cropImageStyle, effectiveSlots, getTemplate } from '@bookbinder/layout';
 import { activateOnKey, frameTransform, photoFrameStyle, textBoxStyle, type BookMeta, type ImageSrc } from './PageView.js';
 
@@ -75,6 +75,19 @@ export function coverSlotPx(slot: Pick<SlotSpec, 'id' | 'x' | 'y' | 'w' | 'h'>, 
   return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
 }
 
+/** #rrggbb with an alpha channel as rgba() for a translucent spine background (M8). */
+function hexA(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Black or white text, whichever contrasts more with the given #rrggbb background (relative luminance). */
+function readableOn(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+  return lum > 0.45 ? '#1a1714' : '#f6f1e8';
+}
+
 /** Title size that fits `text` on one line of `w` px in the italic display face, capped by the slot height. */
 function fitTitle(text: string, w: number, h: number): number {
   const byHeight = h * 0.85;
@@ -117,7 +130,10 @@ function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, me
   const heroContent = hero ? cover.slots.find((s) => s.slotId === hero.id) : undefined;
   const heroAsset = heroContent?.assetId ? assets.get(heroContent.assetId) : undefined;
   const onPhoto = Boolean(heroAsset);
-  const ink = onPhoto ? theme.paper : theme.ink;
+  // Text over the photo reads as the paper colour unless the book overrides the ink (M8): an explicit
+  // text colour wins on the cover too, so a light theme on a dark photo can be corrected by hand.
+  const inkOverride = theme.ink !== (THEMES[theme.id]?.ink ?? theme.ink);
+  const ink = onPhoto && !inkOverride ? theme.paper : theme.ink;
   const shadow = onPhoto ? '0 1px 3px rgba(0,0,0,0.45), 0 0 24px rgba(0,0,0,0.25)' : undefined;
   const frontLeft = Math.round(g.frontLeftIn * ppi);
   const wrap = Math.round(g.wrapIn * ppi);
@@ -205,6 +221,12 @@ function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, me
             // A horizontal box as long as the spine, rotated so the text reads bottom-to-top.
             // Half an inch of margin at each end; the glyph height stays well inside the spine width.
             const size = Math.max(9, Math.min(Math.round(r.w * 0.55), Math.floor((r.h - 96) / (0.48 * text.length))));
+            // M8: the spine can be painted over the wrap-around photo (solid or translucent) so the
+            // text stays readable; with mode 'photo' the scrim below is all there is.
+            const spine = cover.spine ?? { mode: 'photo' as const, color: '#000000', alpha: 1 };
+            const spineBg =
+              spine.mode === 'solid' ? spine.color : spine.mode === 'translucent' ? hexA(spine.color, spine.alpha) : undefined;
+            const spineInk = spineBg ? readableOn(spine.color) : ink;
             return (
               <div
                 key={slot.id}
@@ -226,10 +248,11 @@ function CoverViewImpl({ cover, geometry: g, format, theme, assets, imageSrc, me
                   fontSize: size,
                   lineHeight: 1,
                   letterSpacing: '0.02em',
-                  color: ink,
-                  textShadow: shadow,
+                  color: spineInk,
+                  textShadow: spineBg ? undefined : shadow,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
+                  ...(spineBg ? { background: spineBg } : {}),
                 }}
               >
                 {text}

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ChapterMode } from './chapters.js';
 import { LuluProduct } from './format.js';
+import { Locale } from './locale.js';
 import { ThemeOverrides } from './theme.js';
 
 export const Id = z.string().min(1);
@@ -175,6 +176,20 @@ export const Chapter = z.object({
 export type Chapter = z.infer<typeof Chapter>;
 
 /**
+ * How the spine is drawn over the cover photo (M8): `photo` keeps the wrap-around photo visible,
+ * `solid` paints it in one colour, `translucent` in the same colour at `alpha` opacity so the photo
+ * shows through and the spine text stays readable.
+ */
+export const SpineStyle = z.object({
+  mode: z.enum(['photo', 'solid', 'translucent']).default('photo'),
+  /** #rrggbb background for solid/translucent. */
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#2a2622'),
+  /** 0..1 opacity for translucent. */
+  alpha: z.number().min(0).max(1).default(0.72),
+});
+export type SpineStyle = z.infer<typeof SpineStyle>;
+
+/**
  * The book's cover: one cover template, the hero photo (and any text overrides) as slot contents,
  * plus the spine and back-cover text. Text slots left out fall back to the book title and dates.
  */
@@ -185,6 +200,8 @@ export const BookCover = z.object({
   spineText: z.string().optional(),
   /** Back-cover paragraph. */
   blurb: z.string().optional(),
+  /** Spine background and text colour (M8); defaults to the photo showing through. */
+  spine: SpineStyle.optional(),
 });
 export type BookCover = z.infer<typeof BookCover>;
 
@@ -205,6 +222,8 @@ export const Book = z.object({
   subtitle: z.string().optional(),
   formatId: Id,
   themeId: Id,
+  /** Locale of the printed book (M8): chapter titles, date ranges, captions, colophon. The UI locale is a server setting. */
+  locale: Locale.default('en'),
   /** Per-book theme adjustments (M7): paper colour, caption size, photo frames. */
   themeOverrides: ThemeOverrides.optional(),
   luluProduct: LuluProduct.default(() => LuluProduct.parse({})),
@@ -324,6 +343,8 @@ export const Candidate = z.object({
   metrics: ImageMetrics.optional(),
   /** 64-bit DCT perceptual hash as 16 hex characters. */
   phash: z.string().length(16).optional(),
+  /** 64-bit difference hash (dHash) as 16 hex characters; with phash it detects cross-scene similarity (M8). */
+  dhash: z.string().length(16).optional(),
   faces: z.array(FaceBox).optional(),
   /** Near-duplicate group; members share it. Absent for singletons. */
   clusterId: Id.optional(),
@@ -415,6 +436,9 @@ export const DecisionsInput = z.object({
   decisions: z.array(z.object({ assetId: Id, decision: DecisionChoice })).min(1).max(500),
 });
 export type DecisionsInput = z.infer<typeof DecisionsInput>;
+
+/** Empty body for POST /api/books/:id/selection/reset-decisions: every manual keep/remove goes back to automatic (M8). */
+export const ResetDecisionsInput = z.object({});
 
 /**
  * Photos the picker aims for: about three per body page (title page and a trailing blank excluded).

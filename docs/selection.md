@@ -59,7 +59,7 @@ A photo is **blurry** when its sharpness score is below 0.25 _and_ its Laplacian
 
 ## Near-duplicates
 
-Immich duplicate groups (`duplicateId`) always cluster. Otherwise photos are compared with the previous 12 in time order: a Hamming distance of at most 5 bits is the same picture whatever the timestamps say; at most 12 bits within 90 seconds is a burst. The best member wins (your own keep first, then favourites, then not blurry, then composite score); the others become **alternates** with the reason "near-duplicate of a better shot" and a link to the winner. "Use instead" on an alternate keeps it and drops the winner.
+Immich duplicate groups (`duplicateId`) always cluster. Otherwise photos are compared with the previous 12 in time order: a Hamming distance of at most 5 bits on the pHash is the same picture whatever the timestamps say; at most 12 bits within 90 seconds is a burst. **M8:** two photos whose pHash is within 10 bits *and* whose dHash (a second, gradient-based 64-bit hash computed next to the pHash) is within 8 bits are also clustered as the same scene, even hours apart — a re-visit of a viewpoint, not a burst. The best member wins (your own keep first, then favourites, then not blurry, then composite score); the others become **alternates** with the reason "near-duplicate of a better shot" and a link to the winner. "Use instead" on an alternate keeps it and drops the winner.
 
 ### Claude's opinion on bursts (M7, optional)
 
@@ -84,13 +84,13 @@ Each chapter costs an opener spread, so the photo target shrinks: `targetPhotosF
 Target count = about 2.8 photos per body page (48 pages -> 129 without chapters, 101 with six). The picker takes, in order:
 
 1. photos you kept (`user-in`), then favourites (when "Favourites always in" is on);
-2. a greedy pass: each round picks the eligible photo with the highest `score - variety x penalty`, where the penalty grows with how many photos its day (relative to a sqrt-proportional day quota), its chapter (same shape) and its hour already have. Variety 0 is a plain top-N by score; the default 0.8 spreads a trip across its days and places without letting a 30-photo day outvote a 300-photo day;
+2. a greedy pass: each round picks the eligible photo with the highest `score - variety x penalty`, where the penalty grows with how many photos its day (relative to a sqrt-proportional day quota), its chapter (same shape) and its hour already have. **M8:** each already chosen photo of the same scene (pHash and dHash both close, see above) adds `0.3 x similarityPenalty` to the penalty, so two near-identical motifs no longer both make the book; the default similarity penalty is `0.6 x variety`, so the Variety slider steers it too. Variety 0 is a plain top-N by score; the default 0.8 spreads a trip across its days and places without letting a 30-photo day outvote a 300-photo day. A photo kept out only for this shows "Looks too similar to an already picked photo" with a link to that photo;
 3. the chapter guarantee above;
 4. a guarantee that every featured person appears at least once, swapping out the weakest plain pick if needed.
 
 Burst losers and blurry photos are never picked automatically; photos you removed (`user-out`) never are either.
 
-Every candidate carries reasons (`Reason.kind`): `top-score`, `favorite`, `best-of-burst`, `featured-person`, `chapter`, `user-in`, `user-out`, `duplicate`, `blurry`, `variety`, `below-cut`, `no-analysis`. The review page shows them under "Why it is in / out".
+Every candidate carries reasons (`Reason.kind`): `top-score`, `favorite`, `best-of-burst`, `featured-person`, `chapter`, `user-in`, `user-out`, `duplicate`, `blurry`, `variety`, `below-cut`, `no-analysis`. The review page shows them under "Why it is in / out", with a large preview of the selected photo (click it or press the enlarge button; Esc closes) and a **Reset my picks (n)** button in the header that sends every manual keep/remove back to the automatic decision (`POST /api/books/:id/selection/reset-decisions`).
 
 ## Presets, weights and people
 

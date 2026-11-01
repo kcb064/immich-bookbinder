@@ -168,7 +168,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
     const preparing = app.renders.list(book.id).some((r) => r.kind === 'preview' && (r.status === 'queued' || r.status === 'running'));
     const pdf = share.allowDownload ? (app.renders.latest(book.id, 'print') ?? app.renders.latest(book.id, 'proof')) : undefined;
     const placed = new Set(book.pages.flatMap((p) => p.slots.map((s) => s.assetId).filter(Boolean)));
-    const dates = dateRangeLabel(app.books.assets(book.id).filter((a) => placed.has(a.id)));
+    const dates = dateRangeLabel(app.books.assets(book.id).filter((a) => placed.has(a.id)), book.locale);
     // The geometry the preview's cover.png was drawn with (Lulu's exact sheet when it was connected), else the estimate.
     const g = preview?.data?.hasCover ? (preview.data.cover?.geometry ?? app.renders.coverFor(book, format)?.geometry) : undefined;
     // A view is an opened book; the viewer's polls while the pages are prepared say `?poll=1` and do not count.

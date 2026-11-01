@@ -1,4 +1,5 @@
 import type { Reason } from '@bookbinder/shared';
+import { hamming } from './phash.js';
 
 export interface PickItem {
   id: string;
@@ -13,6 +14,9 @@ export interface PickItem {
   personIds: readonly string[];
   /** False for burst losers and blurry photos: they are never picked automatically. */
   eligible: boolean;
+  /** 16-hex pHash/dHash (M8): photos whose two hashes both sit close to an already chosen photo count as the same scene. */
+  phash?: string | undefined;
+  dhash?: string | undefined;
 }
 
 export interface PickOptions {
@@ -27,6 +31,15 @@ export interface PickOptions {
   /** User decisions: always in / always out, whatever the score. */
   forcedIn?: ReadonlySet<string> | undefined;
   forcedOut?: ReadonlySet<string> | undefined;
+  /**
+   * M8: how strongly the picker avoids a second photo of the same scene (both hashes close to an
+   * already chosen one), 0..1. Defaults to 0.6 * variety so the variety slider also steers it.
+   */
+  similarityPenalty?: number | undefined;
+  /** pHash distance at or below which two photos can be the same scene (default 10). */
+  scenePhash?: number | undefined;
+  /** dHash distance at or below which two photos can be the same scene (default 8). */
+  sceneDhash?: number | undefined;
 }
 
 export interface PickDecision {
@@ -53,11 +66,20 @@ export function dayLabel(day: string): string {
 
 const fmt = (score: number): string => (score * 10).toFixed(1);
 
+/** "May 12" of a takenAt for the similarity reason (UTC, English short month like dayLabel). */
+const formatDay = (takenAt: string | undefined): string => dayLabel(dayOf(takenAt));
+
 /** Penalty for a group (day or chapter) that already holds `picks` of its `quota`: gentle below quota, steep above. */
 const loadPenalty = (picks: number, quota: number): number => {
   const load = picks / quota;
   return 0.1 * load + 0.4 * Math.max(0, load - 1);
 };
+
+/** True when both hashes of `a` sit close to `b`'s: the same scene, possibly hours apart (M8). */
+export function sameScene(a: Pick<PickItem, 'phash' | 'dhash'>, b: Pick<PickItem, 'phash' | 'dhash'>, scenePhash: number, sceneDhash: number): boolean {
+  if (!a.phash || !a.dhash || !b.phash || !b.dhash) return false;
+  return hamming(a.phash, b.phash) <= scenePhash && hamming(a.dhash, b.dhash) <= sceneDhash;
+}
 
 /**
  * Greedy diversity picking. Each round takes the eligible photo with the best
@@ -136,6 +158,9 @@ export function pickPhotos(items: readonly PickItem[], opts: PickOptions): PickR
   const chapterQuota = sqrtQuota((it) => it.chapter?.id, Math.max(1, minPerChapter));
   const hasChapters = items.some((it) => it.chapter);
 
+  const simPenalty = opts.similarityPenalty ?? 0.6 * variety;
+  const scenePhash = opts.scenePhash ?? 10;
+  const sceneDhash = opts.sceneDhash ?? 8;
   const penalty = (it: PickItem): number => {
     let p = 0;
     if (opts.spreadAcrossDays) {
@@ -145,6 +170,10 @@ export function pickPhotos(items: readonly PickItem[], opts: PickOptions): PickR
     p += 0.06 * (picksHour.get(hourOf(it.takenAt)) ?? 0);
     if (it.chapter) p += loadPenalty(picksChapter.get(it.chapter.id) ?? 0, chapterQuota(it.chapter.id));
     else if (it.place && !hasChapters) p += 0.02 * (picksPlace.get(it.place) ?? 0);
+    // M8: each already chosen photo of the same scene (both hashes close) costs 0.3 of the penalty.
+    if (simPenalty > 0 && it.phash && it.dhash) {
+      for (const c of chosen.values()) if (sameScene(it, c, scenePhash, sceneDhash)) p += 0.3 * simPenalty;
+    }
     return p;
   };
 
@@ -237,10 +266,14 @@ export function pickPhotos(items: readonly PickItem[], opts: PickOptions): PickR
   for (const it of pool) {
     const day = dayOf(it.takenAt);
     if (greedyPicks > 0 && it.score >= cut && variety > 0) {
-      const text = it.chapter
-        ? `Scored ${fmt(it.score)}, but ${it.chapter.title} already has ${picksChapter.get(it.chapter.id) ?? 0} of about ${Math.round(chapterQuota(it.chapter.id))} highlights; kept for variety.`
-        : `Scored ${fmt(it.score)}, but ${dayLabel(day)} already has ${picksDay.get(day) ?? 0} picks; kept for variety.`;
-      decisions.set(it.id, { picked: false, reasons: [{ kind: 'variety', text }] });
+      // M8: name the same-scene reason when that is what kept the photo out.
+      const twin = simPenalty > 0 && it.phash && it.dhash ? [...chosen.values()].find((c) => sameScene(it, c, scenePhash, sceneDhash)) : undefined;
+      const text = twin
+        ? `Looks too similar to an already picked photo (${formatDay(twin.takenAt)}); kept for variety.`
+        : it.chapter
+          ? `Scored ${fmt(it.score)}, but ${it.chapter.title} already has ${picksChapter.get(it.chapter.id) ?? 0} of about ${Math.round(chapterQuota(it.chapter.id))} highlights; kept for variety.`
+          : `Scored ${fmt(it.score)}, but ${dayLabel(day)} already has ${picksDay.get(day) ?? 0} picks; kept for variety.`;
+      decisions.set(it.id, { picked: false, reasons: [{ kind: 'variety', text, ...(twin ? { assetId: twin.id } : {}) }] });
     } else {
       decisions.set(it.id, {
         picked: false,

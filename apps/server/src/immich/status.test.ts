@@ -9,7 +9,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const forbidden = (permission: string) => json({ message: `Not found or no ${permission} permission`, statusCode: 403 }, 403);
 
-/** Minimal fake Immich 3.2.0 on top of fetch; `overrides` win over the defaults. */
+/** Minimal fake Immich 3.3.5 on top of fetch; `overrides` win over the defaults. */
 function fakeImmich(overrides: Handler = () => undefined) {
   const calls: { method: string; path: string; apiKey: string | null }[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -21,9 +21,9 @@ function fakeImmich(overrides: Handler = () => undefined) {
     if (custom) return custom;
     switch (path) {
       case '/server/version':
-        return json({ major: 3, minor: 2, patch: 0, prerelease: null });
+        return json({ major: 3, minor: 3, patch: 5, prerelease: null });
       case '/server/about':
-        return json({ version: 'v3.2.0', versionUrl: 'https://example.com', licensed: false });
+        return json({ version: 'v3.3.5', versionUrl: 'https://example.com', licensed: false });
       case '/users/me':
         return json({ id: 'u1', name: 'Kevin', email: 'kevin@example.com' });
       case '/assets/statistics':
@@ -67,7 +67,7 @@ describe('testImmichConnection', () => {
     const status = await testImmichConnection({ url: 'http://immich_server:2283/', apiKey: 'test-api-key-1234' });
 
     expect(status.connected).toBe(true);
-    expect(status.serverVersion).toBe('3.2.0');
+    expect(status.serverVersion).toBe('3.3.5');
     expect(status.supportedVersion).toBe(SUPPORTED_IMMICH_VERSION);
     expect(status.user).toEqual({ id: 'u1', name: 'Kevin', email: 'kevin@example.com' });
     expect(status.photos).toBe(1234);
@@ -102,7 +102,7 @@ describe('testImmichConnection', () => {
     const status = await testImmichConnection({ url: 'http://immich_server:2283', apiKey: 'test-api-key-1234' });
     expect(status.connected).toBe(true);
     expect(status.serverVersion).toBe('3.4.1');
-    expect(status.error).toMatch(/3\.4\.1 differs from .*3\.2\.0/);
+    expect(status.error).toMatch(/3\.4\.1 differs from .*3\.3\.5/);
   });
 
   it('reports a rejected API key without probing further', async () => {
@@ -110,7 +110,7 @@ describe('testImmichConnection', () => {
     vi.stubGlobal('fetch', fetchMock);
     const status = await testImmichConnection({ url: 'http://immich_server:2283', apiKey: 'wrong-key-123456' });
     expect(status.connected).toBe(false);
-    expect(status.serverVersion).toBe('3.2.0');
+    expect(status.serverVersion).toBe('3.3.5');
     expect(status.error).toMatch(/rejected the API key/);
     expect(status.permissions).toEqual([]);
     expect(calls.map((c) => c.path)).toEqual(['/server/version', '/users/me']);
@@ -163,7 +163,7 @@ describe('Immich routes', () => {
         payload: { url: 'http://immich_server:2283', apiKey: 'body-key-0123456789' },
       });
       expect(withBody.statusCode).toBe(200);
-      expect(withBody.json()).toMatchObject({ connected: true, serverVersion: '3.2.0' });
+      expect(withBody.json()).toMatchObject({ connected: true, serverVersion: '3.3.5' });
       expect(withBody.body).not.toContain('body-key');
       expect(calls.at(-1)?.apiKey).toBe('body-key-0123456789');
 

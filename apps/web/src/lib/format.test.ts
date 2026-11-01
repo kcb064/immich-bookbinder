@@ -57,6 +57,7 @@ describe('formatDateRange', () => {
     expect(s).toMatch(/2026/);
     expect(s).not.toContain('–');
     expect(formatDateRange(undefined, undefined)).toBe('');
+    expect(formatDateRange(undefined, undefined, 'de')).toBe('');
   });
 });
 
