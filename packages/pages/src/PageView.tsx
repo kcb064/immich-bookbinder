@@ -194,7 +194,7 @@ export function activateOnKey(activate: () => void): (e: KeyboardEvent<HTMLEleme
   };
 }
 
-function textFor(template: Template, slot: SlotSpec, content: SlotContent | undefined, page: Page, assets: ReadonlyMap<string, BookAsset>, meta: BookMeta): string {
+export function textFor(template: Template, slot: SlotSpec, content: SlotContent | undefined, page: Page, assets: ReadonlyMap<string, BookAsset>, meta: BookMeta): string {
   const locale = meta.locale ?? 'en';
   if (content?.text !== undefined) return content.text;
   if (template.id === 'title-page') {
