@@ -13,13 +13,43 @@ export const PAPER_CALIPER_IN: Record<LuluPaper, number> = {
 /** Bindings whose cover wraps around board (hardcovers); the rest are soft covers. */
 const HARDCOVER: ReadonlySet<LuluBinding> = new Set(['CW', 'LW']);
 
-/** ESTIMATE, verified against Lulu /cover-dimensions/ in M5: board and hinge allowance added to a hardcover spine. */
-export const HARDCOVER_BOARD_IN = 0.25;
+/**
+ * Lulu's stepped hardcover spine table (casewrap and linen/dust jacket alike), from
+ * "How is spine width calculated?" (help.api.lulu.com, retrieved 2026-10-31): the hardcover
+ * spine snaps to sixteenths of an inch by page-count range — it does NOT track the
+ * pages-per-inch caliper. Used whenever Lulu's /cover-dimensions/ API answer is not available.
+ */
+const LULU_HARDCOVER_SPINE_STEPS: ReadonlyArray<readonly [maxPages: number, spineIn: number]> = [
+  [84, 0.25], [140, 0.5], [168, 0.625], [194, 0.6875], [222, 0.75], [250, 0.8125],
+  [278, 0.875], [306, 0.9375], [334, 1], [360, 1.0625], [388, 1.125], [416, 1.1875],
+  [444, 1.25], [472, 1.3125], [500, 1.375], [528, 1.4375], [556, 1.5], [582, 1.5625],
+  [610, 1.625], [638, 1.6875], [666, 1.75], [694, 1.8125], [722, 1.875], [750, 1.9375],
+  [778, 2], [800, 2.0625],
+];
+
+/** Lulu's flat coverboard allowance added to a perfect-bound spine (their spine-width docs). */
+export const SOFTCOVER_BOARD_IN = 0.06;
+
 /** ESTIMATE, verified against Lulu /cover-dimensions/ in M5: paper folded around the boards of a hardcover. */
 export const HARDCOVER_WRAP_IN = 0.75;
 
 /** Below this the spine is too thin for text; the renderer leaves it blank. */
 export const MIN_SPINE_TEXT_IN = 0.25;
+
+/**
+ * Estimate the spine width without a Lulu /cover-dimensions/ answer: hardcovers take their
+ * step from Lulu's official spine table; perfect-bound softcovers are the paper caliper
+ * plus Lulu's flat 0.06 in coverboard allowance.
+ */
+function estimateSpineIn(hard: boolean, pageCount: number, caliperIn: number): number {
+  if (hard) {
+    for (const [maxPages, spineIn] of LULU_HARDCOVER_SPINE_STEPS) {
+      if (pageCount <= maxPages) return spineIn;
+    }
+    return 2.125; // past Lulu's 800-page casewrap maximum; keep the last documented step
+  }
+  return round4(pageCount * caliperIn + SOFTCOVER_BOARD_IN);
+}
 
 /**
  * Real sheet size from Lulu's /cover-dimensions/, in inches (the client converts its `pt` answer).
@@ -53,7 +83,7 @@ export function coverGeometry(format: BookFormat, product: LuluProduct, pageCoun
     };
   }
   const hard = HARDCOVER.has(product.binding);
-  const spineIn = round4(Math.max(0, pageCount) * PAPER_CALIPER_IN[product.paper] + (hard ? HARDCOVER_BOARD_IN : 0));
+  const spineIn = estimateSpineIn(hard, Math.max(0, pageCount), PAPER_CALIPER_IN[product.paper]);
   const wrapIn = hard ? HARDCOVER_WRAP_IN : format.bleedIn;
   return {
     widthIn: round4(2 * wrapIn + 2 * trimW + spineIn),
