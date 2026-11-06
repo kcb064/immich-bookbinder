@@ -1,9 +1,9 @@
-import { FORMAT_PRESETS, resolveTheme } from '@bookbinder/shared';
-import type { Book, BookStatus, LuluBinding, OrderStatus, Theme, ThemeOverrides } from '@bookbinder/shared';
+import { FORMAT_PRESETS, formatDateRangeIn, formatDateTimeIn, formatMoneyIn, formatNumberIn, resolveTheme } from '@bookbinder/shared';
+import type { Book, BookStatus, LuluBinding, Locale, OrderStatus, Theme, ThemeOverrides } from '@bookbinder/shared';
 
-const numberFmt = new Intl.NumberFormat(undefined);
-export const formatNumber = (n: number | undefined | null): string =>
-  n === undefined || n === null ? '—' : numberFmt.format(n);
+/** UI locale passed in by callers (M8); defaults to English so existing call sites stay stable. */
+export const formatNumber = (n: number | undefined | null, locale: Locale = 'en'): string =>
+  n === undefined || n === null ? '—' : formatNumberIn(locale, n);
 
 /** "8.5 × 8.5 in" for a format id; falls back to the raw id when unknown. */
 export function formatTrim(formatId: string): string {
@@ -103,16 +103,9 @@ export const ORDER_STATUS_TONES: Record<OrderStatus, ChipTone> = {
   canceled: 'neutral',
 };
 
-/** "12.34 USD" from Lulu's decimal strings; the currency code stays visible because Lulu prices in several. */
-export function formatMoney(amount: string | number | undefined, currency: string | undefined): string {
-  if (amount === undefined || amount === null || amount === '') return '—';
-  const n = Number(amount);
-  if (!Number.isFinite(n)) return String(amount);
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency ?? 'USD', currencyDisplay: 'code' }).format(n);
-  } catch {
-    return `${n.toFixed(2)} ${currency ?? ''}`.trim();
-  }
+/** "12.34 USD" / "12,34 USD" from Lulu's decimal strings; the currency code stays visible because Lulu prices in several. */
+export function formatMoney(amount: string | number | undefined, currency: string | undefined, locale: Locale = 'en'): string {
+  return formatMoneyIn(locale, amount, currency);
 }
 
 export const STATUS_TONES: Record<BookStatus, ChipTone> = {
@@ -124,40 +117,26 @@ export const STATUS_TONES: Record<BookStatus, ChipTone> = {
   ordered: 'green',
 };
 
-const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-const dateTimeFmt = new Intl.DateTimeFormat(undefined, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
 function parseDate(s: string | null | undefined): Date | undefined {
   if (!s) return undefined;
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-export function formatDate(s: string | null | undefined): string {
+export function formatDate(s: string | null | undefined, locale: Locale = 'en'): string {
   const d = parseDate(s);
-  return d ? dateFmt.format(d) : '—';
+  if (!d) return '—';
+  return new Intl.DateTimeFormat(locale === 'de' ? 'de-DE' : undefined, { year: 'numeric', month: 'short', day: 'numeric' }).format(d);
 }
 
-export function formatDateTime(s: string | null | undefined): string {
-  const d = parseDate(s);
-  return d ? dateTimeFmt.format(d) : '—';
+export function formatDateTime(s: string | null | undefined, locale: Locale = 'en'): string {
+  return formatDateTimeIn(locale, s);
 }
 
-/** Locale-aware range, e.g. "May 12 – 21, 2026" (en-US) or "12–21 May 2026" (en-GB); a single date when one end is missing. */
-export function formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
-  const a = parseDate(start);
-  const b = parseDate(end);
-  if (!a && !b) return '';
-  if (!a || !b) return dateFmt.format((a ?? b) as Date);
-  const [lo, hi] = a <= b ? [a, b] : [b, a];
-  if (lo.toDateString() === hi.toDateString()) return dateFmt.format(lo);
-  return dateFmt.formatRange(lo, hi);
+/** Locale-aware range, e.g. "May 12 – 21, 2026" (en) or "12.–21. Mai 2026" (de); a single date when one end is missing, "" when both are. */
+export function formatDateRange(start: string | null | undefined, end: string | null | undefined, locale: Locale = 'en'): string {
+  if (!start && !end) return '';
+  return formatDateRangeIn(locale, start ?? undefined, end ?? undefined);
 }
 
 /** Strip scheme and trailing slash for compact display: "immich_server:2283". */
@@ -166,6 +145,6 @@ export function compactUrl(url: string | undefined): string {
   return url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
 }
 
-export function pluralize(n: number, one: string, many = `${one}s`): string {
-  return `${formatNumber(n)} ${n === 1 ? one : many}`;
+export function pluralize(n: number, one: string, many = `${one}s`, locale: Locale = 'en'): string {
+  return `${formatNumber(n, locale)} ${n === 1 ? one : many}`;
 }

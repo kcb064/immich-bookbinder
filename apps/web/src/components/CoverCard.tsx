@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FORMAT_PRESETS, type Book, type BookAsset, type BookCover, type SlotContent } from '@bookbinder/shared';
 import { coverGeometry, placedAssetIds } from '@bookbinder/layout';
 import { CoverView, bookMetaFor, coverText } from '@bookbinder/pages';
-import { Button, Field, LinkButton, Note, TextInput } from './ui.tsx';
+import { Button, Field, LinkButton, Note, Select, TextInput } from './ui.tsx';
 import { useRenders, useSaveBook } from '../lib/queries.ts';
 import { errorMessage, thumbnailUrl } from '../lib/api.ts';
 import { omitKeys } from '../lib/designer.ts';
@@ -134,6 +134,37 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
           <Field label="Spine" hint={geometry.spineIn < 0.25 ? 'Hidden: the spine is under 0.25 in.' : undefined}>
             {({ id }) => <TextInput id={id} value={cover.spineText ?? ''} placeholder={book.title} onChange={(e) => update({ ...cover, ...(e.target.value ? { spineText: e.target.value } : { spineText: undefined }) })} />}
           </Field>
+          <Field label="Spine background" hint="Paint the spine over the cover photo so the spine text stays readable, or keep the photo showing through.">
+            {({ id }) => {
+              const spine = cover.spine ?? { mode: 'photo' as const, color: '#2a2622', alpha: 0.72 };
+              return (
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Select
+                    id={id}
+                    value={spine.mode}
+                    onChange={(e) => update({ ...cover, spine: { ...spine, mode: e.target.value as 'photo' | 'solid' | 'translucent' } })}
+                    aria-label="Spine background"
+                  >
+                    <option value="photo">Cover photo</option>
+                    <option value="solid">Solid colour</option>
+                    <option value="translucent">Semi-transparent</option>
+                  </Select>
+                  {spine.mode !== 'photo' ? (
+                    <>
+                      <input type="color" className="look__color" value={spine.color} onChange={(e) => update({ ...cover, spine: { ...spine, color: e.target.value } })} aria-label="Spine colour" />
+                      {spine.mode === 'translucent' ? (
+                        <label className="row" style={{ gap: 6 }}>
+                          <span className="muted small">Opacity</span>
+                          <input type="range" min={20} max={100} value={Math.round(spine.alpha * 100)} onChange={(e) => update({ ...cover, spine: { ...spine, alpha: Number(e.target.value) / 100 } })} aria-label="Spine opacity" />
+                          <span className="mono small muted">{Math.round(spine.alpha * 100)}%</span>
+                        </label>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              );
+            }}
+          </Field>
           <Field label="Back cover">
             {({ id }) => (
               <textarea id={id} className="input" rows={3} value={cover.blurb ?? ''} placeholder="A few lines for the back." onChange={(e) => update({ ...cover, ...(e.target.value ? { blurb: e.target.value } : { blurb: undefined }) })} />
@@ -162,5 +193,12 @@ export function CoverCard({ book, assets }: { book: Book; assets: BookAsset[] })
 
 /** `spineText: undefined` must not reach the server as a key; zod strips it, but keep the document tidy. */
 function stripUndefined(cover: BookCover): BookCover {
-  return { templateId: cover.templateId, slots: cover.slots, ...(cover.spineText ? { spineText: cover.spineText } : {}), ...(cover.blurb ? { blurb: cover.blurb } : {}) };
+  const spine = cover.spine && cover.spine.mode !== 'photo' ? cover.spine : undefined;
+  return {
+    templateId: cover.templateId,
+    slots: cover.slots,
+    ...(cover.spineText ? { spineText: cover.spineText } : {}),
+    ...(cover.blurb ? { blurb: cover.blurb } : {}),
+    ...(spine ? { spine } : {}),
+  };
 }

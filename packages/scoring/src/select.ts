@@ -1,4 +1,4 @@
-import type { BookAsset, Candidate, Decision, FaceBox, ImageMetrics, Reason, SelectionRules, SelectionSummary } from '@bookbinder/shared';
+import type { BookAsset, Candidate, Decision, FaceBox, ImageMetrics, Locale, Reason, SelectionRules, SelectionSummary } from '@bookbinder/shared';
 import { chapterIndex, planChapters, targetPhotosFor, type ChapterPlan } from '@bookbinder/shared';
 import { clusterNearDuplicates } from './cluster.js';
 import { dayOf, pickPhotos, type PickItem } from './pick.js';
@@ -8,6 +8,8 @@ export interface SelectionInput {
   asset: BookAsset;
   metrics?: ImageMetrics | undefined;
   phash?: string | undefined;
+  /** M8: dHash, paired with phash for cross-scene similarity. */
+  dhash?: string | undefined;
   faces?: FaceBox[] | undefined;
   /** Previous decision; only user-in / user-out are honoured. */
   decision?: Decision | undefined;
@@ -17,6 +19,8 @@ export interface SelectionOptions {
   rules: SelectionRules;
   /** Defaults to targetPhotosFor(rules.targetPages, chapters). */
   targetPhotos?: number | undefined;
+  /** Locale of the printed book (M8): chapter titles in explanations. */
+  locale?: Locale | undefined;
 }
 
 export interface SelectionResult {
@@ -34,7 +38,7 @@ const fmt = (score: number): string => (score * 10).toFixed(1);
  */
 export function buildSelection(inputs: readonly SelectionInput[], opts: SelectionOptions): SelectionResult {
   const rules = opts.rules;
-  const chapters = planChapters(inputs.map((i) => i.asset), { mode: rules.chapters, targetPages: rules.targetPages });
+  const chapters = planChapters(inputs.map((i) => i.asset), { mode: rules.chapters, targetPages: rules.targetPages, locale: opts.locale });
   const chapterOf = chapterIndex(chapters);
   const target = Math.max(1, opts.targetPhotos ?? targetPhotosFor(rules.targetPages, chapters.length));
   const featured = new Set(rules.featuredPersonIds);
@@ -57,7 +61,7 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
 
   // Near-duplicate groups; the best member (user choice, favourite, sharp, high score) wins.
   const clusters = rules.collapseNearDuplicates
-    ? clusterNearDuplicates(scored.map((s) => ({ id: s.input.asset.id, takenAt: s.input.asset.takenAt, phash: s.input.phash, duplicateId: s.input.asset.duplicateId })))
+    ? clusterNearDuplicates(scored.map((s) => ({ id: s.input.asset.id, takenAt: s.input.asset.takenAt, phash: s.input.phash, dhash: s.input.dhash, duplicateId: s.input.asset.duplicateId })))
     : new Map<string, string[]>();
   const clusterOf = new Map<string, { id: string; rank: number; size: number; winner: string }>();
   for (const [clusterId, members] of clusters) {
@@ -83,6 +87,8 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
       isFavorite: s.input.asset.isFavorite,
       personIds: s.input.asset.people.map((p) => p.id),
       eligible: (c?.rank ?? 0) === 0 && !(rules.skipBlurry && s.blurry),
+      phash: s.input.phash,
+      dhash: s.input.dhash,
     };
   });
   const picked = pickPhotos(items, {
@@ -121,6 +127,7 @@ export function buildSelection(inputs: readonly SelectionInput[], opts: Selectio
       scores: s.scores,
       ...(s.input.metrics ? { metrics: s.input.metrics } : {}),
       ...(s.input.phash ? { phash: s.input.phash } : {}),
+      ...(s.input.dhash ? { dhash: s.input.dhash } : {}),
       ...(s.input.faces ? { faces: s.input.faces } : {}),
       ...(c ? { clusterId: c.id, clusterSize: c.size, clusterRank: c.rank } : { clusterSize: 1, clusterRank: 0 }),
       ...(chapterOf.has(id) ? { chapterId: chapterOf.get(id)!.id } : {}),

@@ -1,5 +1,5 @@
 import type { ImageMetrics } from '@bookbinder/shared';
-import { phashFrom32 } from './phash.js';
+import { dhashFrom9x8, phashFrom32 } from './phash.js';
 
 /** Interleaved 8-bit pixels, row-major, as sharp's `.raw()` produces them. */
 export interface RawImage {
@@ -165,6 +165,8 @@ export function boxDownsample(gray: Uint8Array, width: number, height: number, t
 
 export interface ImageAnalysis extends ImageMetrics {
   phash: string;
+  /** dHash of the same greyscale image; combined with phash for cross-scene similarity (M8). */
+  dhash: string;
 }
 
 /** Every metric the selection engine needs from one decoded preview (about 512 px on the long edge). */
@@ -180,5 +182,6 @@ export function analyzeImage(img: RawImage): ImageAnalysis {
     colorfulness: colorfulness(img),
     thirds: thirdsEnergy(gray, img.width, img.height),
     phash: phashFrom32(boxDownsample(gray, img.width, img.height, 32, 32)),
+    dhash: dhashFrom9x8(boxDownsample(gray, img.width, img.height, 9, 8)),
   };
 }

@@ -63,6 +63,7 @@ describe('auth flow', () => {
     const ok = await t.app.inject({ method: 'GET', url: '/api/settings', headers: { cookie } });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({
+      locale: 'en',
       immich: { apiKeySet: false },
       lulu: { sandbox: true, clientKeySet: false, sandboxKeySet: false, productionKeySet: false },
       ai: { enabled: false, apiKeySet: false, model: 'claude-opus-5' },

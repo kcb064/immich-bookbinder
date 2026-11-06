@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { AiJob, AiTest, Book, BookAsset, ImmichStatus, LuluRemoteJob, LuluStatus, LuluWebhookView, NotificationTest, OrderView, Preflight, ReachabilityReport, RenderJob, SelectionRun, SelectionView, SettingsView, ShareView } from '@bookbinder/shared';
-import type { AiJobKind, AiSettingsInput, CreateShareInput, DecisionChoice, ImmichConnectionInput, LuluConnectionInput, LuluEnv, NotificationSettingsInput, PrepareOrderInput, RenderKind, SavedPet, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
+import type { AiJobKind, AiSettingsInput, CreateShareInput, DecisionChoice, ImmichConnectionInput, Locale, LuluConnectionInput, LuluEnv, NotificationSettingsInput, PrepareOrderInput, RenderKind, SavedPet, SelectionRules, SelectionSource, UpdateShareInput } from '@bookbinder/shared';
 import { del, get, isApiError, post, put } from './api.ts';
 
 /* ---------- Schemas for endpoints without a shared type ---------- */
@@ -196,6 +196,15 @@ export function useSavePublicUrl() {
   });
 }
 
+/** Sets the admin UI locale (M8). */
+export function useSaveUiLocale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (locale: Locale) => put('/api/settings/locale', { locale }, SettingsView),
+    onSuccess: (view) => qc.setQueryData(keys.settings, view),
+  });
+}
+
 /** Replaces the saved pets (M7). */
 export function useSavePets() {
   const qc = useQueryClient();
@@ -373,6 +382,8 @@ export interface CreateBookInput {
   title: string;
   formatId: string;
   themeId: string;
+  /** Locale of the printed book (M8). */
+  locale?: Locale;
   rules?: Partial<Omit<SelectionRules, 'sources'>> & { sources: Array<SourceInput | SelectionSource> };
 }
 
@@ -485,6 +496,18 @@ export function useSetDecisions(id: string) {
   return useMutation({
     mutationFn: (decisions: Array<{ assetId: string; decision: DecisionChoice }>) =>
       put(`/api/books/${encodeURIComponent(id)}/selection/decisions`, { decisions }, SelectionView),
+    onSuccess: async (view) => {
+      qc.setQueryData(keys.selection(id), view);
+      await qc.invalidateQueries({ queryKey: keys.books, exact: true });
+    },
+  });
+}
+
+/** M8: resets all manual keeps/removals of a book back to the automatic decisions. */
+export function useResetDecisions(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => post(`/api/books/${encodeURIComponent(id)}/selection/reset-decisions`, {}, SelectionView),
     onSuccess: async (view) => {
       qc.setQueryData(keys.selection(id), view);
       await qc.invalidateQueries({ queryKey: keys.books, exact: true });

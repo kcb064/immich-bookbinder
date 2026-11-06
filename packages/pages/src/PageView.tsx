@@ -2,7 +2,7 @@
 /** @jsxImportSource react */
 import { memo } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
-import type { BookAsset, BookFormat, Crop, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
+import type { BookAsset, BookFormat, Crop, Locale, Page, SlotContent, SlotFrame, SlotSpec, Template, TextStyle, Theme } from '@bookbinder/shared';
 import { PT_PER_IN, PX_PER_IN } from '@bookbinder/shared';
 import { COLOPHON_TEMPLATE_ID, DEFAULT_TEXT_STYLE, QR_QUIET_ZONE, encodeQr, cropImageStyle, getTemplate, pagePx, pageSlots, planMap, qrPath, slotToPx, type MapPoint } from '@bookbinder/layout';
 import { autoCaption, photographsLabel } from './captions.js';
@@ -22,8 +22,10 @@ export interface BookMeta {
   title: string;
   subtitle?: string | undefined;
   photoCount: number;
-  /** "May 12 – 21, 2026" or "" */
+  /** "May 12 – 21, 2026" / "12.–21. Mai 2026", or "" */
   dateRange: string;
+  /** Locale of the printed book (M8); drives captions and labels drawn from meta. Default 'en'. */
+  locale?: Locale | undefined;
   /** By chapter id; pages carry `chapterId`. */
   chapters?: ReadonlyMap<string, ChapterMeta> | undefined;
   /** Public viewer link of the book's active share (M7): the colophon prints it as a QR code. Absent = no QR. */
@@ -192,28 +194,29 @@ export function activateOnKey(activate: () => void): (e: KeyboardEvent<HTMLEleme
   };
 }
 
-function textFor(template: Template, slot: SlotSpec, content: SlotContent | undefined, page: Page, assets: ReadonlyMap<string, BookAsset>, meta: BookMeta): string {
+export function textFor(template: Template, slot: SlotSpec, content: SlotContent | undefined, page: Page, assets: ReadonlyMap<string, BookAsset>, meta: BookMeta): string {
+  const locale = meta.locale ?? 'en';
   if (content?.text !== undefined) return content.text;
   if (template.id === 'title-page') {
     if (slot.id === 'title') return meta.title;
-    if (slot.id === 'subtitle') return meta.subtitle ?? [meta.dateRange, photographsLabel(meta.photoCount)].filter(Boolean).join(' · ');
+    if (slot.id === 'subtitle') return meta.subtitle ?? [meta.dateRange, photographsLabel(meta.photoCount, locale)].filter(Boolean).join(' · ');
     return '';
   }
   if (template.id === 'chapter-title') {
     const chapter = page.chapterId ? meta.chapters?.get(page.chapterId) : undefined;
     if (slot.id === 'title') return chapter?.title ?? '';
     if (slot.id === 'subtitle') return chapter?.subtitle ?? '';
-    if (slot.id === 'body') return chapter ? photographsLabel(chapter.photoCount) : '';
+    if (slot.id === 'body') return chapter ? photographsLabel(chapter.photoCount, locale) : '';
     return '';
   }
   if (template.id === COLOPHON_TEMPLATE_ID) {
-    if (slot.id === 'qr-label') return meta.shareUrl ? 'See this book online' : '';
+    if (slot.id === 'qr-label') return meta.shareUrl ? (locale === 'de' ? 'Dieses Buch online ansehen' : 'See this book online') : '';
     if (slot.id === 'qr-url') return meta.shareUrl ? displayUrl(meta.shareUrl) : '';
-    if (slot.id === 'credits') return [meta.title, photographsLabel(meta.photoCount), 'made with immich-bookbinder'].filter(Boolean).join(' · ');
+    if (slot.id === 'credits') return [meta.title, photographsLabel(meta.photoCount, locale), 'made with immich-bookbinder'].filter(Boolean).join(' · ');
     if (slot.id === 'date') return meta.dateRange;
     return '';
   }
-  if (slot.role === 'caption') return autoCaption(pagePhotos(page, assets));
+  if (slot.role === 'caption') return autoCaption(pagePhotos(page, assets), locale);
   return '';
 }
 

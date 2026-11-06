@@ -22,7 +22,7 @@ import {
   zoomCrop,
   type SnapLine,
 } from '@bookbinder/layout';
-import { CoverView, PageView, bookMetaFor, coverPxToUnits, coverSlotPx, coverText, formatTakenDate, placeLabel, spreadIndexOfPage, spreadLabel, toSpreads, type ImageSrc, type SlotOverlayContext, type Spread } from '@bookbinder/pages';
+import { CoverView, PageView, bookMetaFor, coverPxToUnits, coverSlotPx, coverText, formatTakenDate, placeLabel, spreadIndexOfPage, spreadLabel, textFor, toSpreads, type ImageSrc, type SlotOverlayContext, type Spread } from '@bookbinder/pages';
 import { Icon } from '../components/Icon.tsx';
 import { Button, Chip, LinkButton, Note, Skeleton } from '../components/ui.tsx';
 import { RenderButtons, isActiveRender } from '../components/Renders.tsx';
@@ -741,8 +741,20 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   };
 
   /** Text of the selected text slot: the stored override, else what the page or cover would print. */
-  const selectedText = selectedIsText ? (selectedContent?.text ?? '') : undefined;
   const selectedTextPlaceholder = selected && selectedSlot && !selectedSlot.adHoc && selected.pageIndex === COVER && doc.cover ? coverText({ ...doc.cover, slots: doc.cover.slots.filter((s) => s.slotId !== selected.slotId) }, selected.slotId, meta) || 'Type here' : undefined;
+  /**
+   * Auto text the renderer would print for a template text slot with no stored text — same
+   * resolution the printed PDF uses. Prefills the input so individual words can be edited
+   * instead of retyping the whole generated line (matches the chapter title fields).
+   */
+  const selectedAutoText = selected && selectedSlot && !selectedSlot.adHoc
+    ? selected.pageIndex === COVER
+      ? selectedTextPlaceholder ?? ''
+      : (() => {
+          const page = pages[selected.pageIndex];
+          return page ? textFor(getTemplate(page.templateId), selectedSlot.spec, undefined, page, assetMap, meta) : '';
+        })()
+    : '';
   const setSelectedText = (text: string) => {
     if (!selected || !selectedSlot) return;
     const key = `text:${selected.pageIndex}:${selected.slotId}`;
@@ -770,10 +782,23 @@ function Editor({ book, assets, format, theme }: EditorProps) {
   /* ---------- Drag and drop from the tray (M7) ---------- */
 
   const DRAG_TYPE = 'application/x-bookbinder-asset';
+  /** Drag type of a page grabbed by its drag handle (page reorder, editor only). */
+  const PAGE_DRAG_TYPE = 'application/x-bookbinder-page';
   const acceptsDrop = (e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE);
+  const acceptsPageDrop = (e: React.DragEvent) => e.dataTransfer.types.includes(PAGE_DRAG_TYPE);
   /** Slot id under the drop point, if the drop landed on a slot. */
   const slotUnder = (e: React.DragEvent): string | undefined => (e.target as HTMLElement).closest?.('[data-slot-id]')?.getAttribute('data-slot-id') ?? undefined;
   const onPageDrop = (pageIndex: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (acceptsPageDrop(e)) {
+      // Page reorder: drop onto another page to move the dragged one there.
+      e.preventDefault();
+      const from = Number(e.dataTransfer.getData(PAGE_DRAG_TYPE));
+      if (!Number.isInteger(from) || from === pageIndex || !pages[from] || isOpenerPage(pages[from]!)) return;
+      apply(movePage(pages, from, pageIndex));
+      setFocusIndex(pageIndex);
+      gotoPage(pageIndex);
+      return;
+    }
     if (!acceptsDrop(e)) return;
     e.preventDefault();
     const assetId = e.dataTransfer.getData(DRAG_TYPE);
@@ -811,6 +836,11 @@ function Editor({ book, assets, format, theme }: EditorProps) {
     setSelected({ pageIndex: COVER, slotId: r.slotId });
   };
   const onDragOver = (e: React.DragEvent) => {
+    if (acceptsPageDrop(e)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return;
+    }
     if (!acceptsDrop(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -831,6 +861,21 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         onDragOver={onDragOver}
         onDrop={onPageDrop(page.index)}
       >
+        {isFlexiblePage(page) ? (
+          <button
+            type="button"
+            className="page-frame__drag"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(PAGE_DRAG_TYPE, String(page.index));
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            title="Move this page: drag it onto another page"
+            aria-label={`Move page ${page.index + 1}`}
+          >
+            ⋮⋮
+          </button>
+        ) : null}
         <PageView
           page={shown}
           format={format}
@@ -945,7 +990,9 @@ function Editor({ book, assets, format, theme }: EditorProps) {
         text={
           selectedIsText
             ? {
-                value: selectedText ?? '',
+                // Prefill template slots with the auto text (edit-in-place); a stored
+                // override, including an intentionally cleared one, always wins.
+                value: selectedContent?.text !== undefined ? selectedContent.text : selectedAutoText,
                 placeholder: selectedTextPlaceholder ?? (selectedSlot.adHoc ? 'Type here' : 'Automatic text'),
                 onChange: setSelectedText,
                 style: selectedContent?.style,

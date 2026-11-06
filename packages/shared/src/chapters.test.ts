@@ -170,6 +170,20 @@ describe('planChapters', () => {
     expect(plan[2]!.subtitle).toBe('May 16, 2026 · Sintra');
   });
 
+  it('localises day-chapter titles and date ranges when the book locale is de (M8)', () => {
+    const photos = trip([
+      { city: 'Lisbon', count: 20, day: 0 },
+      { city: 'Lisbon', count: 20, day: 1 },
+      { city: 'Lisbon', count: 2, day: 2 },
+      { city: 'Sintra', count: 20, day: 4 },
+    ]);
+    const plan = planChapters(photos, { mode: 'days', targetPages: 48, locale: 'de' });
+    expect(plan.map((c) => c.title)).toEqual(['Tag 1', 'Tage 2–3', 'Tag 5']);
+    expect(plan[2]!.subtitle).toBe('16. Mai 2026 · Sintra');
+    expect(formatIsoRange('2026-05-12T00:00:00Z', '2026-05-21T00:00:00Z', 'de')).toBe('12.–21. Mai 2026');
+    expect(formatIsoRange('2026-05-12T00:00:00Z', '2026-05-21T00:00:00Z')).toBe('May 12 – 21, 2026');
+  });
+
   it('carries photos without a place along with the current run and lets geo clusters name themselves', () => {
     const photos = trip([
       { city: 'Lisbon', ...LISBON, count: 20, day: 0 },

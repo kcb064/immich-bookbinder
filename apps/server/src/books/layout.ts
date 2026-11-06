@@ -90,7 +90,7 @@ export async function layoutBook(
   const openedByHand = new Set(custom.filter((p) => p.chapterId && isOpenerTemplate(p.templateId)).map((p) => p.chapterId!));
 
   // Chapters are planned over every gathered photo (as the picker did), then only picked photos keep them.
-  const plan = planChapters(assets, { mode: book.rules.chapters, targetPages: book.rules.targetPages });
+  const plan = planChapters(assets, { mode: book.rules.chapters, targetPages: book.rules.targetPages, locale: book.locale });
   const chapterOf = chapterIndex(plan);
   const result = paginate(
     photos

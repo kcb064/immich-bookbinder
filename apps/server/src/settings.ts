@@ -1,4 +1,4 @@
-import { DEFAULT_AI_MODEL, ImmichConnectionInput, NotificationEvents, NotifyKind, SavedPet, ShippingAddress, type AiSettingsInput, type LuluEnv, type NotificationSettingsInput, type NotificationSettingsView, type SettingsView } from '@bookbinder/shared';
+import { DEFAULT_AI_MODEL, DEFAULT_LOCALE, ImmichConnectionInput, NotificationEvents, NotifyKind, SavedPet, ShippingAddress, type AiSettingsInput, type LuluEnv, type Locale, type NotificationSettingsInput, type NotificationSettingsView, type SettingsView } from '@bookbinder/shared';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import type { SecretBox } from './crypto.js';
@@ -25,6 +25,7 @@ export const SettingKeys = {
   notifyUrl: 'notify.url',
   notifyToken: 'notify.token',
   notifyEvents: 'notify.events',
+  uiLocale: 'ui.locale',
 } as const;
 export type SettingKey = (typeof SettingKeys)[keyof typeof SettingKeys];
 
@@ -214,6 +215,16 @@ export class SettingsStore {
     this.delete(SettingKeys.notifyKind, SettingKeys.notifyUrl, SettingKeys.notifyToken, SettingKeys.notifyEvents);
   }
 
+  /** The UI locale of the admin app (M8); stored, default 'en'. */
+  getUiLocale(): Locale {
+    const raw = this.get(SettingKeys.uiLocale);
+    return raw === 'de' ? 'de' : DEFAULT_LOCALE;
+  }
+
+  setUiLocale(locale: Locale): void {
+    this.set(SettingKeys.uiLocale, locale);
+  }
+
   /** Public view: never includes secret values, only whether they are set. */
   view(): SettingsView {
     const publicUrl = this.get(SettingKeys.publicUrl);
@@ -223,6 +234,7 @@ export class SettingsStore {
     const productionKeySet = this.getLuluCredentials('production') !== undefined;
     const lastAddress = this.getLastAddress();
     return {
+      locale: this.getUiLocale(),
       immich: {
         ...(immichUrl !== undefined ? { url: immichUrl } : {}),
         apiKeySet: this.get(SettingKeys.immichApiKey) !== undefined,

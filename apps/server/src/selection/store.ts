@@ -94,6 +94,23 @@ export class CandidateStore {
    * Applies user decisions. 'auto' restores the engine's decision. The user reason is kept first in
    * `reasons` so the review page can say "you kept/removed this". Returns the ids that were updated.
    */
+  /** M8: every user-in/user-out of the book goes back to its automatic decision; returns how many changed. */
+  resetDecisions(bookId: string): number {
+    const updatedAt = new Date().toISOString();
+    const rows = this.db.select().from(candidates).where(eq(candidates.bookId, bookId)).all();
+    let changed = 0;
+    this.db.transaction((tx) => {
+      for (const row of rows) {
+        const c = Candidate.parse(JSON.parse(row.data));
+        if (c.decision !== 'user-in' && c.decision !== 'user-out') continue;
+        const next: Candidate = { ...c, decision: c.autoDecision, reasons: c.reasons.filter((r) => r.kind !== 'user-in' && r.kind !== 'user-out') };
+        tx.update(candidates).set({ decision: c.autoDecision, data: JSON.stringify(next), updatedAt }).where(and(eq(candidates.bookId, bookId), eq(candidates.assetId, c.assetId))).run();
+        changed++;
+      }
+    });
+    return changed;
+  }
+
   setDecisions(bookId: string, updates: ReadonlyArray<{ assetId: string; decision: 'user-in' | 'user-out' | 'auto' }>): string[] {
     const updatedAt = new Date().toISOString();
     const changed: string[] = [];

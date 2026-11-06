@@ -5,6 +5,8 @@ export interface ClusterInput {
   takenAt?: string | undefined;
   /** 16-hex pHash; photos without one only cluster through `duplicateId`. */
   phash?: string | undefined;
+  /** 16-hex dHash (M8); together with phash it also links photos of the same scene taken apart in time. */
+  dhash?: string | undefined;
   /** Immich duplicate group. */
   duplicateId?: string | undefined;
 }
@@ -17,9 +19,15 @@ export interface ClusterOptions {
   maxGapSeconds?: number;
   /** How many earlier photos (in time order) each photo is compared with (default 12). */
   lookback?: number;
+  /**
+   * M8: pHash this close AND dHash this close marks the same scene even far apart in time
+   * (a re-visit of a viewpoint hours later). Defaults: 10 / 8. 0 disables cross-time matching.
+   */
+  scenePhash?: number;
+  sceneDhash?: number;
 }
 
-const DEFAULTS: Required<ClusterOptions> = { tightHamming: 5, maxHamming: 12, maxGapSeconds: 90, lookback: 12 };
+const DEFAULTS: Required<ClusterOptions> = { tightHamming: 5, maxHamming: 12, maxGapSeconds: 90, lookback: 12, scenePhash: 10, sceneDhash: 8 };
 
 class UnionFind {
   private readonly parent: number[];
@@ -81,7 +89,14 @@ export function clusterNearDuplicates(items: readonly ClusterInput[], options: C
       if (!other) continue;
       const gap = cur.t !== undefined && prev.t !== undefined ? Math.abs(cur.t - prev.t) : undefined;
       const d = hamming(hash, other);
-      if (d <= o.tightHamming || (gap !== undefined && gap <= o.maxGapSeconds && d <= o.maxHamming)) uf.union(prev.i, cur.i);
+      if (d <= o.tightHamming || (gap !== undefined && gap <= o.maxGapSeconds && d <= o.maxHamming)) {
+        uf.union(prev.i, cur.i);
+        continue;
+      }
+      // M8: same scene (both hashes agree closely) even when taken far apart — a re-visit, not a burst.
+      if (o.scenePhash > 0 && o.sceneDhash > 0 && items[cur.i]!.dhash && items[prev.i]!.dhash) {
+        if (d <= o.scenePhash && hamming(items[cur.i]!.dhash!, items[prev.i]!.dhash!) <= o.sceneDhash) uf.union(prev.i, cur.i);
+      }
     }
   }
 

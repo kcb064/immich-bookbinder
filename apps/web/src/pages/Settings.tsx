@@ -4,6 +4,7 @@ import { REQUIRED_IMMICH_PERMISSIONS, SUPPORTED_IMMICH_VERSION } from '@bookbind
 import type { ImmichConnectionInput, ImmichStatus, LuluEnv } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
 import { PetsSection } from '../components/PetsSection.tsx';
+import { LocaleSection } from '../components/LocaleSection.tsx';
 import { NotificationsSection } from '../components/NotificationsSection.tsx';
 import { AiSection } from '../components/AiSection.tsx';
 import { LuluWebhookBlock } from '../components/LuluWebhook.tsx';
@@ -706,6 +707,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" />
       <div className="content">
         <div className="settings">
+          <LocaleSection />
           <ImmichSection />
           <PublicUrlSection />
           <PetsSection />
