@@ -14,6 +14,7 @@ import { SettingsPage } from './pages/Settings.tsx';
 import { ViewerPage } from './pages/Viewer.tsx';
 import { NotFoundPage } from './pages/NotFound.tsx';
 import { isApiError } from './lib/api.ts';
+import { LocaleProvider } from './lib/locale.tsx';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,7 +60,9 @@ export const router = createBrowserRouter([
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <LocaleProvider>
+        <RouterProvider router={router} />
+      </LocaleProvider>
     </QueryClientProvider>
   );
 }

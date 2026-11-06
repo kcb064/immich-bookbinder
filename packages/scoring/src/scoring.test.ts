@@ -187,6 +187,62 @@ describe('clusterNearDuplicates', () => {
   });
 });
 
+describe('same-scene similarity (M8)', () => {
+  const at = (h: number) => new Date(Date.UTC(2026, 4, 12, h, 0, 0)).toISOString();
+  const item = (id: string, score: number, takenAt: string, phash: string, dhash: string): PickItem => ({
+    id, score, takenAt, isFavorite: false, personIds: [], eligible: true, phash, dhash,
+  });
+  const base = { target: 2, variety: 0, spreadAcrossDays: false, includeFavoritesAlways: false, featuredPersonIds: [] as string[] };
+  const A = '0000000000000000';
+  const A_NEAR = '000000000000007f'; // 7 bits from A: above tightHamming (5) and burst (12) needs a gap, below scenePhash (10) -> same scene
+  const B = 'ffffffffffffffff'; // unrelated
+
+  it('clusterNearDuplicates links the same scene hours apart when both hashes agree', () => {
+    const groups = clusterNearDuplicates([
+      { id: 'morning', takenAt: at(8), phash: A, dhash: A },
+      { id: 'evening', takenAt: at(20), phash: A_NEAR, dhash: A_NEAR },
+      { id: 'other', takenAt: at(12), phash: B, dhash: B },
+    ]);
+    expect(groups.get('evening')).toEqual(['evening', 'morning']); // cluster id = lexicographically smallest member
+    expect(groups.has('other')).toBe(false);
+  });
+
+  it('does not link same-scene photos when only one hash agrees', () => {
+    const groups = clusterNearDuplicates([
+      { id: 'a', takenAt: at(8), phash: A, dhash: B },
+      { id: 'b', takenAt: at(20), phash: A_NEAR, dhash: A_NEAR },
+    ]);
+    expect(groups.size).toBe(0);
+  });
+
+  it('the picker prefers a different scene over a slightly better same-scene photo', () => {
+    const items = [
+      item('scene-a', 0.9, at(8), A, A),
+      item('scene-a2', 0.89, at(20), A_NEAR, A_NEAR),
+      item('scene-b', 0.75, at(9), B, B),
+    ];
+    const r = pickPhotos(items, { ...base, variety: 0.8, similarityPenalty: 1 });
+    const ids = [...r.decisions.entries()].filter(([, d]) => d.picked).map(([id]) => id);
+    expect(ids).toContain('scene-a');
+    expect(ids).toContain('scene-b');
+    expect(ids).not.toContain('scene-a2');
+    const reason = r.decisions.get('scene-a2')?.reasons[0];
+    expect(reason?.kind).toBe('variety');
+    expect(reason?.assetId).toBe('scene-a');
+  });
+
+  it('similarity penalty 0 keeps pure top-N behaviour', () => {
+    const items = [
+      item('scene-a', 0.9, at(8), A, A),
+      item('scene-a2', 0.89, at(20), A_NEAR, A_NEAR),
+      item('scene-b', 0.75, at(9), B, B),
+    ];
+    const r = pickPhotos(items, { ...base, variety: 0.8, similarityPenalty: 0 });
+    const ids = [...r.decisions.entries()].filter(([, d]) => d.picked).map(([id]) => id);
+    expect(ids.sort()).toEqual(['scene-a', 'scene-a2']);
+  });
+});
+
 describe('pickPhotos', () => {
   const at = (day: number, hour: number, minute = 0) => new Date(Date.UTC(2026, 4, day, hour, minute)).toISOString();
   const item = (id: string, score: number, takenAt: string, extra: Partial<PickItem> = {}): PickItem => ({

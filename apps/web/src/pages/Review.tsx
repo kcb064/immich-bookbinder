@@ -6,7 +6,7 @@ import { PageHeader } from '../components/Shell.tsx';
 import { Icon } from '../components/Icon.tsx';
 import type { IconName } from '../components/Icon.tsx';
 import { Button, Chip, Note, Select, Skeleton } from '../components/ui.tsx';
-import { isActiveRun, keys, useBook, useBookAssets, useLayoutBook, useRevertBurst, useSelection, useSetDecisions, useSettings, useStartSelection } from '../lib/queries.ts';
+import { isActiveRun, keys, useBook, useBookAssets, useLayoutBook, useResetDecisions, useRevertBurst, useSelection, useSetDecisions, useSettings, useStartSelection } from '../lib/queries.ts';
 import { errorMessage, isApiError, thumbnailUrl } from '../lib/api.ts';
 import { formatNumber, pluralize } from '../lib/format.ts';
 
@@ -225,6 +225,7 @@ function Detail({
   onDecide,
   onSwap,
   onRevertAi,
+  onZoom,
 }: {
   c: Candidate;
   asset: BookAsset | undefined;
@@ -237,6 +238,8 @@ function Detail({
   onSwap: (winnerId: string) => void;
   /** Undo Claude's burst pick (M7); present when the candidate carries one. */
   onRevertAi?: (() => void) | undefined;
+  /** Opens the large preview (M8). */
+  onZoom?: (() => void) | undefined;
 }) {
   const picked = isPicked(c);
   const user = c.decision === 'user-in' || c.decision === 'user-out';
@@ -245,7 +248,9 @@ function Detail({
   const place = [asset?.city, asset?.country].filter(Boolean).join(', ');
   return (
     <div className="rdetail stack">
-      <img className="rdetail__img" src={thumbnailUrl(c.assetId, 'preview')} alt={asset?.fileName ?? ''} />
+      <button type="button" className="rdetail__imgbtn" onClick={onZoom} title="Enlarge" disabled={!onZoom} style={{ padding: 0, border: 'none', background: 'none', cursor: onZoom ? 'zoom-in' : undefined }}>
+        <img className="rdetail__img" src={thumbnailUrl(c.assetId, 'preview')} alt={asset?.fileName ?? ''} />
+      </button>
       <div className="row row--between" style={{ alignItems: 'flex-start' }}>
         <div className="stack" style={{ gap: 2, minWidth: 0 }}>
           <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset?.fileName ?? c.assetId}</div>
@@ -371,6 +376,7 @@ export function ReviewPage() {
   const settings = useSettings();
   const start = useStartSelection(id ?? '');
   const decide = useSetDecisions(id ?? '');
+  const resetDecisions = useResetDecisions(id ?? '');
   const layout = useLayoutBook(id ?? '');
   const revertAi = useRevertBurst(id ?? '');
 
@@ -379,6 +385,7 @@ export function ReviewPage() {
   const [personFilter, setPersonFilter] = useState<string | undefined>(undefined);
   const [chapterFilter, setChapterFilter] = useState<string | undefined>(undefined);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const [zoomedId, setZoomedId] = useState<string | undefined>(undefined);
   const [rules, setRules] = useState<SelectionRules | undefined>(undefined);
   const savedRules = book.data?.rules;
   const autoStarted = useRef(false);
@@ -501,6 +508,20 @@ export function ReviewPage() {
   const selected = selectedId ? byId.get(selectedId) : undefined;
   const cluster = useMemo(() => (selected?.clusterId ? candidates.filter((c) => c.clusterId === selected.clusterId).sort((a, b) => a.clusterRank - b.clusterRank) : []), [candidates, selected]);
 
+  // M8: large preview overlay; Esc or click closes.
+  const zoomed = zoomedId ? byId.get(zoomedId) : undefined;
+  useEffect(() => {
+    if (!zoomedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomedId(undefined);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomedId]);
+
+  // M8: how many manual decisions this book currently has (drives the reset button).
+  const manualCount = useMemo(() => candidates.filter((c) => c.decision === 'user-in' || c.decision === 'user-out').length, [candidates]);
+
   if (book.isPending) {
     return (
       <>
@@ -555,6 +576,18 @@ export function ReviewPage() {
         </Button>
         <Button icon="swap" onClick={() => start.mutate({})} loading={running} disabled={!immichReady} title="Score and pick again with the current weights">
           Re-run selection
+        </Button>
+        <Button
+          icon="undo"
+          variant="ghost"
+          onClick={() => {
+            if (window.confirm(`Reset all ${manualCount} manual keeps/removals back to the automatic decisions?`)) resetDecisions.mutate();
+          }}
+          loading={resetDecisions.isPending}
+          disabled={running || manualCount === 0}
+          title={manualCount > 0 ? `Reset all ${manualCount} of your manual keeps/removals to the automatic decision` : 'No manual decisions to reset'}
+        >
+          Reset my picks ({manualCount})
         </Button>
         <Button variant="primary" iconRight="chevronRight" onClick={onLayout} loading={layout.isPending} disabled={!hasPicks || running || !immichReady}>
           Lay out pages
@@ -836,6 +869,7 @@ export function ReviewPage() {
                 ])
               }
               onRevertAi={selected.reasons.some((r) => r.kind === 'ai') ? () => revertAi.mutate(selected.assetId) : undefined}
+              onZoom={() => setZoomedId(selected.assetId)}
             />
           ) : (
             <div className="muted small" style={{ lineHeight: 1.6 }}>
@@ -861,6 +895,14 @@ export function ReviewPage() {
           )}
         </aside>
       </div>
+      {zoomed ? (
+        <div className="rlightbox" role="dialog" aria-modal="true" aria-label={assetMap.get(zoomed.assetId)?.fileName ?? 'Photo preview'} onClick={() => setZoomedId(undefined)}>
+          <Button className="rlightbox__close" size="sm" variant="ghost" icon="x" onClick={() => setZoomedId(undefined)}>
+            Close
+          </Button>
+          <img className="rlightbox__img" src={thumbnailUrl(zoomed.assetId, 'preview')} alt={assetMap.get(zoomed.assetId)?.fileName ?? ''} onClick={(e) => e.stopPropagation()} />
+        </div>
+      ) : null}
     </>
   );
 }

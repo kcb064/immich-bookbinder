@@ -1,4 +1,5 @@
 export * from './format.js';
+export * from './locale.js';
 export * from './theme.js';
 export * from './template.js';
 export * from './chapters.js';

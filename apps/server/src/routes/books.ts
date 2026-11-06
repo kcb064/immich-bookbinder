@@ -1,4 +1,4 @@
-import { Book, CreateRenderInput, FORMAT_PRESETS, Id, SelectionRules, LuluProduct, type BookAsset, type Preflight, type RenderJob } from '@bookbinder/shared';
+import { Book, CreateRenderInput, FORMAT_PRESETS, Id, Locale, SelectionRules, LuluProduct, type BookAsset, type Preflight, type RenderJob } from '@bookbinder/shared';
 import { preflightBook } from '@bookbinder/layout';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -14,6 +14,8 @@ const CreateBookInput = z.object({
   subtitle: z.string().optional(),
   formatId: Id,
   themeId: Id,
+  /** Locale of the printed book (M8). */
+  locale: Locale.optional(),
   rules: SelectionRules.optional(),
   luluProduct: LuluProduct.optional(),
 });

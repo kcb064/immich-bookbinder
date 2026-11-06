@@ -4,8 +4,12 @@ import {
   DEFAULT_FORMAT_ID,
   DEFAULT_THEME_ID,
   FORMAT_PRESETS,
+  LOCALES,
+  LOCALE_LABELS,
   THEMES,
   formatIsoRange,
+  normalizeLocale,
+  type Locale,
   type SavedPet,
 } from '@bookbinder/shared';
 import { PageHeader } from '../components/Shell.tsx';
@@ -765,6 +769,8 @@ export function NewBookPage() {
   const [title, setTitle] = useState('');
   const [titleEdited, setTitleEdited] = useState(false);
   const [formatId, setFormatId] = useState(DEFAULT_FORMAT_ID);
+  const [locale, setLocale] = useState<Locale>(() => normalizeLocale(typeof navigator !== 'undefined' ? navigator.language : undefined));
+  const [targetPages, setTargetPages] = useState(TARGET_PAGES);
   const [submitted, setSubmitted] = useState(false);
 
   const theme = THEMES[DEFAULT_THEME_ID];
@@ -881,7 +887,8 @@ export function NewBookPage() {
         title: title.trim(),
         formatId,
         themeId: DEFAULT_THEME_ID,
-        rules: { sources: buildSources(), targetPages: TARGET_PAGES, featuredPersonIds },
+        locale,
+        rules: { sources: buildSources(), targetPages, featuredPersonIds },
       },
       { onSuccess: (book) => navigate(`/books/${encodeURIComponent(book.id)}/review`) },
     );
@@ -1100,6 +1107,38 @@ export function NewBookPage() {
                     {Object.values(FORMAT_PRESETS).map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field
+                label="Pages"
+                hint={format ? `Target page count, ${format.minPages}–${format.maxPages} for this size (multiples of ${format.pageMultiple} when printed)` : undefined}
+              >
+                {({ id, describedBy }) => (
+                  <TextInput
+                    id={id}
+                    type="number"
+                    inputMode="numeric"
+                    min={format?.minPages ?? 2}
+                    max={format?.maxPages ?? 800}
+                    step={format?.pageMultiple ?? 2}
+                    value={targetPages}
+                    onChange={(e) => setTargetPages(Math.max(2, Math.min(800, Number(e.target.value) || TARGET_PAGES)))}
+                    aria-describedby={describedBy}
+                  />
+                )}
+              </Field>
+              <Field
+                label="Book language"
+                hint="Chapter titles, dates and captions inside the printed book. The app interface keeps its own language (Settings)."
+              >
+                {({ id, describedBy }) => (
+                  <Select id={id} value={locale} onChange={(e) => setLocale(e.target.value as Locale)} aria-describedby={describedBy}>
+                    {LOCALES.map((l) => (
+                      <option key={l} value={l}>
+                        {LOCALE_LABELS[l]}
                       </option>
                     ))}
                   </Select>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { UNDATED_LABELS, dayChapterTitleIn, formatDateRangeIn, type Locale } from './locale.js';
 
 /*
  * Chapter planning (M3). Pure and deterministic so the selection engine (per-chapter budgets), the
@@ -40,6 +41,8 @@ export interface ChapterOptions {
   targetPages: number;
   /** Photos in a run below this share of the book merge into a neighbour (default 3%). */
   minShare?: number | undefined;
+  /** Locale of the printed book (M8): day-chapter titles and the undated label. Default 'en'. */
+  locale?: Locale | undefined;
 }
 
 /** Most chapters a book of `targetPages` gets: one per 8 pages, between 1 and 12. */
@@ -235,32 +238,9 @@ function mergeRuns(
   return out;
 }
 
-const dateFmt = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  timeZone: 'UTC',
-});
-const monthFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', timeZone: 'UTC' });
-
-function parseIso(iso: string | undefined): Date | undefined {
-  if (!iso) return undefined;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-}
-
-/** "May 12 – 21, 2026", "May 12, 2026" for one day, "" when unknown. Dates are read in UTC. */
-export function formatIsoRange(lo: string | undefined, hi: string | undefined): string {
-  const a = parseIso(lo);
-  const b = parseIso(hi);
-  if (!a || !b) return a || b ? dateFmt.format((a ?? b)!) : '';
-  const [s, e] = a <= b ? [a, b] : [b, a];
-  if (s.toISOString().slice(0, 10) === e.toISOString().slice(0, 10)) return dateFmt.format(s);
-  if (s.getUTCFullYear() === e.getUTCFullYear() && s.getUTCMonth() === e.getUTCMonth()) {
-    return `${monthFmt.format(s).split(' ')[0]} ${s.getUTCDate()} – ${e.getUTCDate()}, ${s.getUTCFullYear()}`;
-  }
-  // Intl puts thin spaces around the dash; plain spaces survive every font.
-  return dateFmt.formatRange(s, e).replace(/[  ]/g, ' ');
+/** "May 12 – 21, 2026", "May 12, 2026" for one day, "" when unknown. Dates are read in UTC. English by default; pass a locale for the book (M8). */
+export function formatIsoRange(lo: string | undefined, hi: string | undefined, locale: Locale = 'en'): string {
+  return formatDateRangeIn(locale, lo, hi);
 }
 
 /** Earliest and latest capture time among the photos, as ISO strings. */
@@ -343,18 +323,15 @@ export function planChapters(photos: readonly ChapterPhoto[], opts: ChapterOptio
   };
 
   return runs.map((run, i) => {
+    const locale = opts.locale ?? 'en';
     const span = dateSpan(run.photos);
-    const range = formatIsoRange(span.startsAt, span.endsAt);
+    const range = formatIsoRange(span.startsAt, span.endsAt, locale);
     const country = mode(run.photos.map((p) => clean(p.country)));
     if (opts.mode === 'days') {
       const days = [...new Set(run.photos.map(byDay).filter((d): d is string => Boolean(d)))].sort();
       const first = days[0];
       const last = days[days.length - 1];
-      const title = !first
-        ? 'Undated'
-        : first === last
-          ? `Day ${dayNumber(first)}`
-          : `Days ${dayNumber(first)}–${dayNumber(last!)}`;
+      const title = !first ? UNDATED_LABELS[locale] : dayChapterTitleIn(locale, dayNumber(first), last === first ? undefined : dayNumber(last!));
       const place = mode(run.photos.map(byPlace));
       return {
         id: `ch${i + 1}`,

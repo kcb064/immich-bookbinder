@@ -108,6 +108,7 @@ describe('selection engine against the fake Immich', () => {
     for (const c of view.candidates) {
       expect(c.metrics).toBeDefined();
       expect(c.phash).toMatch(/^[0-9a-f]{16}$/);
+      expect(c.dhash).toMatch(/^[0-9a-f]{16}$/);
       expect(c.reasons.length).toBeGreaterThan(0);
       expect(c.scores.composite).toBeGreaterThanOrEqual(0);
     }
@@ -150,6 +151,31 @@ describe('selection engine against the fake Immich', () => {
     const view = SelectionView.parse(reset.json());
     expect(view.candidates.find((c) => c.assetId === picked.assetId)!.decision).toBe('auto-in');
     expect(view.summary!.picked).toBe(before.summary!.picked + 1);
+  });
+
+  it('POST reset-decisions sends every manual decision back to automatic (M8)', async () => {
+    const before = SelectionView.parse((await t.app.inject({ method: 'GET', url: `/api/books/${bookId}/selection`, headers: { cookie } })).json());
+    const a = before.candidates.find((c) => c.decision === 'auto-in')!;
+    const b = before.candidates.find((c) => c.decision === 'auto-out' && c.clusterRank === 0 && !c.blurry)!;
+    const put = await t.app.inject({
+      method: 'PUT',
+      url: `/api/books/${bookId}/selection/decisions`,
+      headers: { cookie },
+      payload: { decisions: [{ assetId: a.assetId, decision: 'user-out' }, { assetId: b.assetId, decision: 'user-in' }] },
+    });
+    expect(put.statusCode).toBe(200);
+    const manual = SelectionView.parse(put.json());
+    expect(manual.candidates.filter((c) => c.decision === 'user-in' || c.decision === 'user-out').length).toBeGreaterThanOrEqual(2);
+
+    const res = await t.app.inject({ method: 'POST', url: `/api/books/${bookId}/selection/reset-decisions`, headers: { cookie }, payload: {} });
+    expect(res.statusCode, res.body).toBe(200);
+    const view = SelectionView.parse(res.json());
+    expect(view.candidates.filter((c) => c.decision === 'user-in' || c.decision === 'user-out')).toHaveLength(0);
+    expect(view.candidates.find((c) => c.assetId === a.assetId)!.decision).toBe('auto-in');
+    expect(view.candidates.find((c) => c.assetId === b.assetId)!.decision).toBe('auto-out');
+    expect(view.summary!.picked).toBe(before.summary!.picked - 1); // b was auto-out, so resetting its user-in removes one pick
+    // Leave one manual keep behind for the re-run test below.
+    await t.app.inject({ method: 'PUT', url: `/api/books/${bookId}/selection/decisions`, headers: { cookie }, payload: { decisions: [{ assetId: b.assetId, decision: 'user-in' }] } });
   });
 
   it('re-runs quickly from cached analysis, keeps user decisions and honours new weights', async () => {

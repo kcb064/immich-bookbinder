@@ -59,9 +59,30 @@ export function phashFrom32(pixels: Float64Array): string {
   return hex;
 }
 
+/**
+ * Difference hash (dHash) of a 9x8 greyscale image: each of the 64 bits says whether the pixel is
+ * brighter than its right neighbour. It captures gradients and large shapes and is deliberately
+ * different from the DCT pHash, so two photos only count as "the same scene" when both hashes agree.
+ */
+export function dhashFrom9x8(pixels: Float64Array): string {
+  if (pixels.length !== 72) throw new Error(`dhash expects 72 pixels, got ${pixels.length}`);
+  let hex = '';
+  for (let nibble = 0; nibble < 16; nibble++) {
+    let v = 0;
+    for (let b = 0; b < 4; b++) {
+      const i = nibble * 4 + b;
+      const x = i % 9;
+      const y = Math.floor(i / 9);
+      v = (v << 1) | (pixels[y * 9 + x]! > pixels[y * 9 + x + 1]! ? 1 : 0);
+    }
+    hex += v.toString(16);
+  }
+  return hex;
+}
+
 const POPCOUNT_NIBBLE = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4] as const;
 
-/** Number of differing bits between two hex hashes of equal length (64 for pHash). */
+/** Number of differing bits between two hex hashes of equal length (64 for pHash/dHash). */
 export function hamming(a: string, b: string): number {
   if (a.length !== b.length) throw new Error('hamming: hashes differ in length');
   let d = 0;

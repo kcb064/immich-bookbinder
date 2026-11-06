@@ -22,10 +22,16 @@ export const Theme = z.object({
 export type Theme = z.infer<typeof Theme>;
 export type FrameStyle = Theme['frameStyle'];
 
-/** Per-book adjustments to a theme (M7): every field optional, the theme's value applies when absent. */
+/** Per-book adjustments to a theme (M7/M8): every field optional, the theme's value applies when absent. */
 export const ThemeOverrides = z.object({
   /** Paper colour as #rrggbb. */
   paper: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'paper must be a #rrggbb colour').optional(),
+  /** Ink (text) colour as #rrggbb, for titles, captions and text boxes on the pages and the cover (M8). */
+  ink: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'ink must be a #rrggbb colour').optional(),
+  /** Caption colour as #rrggbb (M8). */
+  caption: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'caption must be a #rrggbb colour').optional(),
+  /** Accent colour as #rrggbb: rules, map routes, folio accents (M8). */
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'accent must be a #rrggbb colour').optional(),
   /** Caption size in CSS px at 96 ppi (the theme's is 13–14). */
   captionSizePx: z.number().min(8).max(24).optional(),
   frameStyle: Theme.shape.frameStyle.optional(),
@@ -102,6 +108,9 @@ export function resolveTheme(themeId: string, overrides?: ThemeOverrides | undef
   return {
     ...base,
     ...(overrides.paper !== undefined ? { paper: overrides.paper } : {}),
+    ...(overrides.ink !== undefined ? { ink: overrides.ink } : {}),
+    ...(overrides.caption !== undefined ? { caption: overrides.caption } : {}),
+    ...(overrides.accent !== undefined ? { accent: overrides.accent } : {}),
     ...(overrides.captionSizePx !== undefined ? { captionSizePx: overrides.captionSizePx } : {}),
     ...(overrides.frameStyle !== undefined ? { frameStyle: overrides.frameStyle } : {}),
   };

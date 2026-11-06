@@ -12,3 +12,17 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - zod@4.6.2
   - fastify@5.12.4
+
+# Security floors: transitive deps stay on patched lines even where their parent
+# pins an older range (glob 14 / minimatch 11 for @fastify/static and eslint).
+overrides:
+  glob: ^14.0.2
+  minimatch: ^11.0.1
+  brace-expansion@npm:^1.1.11: ^1.1.21
+  brace-expansion@npm:^2.0.1: ^2.1.7
+  fast-uri: ^4.2.3
+  ip-address: ^10.7.1
+  # drizzle-kit's esm-loader pins esbuild ~0.18; force the patched line.
+  '@esbuild-kit/core-utils>esbuild': ^0.28.2
+  # tsup 8.x pins esbuild ^0.27; only 9.x moves to ^0.28. Pin 9 for the patched line.
+  'tsup>esbuild': ^0.28.2

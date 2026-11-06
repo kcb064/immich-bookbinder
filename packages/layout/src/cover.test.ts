@@ -5,27 +5,34 @@ import { coverFrameIn, coverGeometry, coverSlotIn } from './cover.js';
 const square = FORMAT_PRESETS['lulu-square-8.5']!;
 
 describe('coverGeometry', () => {
-  it('estimates a casewrap spine from the caliper plus board, with a 0.75 in wrap', () => {
+  it('steps a casewrap spine from Lulu\'s official table, with a 0.75 in wrap', () => {
     const g = coverGeometry(square, LuluProduct.parse({}), 48);
     expect(g.source).toBe('estimate');
-    expect(g.spineIn).toBeCloseTo(48 * 0.002252 + 0.25, 4);
+    expect(g.spineIn).toBe(0.25); // 24-84 pages = 0.25 in per Lulu's spine width table
     expect(g.wrapIn).toBe(0.75);
-    expect(g.widthIn).toBeCloseTo(1.5 + 17 + g.spineIn, 4);
+    expect(g.widthIn).toBeCloseTo(1.5 + 17 + 0.25, 4);
     expect(g.heightIn).toBeCloseTo(10, 4);
-    expect(g.frontLeftIn).toBeCloseTo(0.75 + 8.5 + g.spineIn, 4);
+    expect(g.frontLeftIn).toBeCloseTo(0.75 + 8.5 + 0.25, 4);
   });
 
-  it('gives a perfect-bound book no board and only the bleed around the trim', () => {
+  it('gives a perfect-bound book the caliper plus Lulu\'s 0.06 in board allowance, with only the bleed around the trim', () => {
     const g = coverGeometry(square, LuluProduct.parse({ binding: 'PB', paper: '060UW444' }), 111);
-    expect(g.spineIn).toBeCloseTo(0.25, 4);
+    expect(g.spineIn).toBeCloseTo(111 * 0.002252 + 0.06, 4);
     expect(g.wrapIn).toBe(0.125);
-    expect(g.widthIn).toBeCloseTo(0.25 + 17 + 0.25, 4);
+    expect(g.widthIn).toBeCloseTo(0.25 + 17 + g.spineIn, 4);
     expect(g.heightIn).toBeCloseTo(8.75, 4);
   });
 
-  it('grows the spine with the page count', () => {
-    const a = coverGeometry(square, LuluProduct.parse({}), 24);
-    const b = coverGeometry(square, LuluProduct.parse({}), 240);
+  it('steps the hardcover spine exactly as Lulu\'s table does', () => {
+    expect(coverGeometry(square, LuluProduct.parse({}), 24).spineIn).toBe(0.25);
+    expect(coverGeometry(square, LuluProduct.parse({}), 240).spineIn).toBe(0.8125);
+    expect(coverGeometry(square, LuluProduct.parse({}), 473).spineIn).toBe(1.375);
+    expect(coverGeometry(square, LuluProduct.parse({}), 800).spineIn).toBe(2.0625);
+  });
+
+  it('grows a perfect-bound spine linearly with the page count', () => {
+    const a = coverGeometry(square, LuluProduct.parse({ binding: 'PB', paper: '060UW444' }), 24);
+    const b = coverGeometry(square, LuluProduct.parse({ binding: 'PB', paper: '060UW444' }), 240);
     expect(b.spineIn - a.spineIn).toBeCloseTo(216 * 0.002252, 3);
   });
 
@@ -49,10 +56,10 @@ describe('coverGeometry', () => {
   });
 
   it('uses the same 1/444 in caliper for every paper', () => {
-    const coated = coverGeometry(square, LuluProduct.parse({ paper: '080CW444' }), 200);
-    const uncoated = coverGeometry(square, LuluProduct.parse({ paper: '060UW444' }), 200);
+    const coated = coverGeometry(square, LuluProduct.parse({ binding: 'PB', paper: '080CW444' }), 200);
+    const uncoated = coverGeometry(square, LuluProduct.parse({ binding: 'PB', paper: '060UW444' }), 200);
     expect(uncoated.spineIn).toBe(coated.spineIn);
-    expect(coated.spineIn).toBeCloseTo(200 / 444 + 0.25, 4);
+    expect(coated.spineIn).toBeCloseTo(200 / 444 + 0.06, 4);
   });
 });
 

@@ -39,6 +39,12 @@ const EnvSchema = z
     /** Development only: point the Anthropic SDK at a fake (see src/test/fake-claude.ts). */
     AI_BASE_URL: z.url({ error: 'AI_BASE_URL must be an absolute URL' }).optional(),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+    /**
+     * Load the display fonts from Google Fonts for PDF renders (default true). Set to false for a
+     * fully offline setup: renders then use the system serif/sans fallbacks and never contact
+     * fonts.googleapis.com. The admin UI in the browser always uses its bundled UI font.
+     */
+    WEB_FONTS: bool.default(true),
     WEB_DIST: z.string().min(1).default(defaultWebDist),
   })
   .refine((e) => e.ADMIN_PASSWORD !== undefined || e.ADMIN_PASSWORD_HASH !== undefined, {

@@ -1,4 +1,4 @@
-import type { Book, BookAsset } from '@bookbinder/shared';
+import type { Book, BookAsset, Locale } from '@bookbinder/shared';
 import { dateRangeLabel } from './captions.js';
 import type { BookMeta, ChapterMeta } from './PageView.js';
 
@@ -14,14 +14,16 @@ export interface BookMetaOptions {
   shareUrl?: string | undefined;
 }
 
-export function bookMetaFor(book: Pick<Book, 'title' | 'subtitle'> & Partial<Pick<Book, 'chapters' | 'pages' | 'rules'>>, assets: Iterable<BookAsset>, photoCount: number, opts: BookMetaOptions = {}): BookMeta {
+export function bookMetaFor(book: Pick<Book, 'title' | 'subtitle'> & { locale?: Locale | undefined } & Partial<Pick<Book, 'chapters' | 'pages' | 'rules'>>, assets: Iterable<BookAsset>, photoCount: number, opts: BookMetaOptions = {}): BookMeta {
   const list = [...assets];
+  const locale: Locale = book.locale ?? 'en';
   const chapters = chapterMetaFor(book, new Map(list.map((a) => [a.id, a])));
   return {
     title: book.title,
     subtitle: book.subtitle,
     photoCount,
-    dateRange: dateRangeLabel(list),
+    dateRange: dateRangeLabel(list, locale),
+    locale,
     ...(chapters.size > 0 ? { chapters } : {}),
     ...(opts.shareUrl ? { shareUrl: opts.shareUrl } : {}),
     ...(book.rules?.chapterMaps ? { chapterMaps: true } : {}),

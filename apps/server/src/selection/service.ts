@@ -180,8 +180,8 @@ export class SelectionService {
       const todo = reuse ? assets.filter((a) => !existing.get(a.id)?.metrics) : assets;
       this.update(id, { phase: 'analyze', total: todo.length, done: 0 });
       log.info({ photos: assets.length, toAnalyze: todo.length, concurrency: this.concurrency }, 'selection started');
-      const analysis = new Map<string, { metrics: Candidate['metrics']; phash: string }>();
-      if (reuse) for (const c of existing.values()) if (c.metrics && c.phash) analysis.set(c.assetId, { metrics: c.metrics, phash: c.phash });
+      const analysis = new Map<string, { metrics: Candidate['metrics']; phash: string; dhash?: string | undefined }>();
+      if (reuse) for (const c of existing.values()) if (c.metrics && c.phash) analysis.set(c.assetId, { metrics: c.metrics, phash: c.phash, ...(c.dhash ? { dhash: c.dhash } : {}) });
       let done = 0;
       let failed = 0;
       let lastWrite = 0;
@@ -199,8 +199,8 @@ export class SelectionService {
           limit(async () => {
             try {
               const path = await images.preview(asset.id);
-              const { phash, ...metrics } = await analyzeFile(path);
-              analysis.set(asset.id, { metrics, phash });
+              const { phash, dhash, ...metrics } = await analyzeFile(path);
+              analysis.set(asset.id, { metrics, phash, dhash });
             } catch (err) {
               failed++;
               log.debug({ err, assetId: asset.id }, 'preview analysis failed');
@@ -217,11 +217,11 @@ export class SelectionService {
         const prev = existing.get(a.id);
         const decision = prev?.decision === 'user-in' || prev?.decision === 'user-out' ? prev.decision : undefined;
         const f = faces ?? (reuse ? prev?.faces : undefined);
-        return { asset: a, metrics: an?.metrics, phash: an?.phash, faces: f, decision };
+        return { asset: a, metrics: an?.metrics, phash: an?.phash, dhash: an?.dhash, faces: f, decision };
       };
       // 3. Faces for a shortlist: the strongest candidates that show people and have no boxes yet.
       // The preliminary pass also fixes the target (chapters reserve opener pages).
-      const preliminary = buildSelection(assets.map((a) => inputFor(a)), { rules: book.rules });
+      const preliminary = buildSelection(assets.map((a) => inputFor(a)), { rules: book.rules, locale: book.locale });
       const targetPhotos = preliminary.summary.targetPhotos;
       const ranked = [...preliminary.candidates].sort((a, b) => b.scores.composite - a.scores.composite);
       const shortlistSize = Math.min(ranked.length, Math.max(60, targetPhotos * 2));
@@ -256,7 +256,7 @@ export class SelectionService {
 
       // 4. Score, cluster, pick
       this.update(id, { phase: 'pick', total: assets.length, done: assets.length });
-      const result = buildSelection(assets.map((a) => inputFor(a, faces.get(a.id))), { rules: book.rules });
+      const result = buildSelection(assets.map((a) => inputFor(a, faces.get(a.id))), { rules: book.rules, locale: book.locale });
       this.deps.candidates.replace(book.id, result.candidates);
       const latest = this.deps.store.get(book.id);
       if (latest && latest.status === 'draft') this.deps.store.save({ ...latest, status: 'selecting' });

@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  const app = await buildApp(config);
+  const app = await buildApp(config, { render: { webFonts: config.WEB_FONTS } });
 
   const shutdown = (signal: string) => {
     app.log.info({ signal }, 'shutting down');

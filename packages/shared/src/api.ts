@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OrderStatus } from './book.js';
+import { Locale } from './locale.js';
 
 /** Request/response shapes shared by apps/server and apps/web. */
 
@@ -122,6 +123,8 @@ export const NotificationTest = z.object({ ok: z.boolean(), status: z.number().i
 export type NotificationTest = z.infer<typeof NotificationTest>;
 
 export const SettingsView = z.object({
+  /** UI locale of the admin app (M8). */
+  locale: Locale.default('en'),
   immich: z.object({ url: z.string().optional(), apiKeySet: z.boolean() }),
   lulu: z.object({
     /** Which credential pair is active. */
@@ -166,7 +169,7 @@ export const REQUIRED_IMMICH_PERMISSIONS = [
 export type RequiredImmichPermission = (typeof REQUIRED_IMMICH_PERMISSIONS)[number];
 
 /** Immich server version the vendored OpenAPI spec (specs/immich-openapi.json) describes. */
-export const SUPPORTED_IMMICH_VERSION = '3.2.0';
+export const SUPPORTED_IMMICH_VERSION = '3.3.5';
 
 /* ---------- Print readiness (M4) ---------- */
 
